@@ -154,6 +154,7 @@ canvas { cursor: crosshair; display: block; }
 // 1. CONSTANTS & SPECIES DEFINITIONS
 // ============================================================
 const CELL_SIZE = 8;
+const GRID_GAP = 1; // pixels of background visible between cells
 const DEAD_DECAY_AGE = 14;
 const HUNGER_RESTORE_FRACTION = 0.65;
 const MIN_GRID_PX = 480;
@@ -250,14 +251,24 @@ function initCanvas() {
 }
 
 function render() {
-  const cw = gridW, ch = gridH, cs = CELL_SIZE;
+  const cw = gridW, ch = gridH, cs = CELL_SIZE, gap = GRID_GAP;
   const pw = canvasW;
   const data = imgPixels;
+  const bgR = COLOR_RGB[0][0], bgG = COLOR_RGB[0][1], bgB = COLOR_RGB[0][2];
+  const innerSize = cs - gap; // drawn square size per cell
+
+  // Fill entire image with background (grid lines show through the gaps)
+  for (let i = 0, len = data.length; i < len; i += 4) {
+    data[i] = bgR; data[i+1] = bgG; data[i+2] = bgB; data[i+3] = 255;
+  }
+
   for (let cy = 0; cy < ch; cy++) {
     for (let cx = 0; cx < cw; cx++) {
       const idx = cy * cw + cx;
       const sid = species[idx];
-      const rgb = COLOR_RGB[sid] || COLOR_RGB[0];
+      if (sid === 0) continue; // already background
+
+      const rgb = COLOR_RGB[sid];
       let r = rgb[0], g = rgb[1], b = rgb[2];
 
       // Dim colour based on hunger for animals
@@ -269,17 +280,16 @@ function render() {
         b = (b * f) | 0;
       }
 
-      // Fill CELL_SIZE x CELL_SIZE block
+      // Fill inner square, leaving gap on right and bottom edges
       const px0 = cx * cs;
       const py0 = cy * cs;
-      for (let py = py0; py < py0 + cs; py++) {
+      for (let py = py0; py < py0 + innerSize; py++) {
         const rowOff = py * pw * 4;
-        for (let px = px0; px < px0 + cs; px++) {
+        for (let px = px0; px < px0 + innerSize; px++) {
           const off = rowOff + px * 4;
           data[off]     = r;
           data[off + 1] = g;
           data[off + 2] = b;
-          data[off + 3] = 255;
         }
       }
     }
