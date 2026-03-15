@@ -171,6 +171,7 @@ const SPECIES = {
   20: { name: 'Shrimp',         color: '#FF9944', tier: 'herbivore',   breedRate: 0.09, moveRate: 0.70, hungerMax: 18, eats: [10],      desc: 'Fast-breeding plankton grazer' },
   21: { name: 'Snail',          color: '#CC88FF', tier: 'herbivore',   breedRate: 0.04, moveRate: 0.22, hungerMax: 28, eats: [11],      desc: 'Slow-moving seaweed consumer' },
   22: { name: 'Crab',           color: '#FF5533', tier: 'herbivore',   breedRate: 0.04, moveRate: 0.42, hungerMax: 24, eats: [10,11,3], desc: 'Omnivore — eats plants and dead matter' },
+  23: { name: 'Sea Urchin',     color: '#BB4466', tier: 'herbivore',   breedRate: 0.02, moveRate: 0.18, hungerMax: 32, eats: [12],      desc: 'Slow grazer — the only coral predator' },
   30: { name: 'Small Fish',     color: '#44CCFF', tier: 'consumer',    breedRate: 0.04, moveRate: 0.85, hungerMax: 20, eats: [20],      desc: 'Fast swimmer, hunts shrimp' },
   31: { name: 'Squid',          color: '#AA44FF', tier: 'consumer',    breedRate: 0.03, moveRate: 0.62, hungerMax: 24, eats: [20,21],   desc: 'Agile predator of small herbivores' },
   32: { name: 'Pufferfish',     color: '#FFEE22', tier: 'consumer',    breedRate: 0.025,moveRate: 0.38, hungerMax: 28, eats: [22,21],   desc: 'Tough consumer of crabs and snails' },
@@ -200,7 +201,7 @@ const NEIGHBOURS_8 = [[0,-1],[1,-1],[1,0],[1,1],[0,1],[-1,1],[-1,0],[-1,-1]];
 const TIER_ORDER = [
   { label: 'ENVIRONMENT', ids: [0, 1, 2] },
   { label: 'PRODUCERS',   ids: [10, 11, 12] },
-  { label: 'HERBIVORES',  ids: [20, 21, 22] },
+  { label: 'HERBIVORES',  ids: [20, 21, 22, 23] },
   { label: 'CONSUMERS',   ids: [30, 31, 32] },
   { label: 'APEX',        ids: [40, 41] },
   { label: 'DECOMPOSERS', ids: [50, 51] },
