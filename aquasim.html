@@ -163,7 +163,7 @@ const MAX_GRID_PX = 3200;
 const SPECIES = {
   0:  { name: 'Empty',          color: '#060E16', tier: 'none' },
   1:  { name: 'Rock',           color: '#4A5A6A', tier: 'environment', desc: 'Impassable terrain blocker' },
-  2:  { name: 'Current',        color: '#003D88', tier: 'environment', desc: 'Pushes organisms in movement direction' },
+  2:  { name: 'Current',        color: '#003D88', tier: 'environment', desc: 'Drag to paint — sweeps creatures in drag direction' },
   3:  { name: 'Dead',           color: '#1C1410', tier: 'transient',   desc: 'Decays to empty after 14 ticks' },
   10: { name: 'Phytoplankton',  color: '#00FF88', tier: 'producer',    breedRate: 0.13, desc: 'Fast-spreading base producer' },
   11: { name: 'Seaweed',        color: '#00CC44', tier: 'producer',    breedRate: 0.04, desc: 'Slow-growing plant, food for snails' },
@@ -194,6 +194,7 @@ for (const id in SPECIES) {
 
 // Cardinal directions (N, E, S, W)
 const CARDINAL = [[0,-1],[1,0],[0,1],[-1,0]];
+// Current direction values: 1=N, 2=E, 3=S, 4=W → index into CARDINAL is (val - 1)
 // All 8 neighbours
 const NEIGHBOURS_8 = [[0,-1],[1,-1],[1,0],[1,1],[0,1],[-1,1],[-1,0],[-1,-1]];
 
@@ -299,16 +300,20 @@ function render() {
     }
   }
 
-  // Current overlay pass — blend semi-transparent blue on top
+  // Current overlay pass — blend semi-transparent blue on top + arrow
   const curR = COLOR_RGB[2][0], curG = COLOR_RGB[2][1], curB = COLOR_RGB[2][2];
   const alpha = 0.45; // overlay opacity
   const inv = 1 - alpha;
+  // Arrow highlight colour (brighter blue)
+  const arwR = 80, arwG = 160, arwB = 255;
   for (let cy = 0; cy < ch; cy++) {
     for (let cx = 0; cx < cw; cx++) {
       const idx = cy * cw + cx;
-      if (!currents[idx]) continue;
+      const cdir = currents[idx];
+      if (!cdir) continue;
       const px0 = cx * cs;
       const py0 = cy * cs;
+      // Blend the tint
       for (let py = py0; py < py0 + innerSize; py++) {
         const rowOff = py * pw * 4;
         for (let px = px0; px < px0 + innerSize; px++) {
@@ -316,6 +321,27 @@ function render() {
           data[off]     = (data[off]     * inv + curR * alpha) | 0;
           data[off + 1] = (data[off + 1] * inv + curG * alpha) | 0;
           data[off + 2] = (data[off + 2] * inv + curB * alpha) | 0;
+        }
+      }
+      // Draw a small arrow (3px) in the centre of the cell
+      const mid = (innerSize / 2) | 0;
+      const mcx = px0 + mid, mcy = py0 + mid;
+      // Arrow pixels relative to centre, based on direction
+      let arrowPx;
+      if (cdir === 1) {       // N ↑
+        arrowPx = [[0,-1],[0,0],[-1,0],[1,0],[0,1]];
+      } else if (cdir === 2) { // E →
+        arrowPx = [[-1,0],[0,0],[0,-1],[0,1],[1,0]];
+      } else if (cdir === 3) { // S ↓
+        arrowPx = [[0,1],[0,0],[-1,0],[1,0],[0,-1]];
+      } else {                 // W ←
+        arrowPx = [[1,0],[0,0],[0,-1],[0,1],[-1,0]];
+      }
+      for (const [adx, ady] of arrowPx) {
+        const apx = mcx + adx, apy = mcy + ady;
+        if (apx >= px0 && apx < px0 + innerSize && apy >= py0 && apy < py0 + innerSize) {
+          const off = (apy * pw + apx) * 4;
+          data[off] = arwR; data[off+1] = arwG; data[off+2] = arwB;
         }
       }
     }
@@ -441,7 +467,22 @@ function step() {
       }
     }
 
-    // 4. Movement
+    // 4. Current sweep — if standing on a current, get pushed in its direction
+    const curDir = currents[idx];
+    if (curDir) {
+      const cd = CARDINAL[curDir - 1];
+      const sx = wrapX(cx + cd[0]);
+      const sy = wrapY(cy + cd[1]);
+      const si = sy * cw + sx;
+      if (species[si] === 0) {
+        species[si] = sid; hunger[si] = hunger[idx]; age[si] = age[idx];
+        species[idx] = 0; hunger[idx] = 0; age[idx] = 0;
+        processed[si] = 1;
+        continue; // swept — skip voluntary movement
+      }
+    }
+
+    // 5. Movement
     if (Math.random() < sp.moveRate) {
       const dirs = shuffleSmall([0,1,2,3]);
       for (let d = 0; d < 4; d++) {
@@ -452,24 +493,7 @@ function step() {
         const targetSid = species[ni];
 
         if (targetSid === 0) {
-          if (currents[ni]) {
-            // Current overlay: deflect one more step in same direction
-            const fx = wrapX(nx + dir[0]);
-            const fy = wrapY(ny + dir[1]);
-            const fi = fy * cw + fx;
-            if (species[fi] === 0) {
-              species[fi] = sid; hunger[fi] = hunger[idx]; age[fi] = age[idx];
-              species[idx] = 0; hunger[idx] = 0; age[idx] = 0;
-              processed[fi] = 1;
-              break;
-            }
-            // If deflect target blocked, still move into the current cell
-            species[ni] = sid; hunger[ni] = hunger[idx]; age[ni] = age[idx];
-            species[idx] = 0; hunger[idx] = 0; age[idx] = 0;
-            processed[ni] = 1;
-            break;
-          }
-          // Move into empty
+          // Move into empty — if target has a current, get an extra push
           species[ni] = sid; hunger[ni] = hunger[idx]; age[ni] = age[idx];
           species[idx] = 0; hunger[idx] = 0; age[idx] = 0;
           processed[ni] = 1;
@@ -478,7 +502,7 @@ function step() {
       }
     }
 
-    // 5. Breed
+    // 6. Breed
     if (Math.random() < sp.breedRate) {
       const nbrs = shuffleSmall([0,1,2,3,4,5,6,7]);
       for (let n = 0; n < 8; n++) {
@@ -655,10 +679,31 @@ brushSlider.addEventListener('input', function() {
 // 7. PAINTING — mouse + touch
 // ============================================================
 let painting = false;
+let lastPaintX = -1, lastPaintY = -1; // for drag-direction currents
+let currentDir = 2; // default direction: E (1=N, 2=E, 3=S, 4=W)
+
+function dragDirection(x0, y0, x1, y1) {
+  const dx = x1 - x0, dy = y1 - y0;
+  if (dx === 0 && dy === 0) return 0; // no movement
+  if (Math.abs(dx) >= Math.abs(dy)) {
+    return dx > 0 ? 2 : 4; // E or W
+  } else {
+    return dy > 0 ? 3 : 1; // S or N
+  }
+}
 
 function paintAt(canvasX, canvasY) {
   const cellX = (canvasX / CELL_SIZE) | 0;
   const cellY = (canvasY / CELL_SIZE) | 0;
+
+  // Update drag direction for currents
+  if (selectedType === 2 && lastPaintX >= 0) {
+    const dir = dragDirection(lastPaintX, lastPaintY, canvasX, canvasY);
+    if (dir !== 0) currentDir = dir;
+  }
+  lastPaintX = canvasX;
+  lastPaintY = canvasY;
+
   const r = brushSize - 1;
   const r2 = r * r + r; // circular approximation
   for (let dy = -r; dy <= r; dy++) {
@@ -668,8 +713,8 @@ function paintAt(canvasX, canvasY) {
       const y = wrapY(cellY + dy);
       const idx = y * gridW + x;
       if (selectedType === 2) {
-        // Current is an overlay — toggle it on
-        currents[idx] = 1;
+        // Current overlay with direction from drag
+        currents[idx] = currentDir;
       } else {
         species[idx] = selectedType;
         hunger[idx] = 0;
@@ -693,6 +738,7 @@ function getCanvasCoords(e) {
 
 canvas.addEventListener('mousedown', function(e) {
   painting = true;
+  lastPaintX = -1; lastPaintY = -1;
   const [x, y] = getCanvasCoords(e);
   paintAt(x, y);
 });
@@ -707,6 +753,7 @@ window.addEventListener('mouseup', function() { painting = false; });
 canvas.addEventListener('touchstart', function(e) {
   e.preventDefault();
   painting = true;
+  lastPaintX = -1; lastPaintY = -1;
   const touch = e.touches[0];
   const [x, y] = getCanvasCoords(touch);
   paintAt(x, y);
