@@ -212,21 +212,24 @@ const TIER_ORDER = [
 // ============================================================
 let gridW, gridH; // in cells
 let species, hunger, age; // typed arrays (flat: y * gridW + x)
+let currents; // overlay layer: 1 = current present
 let canvasW, canvasH; // in pixels
 
 function allocGrid(cw, ch) {
   gridW = cw; gridH = ch;
   canvasW = cw * CELL_SIZE; canvasH = ch * CELL_SIZE;
   const total = cw * ch;
-  species = new Uint8Array(total);
-  hunger  = new Int16Array(total);
-  age     = new Uint16Array(total);
+  species  = new Uint8Array(total);
+  hunger   = new Int16Array(total);
+  age      = new Uint16Array(total);
+  currents = new Uint8Array(total);
 }
 
 function clearGrid() {
   species.fill(0);
   hunger.fill(0);
   age.fill(0);
+  currents.fill(0);
   generation = 0;
 }
 
@@ -295,6 +298,29 @@ function render() {
       }
     }
   }
+
+  // Current overlay pass — blend semi-transparent blue on top
+  const curR = COLOR_RGB[2][0], curG = COLOR_RGB[2][1], curB = COLOR_RGB[2][2];
+  const alpha = 0.45; // overlay opacity
+  const inv = 1 - alpha;
+  for (let cy = 0; cy < ch; cy++) {
+    for (let cx = 0; cx < cw; cx++) {
+      const idx = cy * cw + cx;
+      if (!currents[idx]) continue;
+      const px0 = cx * cs;
+      const py0 = cy * cs;
+      for (let py = py0; py < py0 + innerSize; py++) {
+        const rowOff = py * pw * 4;
+        for (let px = px0; px < px0 + innerSize; px++) {
+          const off = rowOff + px * 4;
+          data[off]     = (data[off]     * inv + curR * alpha) | 0;
+          data[off + 1] = (data[off + 1] * inv + curG * alpha) | 0;
+          data[off + 2] = (data[off + 2] * inv + curB * alpha) | 0;
+        }
+      }
+    }
+  }
+
   ctx.putImageData(imgData, 0, 0);
 }
 
@@ -354,8 +380,7 @@ function step() {
     // Rock: do nothing
     if (sid === 1) continue;
 
-    // Current: passive, handled during movement
-    if (sid === 2) continue;
+    // Current overlay is handled separately — no species ID 2 in grid
 
     // Dead cell: decay
     if (sid === 3) {
@@ -427,22 +452,28 @@ function step() {
         const targetSid = species[ni];
 
         if (targetSid === 0) {
+          if (currents[ni]) {
+            // Current overlay: deflect one more step in same direction
+            const fx = wrapX(nx + dir[0]);
+            const fy = wrapY(ny + dir[1]);
+            const fi = fy * cw + fx;
+            if (species[fi] === 0) {
+              species[fi] = sid; hunger[fi] = hunger[idx]; age[fi] = age[idx];
+              species[idx] = 0; hunger[idx] = 0; age[idx] = 0;
+              processed[fi] = 1;
+              break;
+            }
+            // If deflect target blocked, still move into the current cell
+            species[ni] = sid; hunger[ni] = hunger[idx]; age[ni] = age[idx];
+            species[idx] = 0; hunger[idx] = 0; age[idx] = 0;
+            processed[ni] = 1;
+            break;
+          }
           // Move into empty
           species[ni] = sid; hunger[ni] = hunger[idx]; age[ni] = age[idx];
           species[idx] = 0; hunger[idx] = 0; age[idx] = 0;
           processed[ni] = 1;
           break;
-        } else if (targetSid === 2) {
-          // Current: deflect one more step in same direction
-          const fx = wrapX(nx + dir[0]);
-          const fy = wrapY(ny + dir[1]);
-          const fi = fy * cw + fx;
-          if (species[fi] === 0) {
-            species[fi] = sid; hunger[fi] = hunger[idx]; age[fi] = age[idx];
-            species[idx] = 0; hunger[idx] = 0; age[idx] = 0;
-            processed[fi] = 1;
-            break;
-          }
         }
       }
     }
@@ -496,8 +527,8 @@ function updateStats() {
   const total = gridW * gridH;
   for (let i = 0; i < total; i++) {
     const s = species[i];
-    if (s === 0) continue;
-    counts[s] = (counts[s] || 0) + 1;
+    if (s !== 0) counts[s] = (counts[s] || 0) + 1;
+    if (currents[i]) counts[2] = (counts[2] || 0) + 1;
   }
   let html = '';
   for (const tier of TIER_ORDER) {
@@ -636,9 +667,16 @@ function paintAt(canvasX, canvasY) {
       const x = wrapX(cellX + dx);
       const y = wrapY(cellY + dy);
       const idx = y * gridW + x;
-      species[idx] = selectedType;
-      hunger[idx] = 0;
-      age[idx] = 0;
+      if (selectedType === 2) {
+        // Current is an overlay — toggle it on
+        currents[idx] = 1;
+      } else {
+        species[idx] = selectedType;
+        hunger[idx] = 0;
+        age[idx] = 0;
+        // Erase also clears current overlay
+        if (selectedType === 0) currents[idx] = 0;
+      }
     }
   }
   render();
