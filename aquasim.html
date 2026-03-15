@@ -64,6 +64,8 @@ canvas { cursor: crosshair; display: block; }
 #bottom-bar button.active-speed { border-color: #00E5FF; background: rgba(0,229,255,0.12); color: #00E5FF; }
 #btn-clear { color: #FF6B6B !important; border-color: #FF6B6B !important; }
 #btn-clear:hover { background: rgba(255,107,107,0.12) !important; }
+#btn-balance { color: #00FF88 !important; border-color: #00FF88 !important; }
+#btn-balance:hover { background: rgba(0,255,136,0.12) !important; }
 .divider { width: 1px; height: 24px; background: #0C2D40; margin: 0 4px; }
 #gen-counter { margin-left: auto; font-size: 0.65rem; color: #00E5FF; white-space: nowrap; }
 #info-text { font-size: 0.55rem; color: #4A7A8A; margin-left: 10px; max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -130,6 +132,7 @@ canvas { cursor: crosshair; display: block; }
       <button class="speed-btn" data-speed="8">MAX</button>
       <div class="divider"></div>
       <button id="btn-seed">⚡ SEED</button>
+      <button id="btn-balance">☯ BALANCE</button>
       <button id="btn-clear">✕ CLEAR</button>
       <span id="gen-counter">GEN 0</span>
       <span id="info-text"></span>
@@ -696,6 +699,14 @@ document.getElementById('btn-seed').addEventListener('click', function() {
   updateStats();
 });
 
+// Balance
+document.getElementById('btn-balance').addEventListener('click', function() {
+  clearGrid();
+  seedBalanced();
+  render();
+  updateStats();
+});
+
 // Clear
 document.getElementById('btn-clear').addEventListener('click', function() {
   clearGrid();
@@ -913,6 +924,110 @@ function seedGrid() {
     [1,  0.018],  // Rock
   ];
   for (const [sid, frac] of targets) {
+    let count = (total * frac) | 0;
+    let attempts = 0;
+    while (count > 0 && attempts < total * 2) {
+      const idx = (Math.random() * total) | 0;
+      if (species[idx] === 0) {
+        species[idx] = sid;
+        hunger[idx] = 0;
+        age[idx] = 0;
+        count--;
+      }
+      attempts++;
+    }
+  }
+}
+
+function seedBalanced() {
+  const total = gridW * gridH;
+  const cw = gridW, ch = gridH;
+
+  // --- Rock reef structures (natural-looking clusters) ---
+  const rockBudget = (total * 0.03) | 0;
+  let rockCount = 0;
+  const numReefs = 6 + ((Math.random() * 6) | 0);
+  for (let r = 0; r < numReefs && rockCount < rockBudget; r++) {
+    let rx = (Math.random() * cw) | 0;
+    let ry = (Math.random() * ch) | 0;
+    const size = 8 + ((Math.random() * 20) | 0);
+    for (let s = 0; s < size && rockCount < rockBudget; s++) {
+      const idx = ry * cw + rx;
+      if (species[idx] === 0) {
+        species[idx] = 1; rockCount++;
+      }
+      // Random walk to create organic shapes
+      rx = wrapX(rx + ((Math.random() * 3) | 0) - 1);
+      ry = wrapY(ry + ((Math.random() * 3) | 0) - 1);
+    }
+  }
+
+  // --- Coral patches near reefs ---
+  for (let i = 0; i < total; i++) {
+    if (species[i] !== 1) continue;
+    const cx = i % cw, cy = (i / cw) | 0;
+    for (const [dx, dy] of NEIGHBOURS_8) {
+      const ni = wrapY(cy + dy) * cw + wrapX(cx + dx);
+      if (species[ni] === 0 && Math.random() < 0.15) {
+        species[ni] = 12; // Coral grows near rocks
+      }
+    }
+  }
+
+  // --- Current channels (2-3 flowing streams) ---
+  const numStreams = 2 + ((Math.random() * 2) | 0);
+  for (let s = 0; s < numStreams; s++) {
+    let sx = (Math.random() * cw) | 0;
+    let sy = (Math.random() * ch) | 0;
+    const dir = 1 + ((Math.random() * 4) | 0); // 1-4
+    const cd = CARDINAL[dir - 1];
+    const len = 20 + ((Math.random() * 40) | 0);
+    for (let step = 0; step < len; step++) {
+      // Paint a 2-wide current line
+      for (let w = -1; w <= 1; w++) {
+        const px = wrapX(sx + (cd[1] !== 0 ? w : 0));
+        const py = wrapY(sy + (cd[0] !== 0 ? w : 0));
+        currents[py * cw + px] = dir;
+      }
+      sx = wrapX(sx + cd[0]);
+      sy = wrapY(sy + cd[1]);
+      // Slight drift for natural look
+      if (Math.random() < 0.15) {
+        sx = wrapX(sx + ((Math.random() * 3) | 0) - 1);
+        sy = wrapY(sy + ((Math.random() * 3) | 0) - 1);
+      }
+    }
+  }
+
+  // --- Trophic pyramid: tuned ratios for long-term stability ---
+  // Large producer base, diminishing up the food chain
+  const balanced = [
+    // Producers — wide base
+    [10, 0.100],  // Phytoplankton  (foundation)
+    [11, 0.030],  // Seaweed
+    // (Coral already placed near reefs above)
+
+    // Herbivores — ~1/4 of producer biomass
+    [20, 0.016],  // Shrimp  (eats phyto → needs plenty)
+    [21, 0.006],  // Snail   (eats seaweed)
+    [22, 0.006],  // Crab    (omnivore)
+    [23, 0.003],  // Sea Urchin (eats coral — keep scarce)
+
+    // Consumers — ~1/4 of herbivore biomass
+    [30, 0.005],  // Small Fish (eats shrimp)
+    [31, 0.003],  // Squid      (eats shrimp, snails)
+    [32, 0.002],  // Pufferfish (eats crabs, snails)
+
+    // Apex — very few
+    [40, 0.0008], // Shark   (eats consumers)
+    [41, 0.0008], // Octopus (eats consumers)
+
+    // Decomposers — enough to handle death spiral
+    [50, 0.008],  // Bacteria
+    [51, 0.004],  // Sea Worm
+  ];
+
+  for (const [sid, frac] of balanced) {
     let count = (total * frac) | 0;
     let attempts = 0;
     while (count > 0 && attempts < total * 2) {
