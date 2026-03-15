@@ -99,6 +99,17 @@ canvas { cursor: crosshair; display: block; }
   color: #7EE8FA; cursor: pointer; border-radius: 3px; margin-top: 4px;
 }
 #btn-apply:hover { border-color: #00E5FF; }
+#btn-evo { color: #DDBB44 !important; border-color: #DDBB44 !important; }
+#btn-evo:hover { background: rgba(221,187,68,0.12) !important; }
+#btn-evo.evo-active { border-color: #00FF88 !important; color: #00FF88 !important; background: rgba(0,255,136,0.12) !important; }
+#evo-log { padding: 0 8px 8px; border-top: 1px solid #0C2D40; max-height: 160px; overflow-y: auto; }
+#evo-log::-webkit-scrollbar { width: 4px; }
+#evo-log::-webkit-scrollbar-thumb { background: #0C2D40; border-radius: 2px; }
+#evo-log h2 {
+  font-family: 'Orbitron', monospace; font-weight: 600; font-size: 0.5rem;
+  text-align: center; padding: 6px 0 4px; color: #DDBB44; letter-spacing: 1px;
+}
+.evo-entry { font-size: 0.5rem; color: #DDBB44; padding: 1px 0; opacity: 0.85; line-height: 1.3; }
 .sp-btn.disaster { color: #FF6B6B; }
 .sp-btn.disaster:hover { border-color: #FF6B6B; }
 .sp-btn.disaster.active { border-color: #FF4400; background: rgba(255,68,0,0.1); }
@@ -131,6 +142,8 @@ canvas { cursor: crosshair; display: block; }
       <button class="speed-btn" data-speed="25">4×</button>
       <button class="speed-btn" data-speed="8">MAX</button>
       <div class="divider"></div>
+      <button id="btn-evo">⧬ EVO</button>
+      <div class="divider"></div>
       <button id="btn-seed">⚡ SEED</button>
       <button id="btn-balance">☯ BALANCE</button>
       <button id="btn-clear">✕ CLEAR</button>
@@ -143,6 +156,10 @@ canvas { cursor: crosshair; display: block; }
   <div id="right-panel">
     <h2>POPULATION</h2>
     <div id="stats-list"></div>
+    <div id="evo-log">
+      <h2>EVOLUTION</h2>
+      <div id="evo-entries"></div>
+    </div>
     <div id="grid-config">
       <label>Grid Size (px)</label>
       <div style="display:flex;align-items:center;gap:2px;margin-top:2px;">
@@ -226,6 +243,192 @@ const DISASTERS = {
 };
 
 // ============================================================
+// 1b. EVOLUTION STATE
+// ============================================================
+const EVOLUTION_INTERVAL = 50;   // generations between evolution cycles
+const EVO_MUTATION_RATE  = 0.08; // max % change per cycle
+const EVO_HISTORY_LEN    = 6;    // snapshots to track trends
+const OVERPOP_THRESHOLD  = 2.5;  // × average = "overpopulated"
+const PRESSURE_HIGH      = 1.5;  // predator:prey ratio that triggers adaptation
+
+// Living species IDs (everything that evolves)
+const LIVING_IDS = [];
+for (const id in SPECIES) {
+  const sp = SPECIES[id];
+  if (sp.breedRate !== undefined) LIVING_IDS.push(parseInt(id));
+}
+
+// Mutable evolution stats — deep copy of relevant SPECIES fields
+let evoStats = {};
+let evolveEnabled = false;
+let popHistory = [];   // array of { [sid]: count } snapshots
+let evoLog = [];       // recent evolution event strings
+const EVO_LOG_MAX = 12;
+
+function initEvoStats() {
+  evoStats = {};
+  for (const id of LIVING_IDS) {
+    const sp = SPECIES[id];
+    evoStats[id] = {
+      breedRate: sp.breedRate,
+      moveRate:  sp.moveRate || 0,
+      hungerMax: sp.hungerMax || 0,
+      eats:      sp.eats ? sp.eats.slice() : [],
+    };
+  }
+  popHistory = [];
+  evoLog = [];
+}
+
+// Get effective stat for a species (evolved if evo enabled, else base)
+function evo(sid) {
+  return evolveEnabled && evoStats[sid] ? evoStats[sid] : SPECIES[sid];
+}
+
+function recordPopSnapshot() {
+  const counts = {};
+  const total = gridW * gridH;
+  for (let i = 0; i < total; i++) {
+    const s = species[i];
+    if (s !== 0) counts[s] = (counts[s] || 0) + 1;
+  }
+  popHistory.push(counts);
+  if (popHistory.length > EVO_HISTORY_LEN) popHistory.shift();
+  return counts;
+}
+
+function addEvoEvent(msg) {
+  evoLog.unshift('G' + generation + ': ' + msg);
+  if (evoLog.length > EVO_LOG_MAX) evoLog.pop();
+}
+
+// Build predator→prey map: which species eat which
+function buildFoodWeb() {
+  const predators = {};  // prey_id → [predator_ids]
+  const preyOf    = {};  // predator_id → [prey_ids]
+  for (const id of LIVING_IDS) {
+    const e = evo(id);
+    if (e.eats && e.eats.length) {
+      preyOf[id] = e.eats.slice();
+      for (const prey of e.eats) {
+        if (!predators[prey]) predators[prey] = [];
+        predators[prey].push(id);
+      }
+    }
+  }
+  return { predators, preyOf };
+}
+
+function clamp(v, lo, hi) { return v < lo ? lo : v > hi ? hi : v; }
+
+function evolve() {
+  if (popHistory.length < 3) return; // need history
+
+  const now = popHistory[popHistory.length - 1];
+  const prev = popHistory[popHistory.length - 3];
+  const { predators, preyOf } = buildFoodWeb();
+
+  // Compute average living population (excluding empty/rock/dead/oil)
+  let totalPop = 0, livingCount = 0;
+  for (const id of LIVING_IDS) {
+    const c = now[id] || 0;
+    if (c > 0) { totalPop += c; livingCount++; }
+  }
+  const avgPop = livingCount > 0 ? totalPop / livingCount : 1;
+
+  for (const id of LIVING_IDS) {
+    const sp = SPECIES[id];
+    const es = evoStats[id];
+    const popNow  = now[id] || 0;
+    const popPrev = prev[id] || 0;
+    if (popNow === 0 && popPrev === 0) continue;
+
+    const trend = popPrev > 0 ? (popNow - popPrev) / popPrev : 0;
+    const baseBR = sp.breedRate;
+    const baseMR = sp.moveRate || 0;
+    const baseHM = sp.hungerMax || 0;
+    const mut = EVO_MUTATION_RATE;
+
+    // --- PREY ADAPTATION: under heavy predation → evolve to escape ---
+    if (predators[id] && predators[id].length > 0) {
+      let predPop = 0;
+      for (const pid of predators[id]) predPop += (now[pid] || 0);
+      const pressure = popNow > 0 ? predPop / popNow : 0;
+
+      if (pressure > PRESSURE_HIGH || trend < -0.15) {
+        // Under pressure: boost speed and breeding
+        if (baseMR > 0) {
+          es.moveRate = clamp(es.moveRate + baseMR * mut * (0.5 + Math.random()), baseMR * 0.5, Math.min(0.98, baseMR * 2.0));
+          addEvoEvent(sp.name + ' evolved faster movement');
+        }
+        if (trend < -0.25) {
+          es.breedRate = clamp(es.breedRate + baseBR * mut * (0.5 + Math.random()), baseBR * 0.5, baseBR * 2.5);
+          addEvoEvent(sp.name + ' evolved faster breeding');
+        }
+      }
+    }
+
+    // --- PREDATOR ADAPTATION: prey scarce → evolve better hunting ---
+    if (preyOf[id] && preyOf[id].length > 0) {
+      let totalPreyPop = 0;
+      for (const prey of preyOf[id]) totalPreyPop += (now[prey] || 0);
+
+      if (totalPreyPop < popNow * 0.5 && popNow > 2) {
+        // Prey is scarce — evolve speed + hunger tolerance
+        if (baseMR > 0) {
+          es.moveRate = clamp(es.moveRate + baseMR * mut * (0.5 + Math.random()), baseMR * 0.5, Math.min(0.98, baseMR * 2.0));
+          addEvoEvent(sp.name + ' evolved faster hunting');
+        }
+        if (baseHM > 0) {
+          es.hungerMax = clamp(es.hungerMax + 1 + ((Math.random() * 2) | 0), baseHM, baseHM * 2);
+          addEvoEvent(sp.name + ' evolved hunger resistance');
+        }
+      }
+    }
+
+    // --- PRODUCER ADAPTATION: heavily grazed → faster growth ---
+    if (sp.tier === 'producer' && trend < -0.2 && popNow > 0) {
+      es.breedRate = clamp(es.breedRate + baseBR * mut * (0.5 + Math.random()), baseBR * 0.5, baseBR * 3.0);
+      addEvoEvent(sp.name + ' evolved faster growth');
+    }
+
+    // --- ABUNDANCE DECAY: thriving species slowly revert toward baseline ---
+    if (trend > 0.15 && popNow > avgPop) {
+      es.breedRate = clamp(es.breedRate - baseBR * mut * 0.3, baseBR * 0.5, baseBR * 3.0);
+      if (baseMR > 0) es.moveRate = clamp(es.moveRate - baseMR * mut * 0.3, baseMR * 0.5, baseMR * 2.0);
+    }
+  }
+
+  // --- OVERPOPULATION: a booming species may gain a new predator ---
+  for (const id of LIVING_IDS) {
+    const popNow = now[id] || 0;
+    if (popNow < avgPop * OVERPOP_THRESHOLD) continue;
+
+    const sp = SPECIES[id];
+    // Find candidate predators: species in same or higher tier that don't already eat this
+    const tierRank = { producer: 0, herbivore: 1, consumer: 2, apex: 3, decomposer: 1 };
+    const myRank = tierRank[sp.tier] ?? -1;
+
+    const candidates = [];
+    for (const cid of LIVING_IDS) {
+      if (cid === id) continue;
+      const csp = SPECIES[cid];
+      const cRank = tierRank[csp.tier] ?? -1;
+      if (cRank <= myRank || !csp.hungerMax) continue; // must be higher tier & an animal
+      const ces = evoStats[cid];
+      if (ces.eats.indexOf(id) !== -1) continue; // already eats it
+      candidates.push(cid);
+    }
+
+    if (candidates.length > 0 && Math.random() < 0.25) {
+      const winner = candidates[(Math.random() * candidates.length) | 0];
+      evoStats[winner].eats.push(id);
+      addEvoEvent(SPECIES[winner].name + ' adapted to eat ' + sp.name + '!');
+    }
+  }
+}
+
+// ============================================================
 // 2. GRID STATE
 // ============================================================
 let gridW, gridH; // in cells
@@ -249,6 +452,7 @@ function clearGrid() {
   age.fill(0);
   currents.fill(0);
   generation = 0;
+  initEvoStats();
 }
 
 function cellIdx(x, y) {
@@ -296,7 +500,7 @@ function render() {
       // Dim colour based on hunger for animals
       const sp = SPECIES[sid];
       if (sp && sp.hungerMax) {
-        const f = Math.max(0.35, 1 - hunger[idx] / sp.hungerMax);
+        const f = Math.max(0.35, 1 - hunger[idx] / evo(sid).hungerMax);
         r = (r * f) | 0;
         g = (g * f) | 0;
         b = (b * f) | 0;
@@ -462,7 +666,7 @@ function step() {
 
     // Producer behaviour
     if (sp.tier === 'producer') {
-      if (Math.random() < sp.breedRate) {
+      if (Math.random() < evo(sid).breedRate) {
         const dirs = shuffleSmall([0,1,2,3]);
         for (let d = 0; d < 4; d++) {
           const dir = CARDINAL[dirs[d]];
@@ -481,19 +685,20 @@ function step() {
 
     // Animal behaviour (herbivore, consumer, apex, decomposer)
     if (!sp.hungerMax) continue;
+    const es = evo(sid);
 
     // 1. Increment hunger
     hunger[idx]++;
 
     // 2. Starvation check
-    if (hunger[idx] >= sp.hungerMax) {
+    if (hunger[idx] >= es.hungerMax) {
       species[idx] = 3; hunger[idx] = 0; age[idx] = 0; // become Dead
       continue;
     }
 
     // 3. Eat: scan 8 neighbours for food
-    const eats = sp.eats;
-    if (eats) {
+    const eats = es.eats;
+    if (eats && eats.length) {
       const nbrs = shuffleSmall([0,1,2,3,4,5,6,7]);
       for (let n = 0; n < 8; n++) {
         const dir = NEIGHBOURS_8[nbrs[n]];
@@ -503,7 +708,7 @@ function step() {
         const foodId = species[ni];
         if (eats.indexOf(foodId) !== -1) {
           species[ni] = 0; hunger[ni] = 0; age[ni] = 0;
-          hunger[idx] = Math.max(0, hunger[idx] - ((sp.hungerMax * HUNGER_RESTORE_FRACTION) | 0));
+          hunger[idx] = Math.max(0, hunger[idx] - ((es.hungerMax * HUNGER_RESTORE_FRACTION) | 0));
           processed[ni] = 1;
           break;
         }
@@ -526,7 +731,7 @@ function step() {
     }
 
     // 5. Movement
-    if (Math.random() < sp.moveRate) {
+    if (Math.random() < es.moveRate) {
       const dirs = shuffleSmall([0,1,2,3]);
       for (let d = 0; d < 4; d++) {
         const dir = CARDINAL[dirs[d]];
@@ -546,7 +751,7 @@ function step() {
     }
 
     // 6. Breed
-    if (Math.random() < sp.breedRate) {
+    if (Math.random() < es.breedRate) {
       const nbrs = shuffleSmall([0,1,2,3,4,5,6,7]);
       for (let n = 0; n < 8; n++) {
         const dir = NEIGHBOURS_8[nbrs[n]];
@@ -563,6 +768,12 @@ function step() {
   }
 
   generation++;
+
+  // Evolution cycle
+  if (evolveEnabled && generation % EVOLUTION_INTERVAL === 0) {
+    recordPopSnapshot();
+    evolve();
+  }
 }
 
 function tick() {
@@ -617,6 +828,16 @@ function updateStats() {
     html += '<div class="stat-row"><span class="stat-name" style="color:#2A1800">Oil</span><span class="stat-count">' + counts[4] + '</span></div>';
   }
   statsEl.innerHTML = html;
+
+  // Update evolution log
+  const evoEl = document.getElementById('evo-entries');
+  if (evolveEnabled && evoLog.length > 0) {
+    evoEl.innerHTML = evoLog.map(e => '<div class="evo-entry">' + e + '</div>').join('');
+  } else if (!evolveEnabled) {
+    evoEl.innerHTML = '<div class="evo-entry" style="opacity:0.4;">EVO OFF</div>';
+  } else {
+    evoEl.innerHTML = '<div class="evo-entry" style="opacity:0.4;">Waiting...</div>';
+  }
 }
 
 // ============================================================
@@ -689,6 +910,14 @@ document.querySelectorAll('.speed-btn').forEach(btn => {
     tickInterval = parseInt(this.dataset.speed);
     if (running) startLoop();
   });
+});
+
+// Evolution toggle
+document.getElementById('btn-evo').addEventListener('click', function() {
+  evolveEnabled = !evolveEnabled;
+  this.textContent = evolveEnabled ? '⧬ EVO ON' : '⧬ EVO';
+  this.classList.toggle('evo-active', evolveEnabled);
+  if (evolveEnabled && !evoStats[10]) initEvoStats();
 });
 
 // Seed
@@ -1067,6 +1296,7 @@ function seedBalanced() {
   document.getElementById('cfg-w').value = canvasW;
   document.getElementById('cfg-h').value = canvasH;
 
+  initEvoStats();
   buildPalette();
   selectType(10);
   seedGrid();
