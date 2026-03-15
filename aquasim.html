@@ -1,0 +1,739 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AquaSim — Pixel Ecosystem Simulator</title>
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@600&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+html, body { width: 100%; height: 100%; overflow: hidden; background: #04090F; color: #7EE8FA; font-family: 'Share Tech Mono', monospace; font-size: 13px; }
+#app { display: flex; width: 100%; height: 100%; }
+
+/* Left Panel */
+#left-panel {
+  width: 168px; min-width: 168px; max-width: 168px;
+  background: #04090F; border-right: 1px solid #0C2D40;
+  display: flex; flex-direction: column; overflow: hidden;
+}
+#left-panel h1 {
+  font-family: 'Orbitron', monospace; font-weight: 600; font-size: 1.1rem;
+  text-align: center; padding: 10px 0 6px; color: #00E5FF; letter-spacing: 2px;
+}
+.tier-label {
+  font-family: 'Orbitron', monospace; font-weight: 600; font-size: 0.55rem;
+  color: #0C2D40; text-transform: uppercase; padding: 6px 8px 2px; letter-spacing: 1px;
+}
+#species-list { flex: 1; overflow-y: auto; padding: 0 6px; }
+#species-list::-webkit-scrollbar { width: 4px; }
+#species-list::-webkit-scrollbar-thumb { background: #0C2D40; border-radius: 2px; }
+.sp-btn {
+  display: flex; align-items: center; gap: 6px; width: 100%;
+  padding: 4px 6px; margin: 2px 0; border: 1px solid transparent;
+  background: transparent; color: #7EE8FA; font-family: 'Share Tech Mono', monospace;
+  font-size: 0.65rem; cursor: pointer; border-radius: 3px; text-align: left;
+}
+.sp-btn:hover { border-color: #0C2D40; }
+.sp-btn.active { border-color: #00E5FF; background: rgba(0,229,255,0.06); }
+.sp-swatch { width: 12px; height: 12px; border-radius: 2px; flex-shrink: 0; }
+#brush-area {
+  padding: 8px 10px; border-top: 1px solid #0C2D40;
+}
+#brush-area label { font-size: 0.6rem; display: block; margin-bottom: 4px; }
+#brush-slider { width: 100%; accent-color: #00E5FF; }
+#brush-val { font-size: 0.6rem; color: #00E5FF; }
+
+/* Centre column */
+#centre { display: flex; flex-direction: column; flex: 1; overflow: hidden; }
+#canvas-wrap { flex: 1; overflow: auto; position: relative; background: #060E16; }
+#canvas-wrap::-webkit-scrollbar { width: 6px; height: 6px; }
+#canvas-wrap::-webkit-scrollbar-thumb { background: #0C2D40; border-radius: 3px; }
+canvas { cursor: crosshair; display: block; }
+
+/* Bottom Bar */
+#bottom-bar {
+  height: 50px; min-height: 50px; display: flex; align-items: center;
+  padding: 0 10px; gap: 6px; background: #04090F; border-top: 1px solid #0C2D40;
+}
+#bottom-bar button {
+  font-family: 'Share Tech Mono', monospace; font-size: 0.65rem;
+  padding: 4px 10px; border: 1px solid #0C2D40; background: #0A1622;
+  color: #7EE8FA; cursor: pointer; border-radius: 3px; white-space: nowrap;
+}
+#bottom-bar button:hover { border-color: #00E5FF; }
+#bottom-bar button.active-speed { border-color: #00E5FF; background: rgba(0,229,255,0.12); color: #00E5FF; }
+#btn-clear { color: #FF6B6B !important; border-color: #FF6B6B !important; }
+#btn-clear:hover { background: rgba(255,107,107,0.12) !important; }
+.divider { width: 1px; height: 24px; background: #0C2D40; margin: 0 4px; }
+#gen-counter { margin-left: auto; font-size: 0.65rem; color: #00E5FF; white-space: nowrap; }
+#info-text { font-size: 0.55rem; color: #4A7A8A; margin-left: 10px; max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Right Panel */
+#right-panel {
+  width: 148px; min-width: 148px; max-width: 148px;
+  background: #04090F; border-left: 1px solid #0C2D40;
+  display: flex; flex-direction: column; overflow: hidden;
+}
+#right-panel h2 {
+  font-family: 'Orbitron', monospace; font-weight: 600; font-size: 0.6rem;
+  text-align: center; padding: 10px 0 6px; color: #00E5FF; letter-spacing: 1px;
+}
+#stats-list { flex: 1; overflow-y: auto; padding: 0 8px; }
+#stats-list::-webkit-scrollbar { width: 4px; }
+#stats-list::-webkit-scrollbar-thumb { background: #0C2D40; border-radius: 2px; }
+.stat-row { display: flex; justify-content: space-between; padding: 2px 0; font-size: 0.6rem; }
+.stat-name { opacity: 0.85; }
+.stat-count { color: #00E5FF; }
+#grid-config { padding: 8px; border-top: 1px solid #0C2D40; }
+#grid-config label { font-size: 0.55rem; display: block; margin-bottom: 2px; }
+#grid-config input {
+  width: 52px; background: #0A1622; border: 1px solid #0C2D40; color: #7EE8FA;
+  font-family: 'Share Tech Mono', monospace; font-size: 0.6rem; padding: 2px 4px;
+  border-radius: 2px; margin-right: 4px;
+}
+#btn-apply {
+  font-family: 'Share Tech Mono', monospace; font-size: 0.55rem;
+  padding: 3px 8px; border: 1px solid #0C2D40; background: #0A1622;
+  color: #7EE8FA; cursor: pointer; border-radius: 3px; margin-top: 4px;
+}
+#btn-apply:hover { border-color: #00E5FF; }
+</style>
+</head>
+<body>
+<div id="app">
+  <!-- LEFT PANEL -->
+  <div id="left-panel">
+    <h1>AQUASIM</h1>
+    <div id="species-list"></div>
+    <div id="brush-area">
+      <label>Brush Size: <span id="brush-val">3</span></label>
+      <input type="range" id="brush-slider" min="1" max="12" value="3">
+    </div>
+  </div>
+
+  <!-- CENTRE -->
+  <div id="centre">
+    <div id="canvas-wrap">
+      <canvas id="grid-canvas"></canvas>
+    </div>
+    <div id="bottom-bar">
+      <button id="btn-play">▶ PLAY</button>
+      <button id="btn-step">⏭ STEP</button>
+      <div class="divider"></div>
+      <button class="speed-btn" data-speed="500">½×</button>
+      <button class="speed-btn active-speed" data-speed="100">1×</button>
+      <button class="speed-btn" data-speed="50">2×</button>
+      <button class="speed-btn" data-speed="25">4×</button>
+      <button class="speed-btn" data-speed="8">MAX</button>
+      <div class="divider"></div>
+      <button id="btn-seed">⚡ SEED</button>
+      <button id="btn-clear">✕ CLEAR</button>
+      <span id="gen-counter">GEN 0</span>
+      <span id="info-text"></span>
+    </div>
+  </div>
+
+  <!-- RIGHT PANEL -->
+  <div id="right-panel">
+    <h2>POPULATION</h2>
+    <div id="stats-list"></div>
+    <div id="grid-config">
+      <label>Grid Size (px)</label>
+      <div style="display:flex;align-items:center;gap:2px;margin-top:2px;">
+        <input id="cfg-w" type="number" min="480" max="3200" step="8" placeholder="W">
+        <span style="font-size:0.55rem;">×</span>
+        <input id="cfg-h" type="number" min="480" max="3200" step="8" placeholder="H">
+      </div>
+      <button id="btn-apply">APPLY</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ============================================================
+// 1. CONSTANTS & SPECIES DEFINITIONS
+// ============================================================
+const CELL_SIZE = 8;
+const DEAD_DECAY_AGE = 14;
+const HUNGER_RESTORE_FRACTION = 0.65;
+const MIN_GRID_PX = 480;
+const MAX_GRID_PX = 3200;
+
+const SPECIES = {
+  0:  { name: 'Empty',          color: '#060E16', tier: 'none' },
+  1:  { name: 'Rock',           color: '#4A5A6A', tier: 'environment', desc: 'Impassable terrain blocker' },
+  2:  { name: 'Current',        color: '#003D88', tier: 'environment', desc: 'Pushes organisms in movement direction' },
+  3:  { name: 'Dead',           color: '#1C1410', tier: 'transient',   desc: 'Decays to empty after 14 ticks' },
+  10: { name: 'Phytoplankton',  color: '#00FF88', tier: 'producer',    breedRate: 0.13, desc: 'Fast-spreading base producer' },
+  11: { name: 'Seaweed',        color: '#00CC44', tier: 'producer',    breedRate: 0.04, desc: 'Slow-growing plant, food for snails' },
+  12: { name: 'Coral',          color: '#FF6EC7', tier: 'producer',    breedRate: 0.02, desc: 'Rare reef-builder, very slow growth' },
+  20: { name: 'Shrimp',         color: '#FF9944', tier: 'herbivore',   breedRate: 0.09, moveRate: 0.70, hungerMax: 18, eats: [10],      desc: 'Fast-breeding plankton grazer' },
+  21: { name: 'Snail',          color: '#CC88FF', tier: 'herbivore',   breedRate: 0.04, moveRate: 0.22, hungerMax: 28, eats: [11],      desc: 'Slow-moving seaweed consumer' },
+  22: { name: 'Crab',           color: '#FF5533', tier: 'herbivore',   breedRate: 0.04, moveRate: 0.42, hungerMax: 24, eats: [10,11,3], desc: 'Omnivore — eats plants and dead matter' },
+  30: { name: 'Small Fish',     color: '#44CCFF', tier: 'consumer',    breedRate: 0.04, moveRate: 0.85, hungerMax: 20, eats: [20],      desc: 'Fast swimmer, hunts shrimp' },
+  31: { name: 'Squid',          color: '#AA44FF', tier: 'consumer',    breedRate: 0.03, moveRate: 0.62, hungerMax: 24, eats: [20,21],   desc: 'Agile predator of small herbivores' },
+  32: { name: 'Pufferfish',     color: '#FFEE22', tier: 'consumer',    breedRate: 0.025,moveRate: 0.38, hungerMax: 28, eats: [22,21],   desc: 'Tough consumer of crabs and snails' },
+  40: { name: 'Shark',          color: '#8899CC', tier: 'apex',        breedRate: 0.012,moveRate: 0.90, hungerMax: 32, eats: [30,31,32],desc: 'Top predator — feeds on all consumers' },
+  41: { name: 'Octopus',        color: '#CC3366', tier: 'apex',        breedRate: 0.012,moveRate: 0.58, hungerMax: 30, eats: [30,22,31],desc: 'Cunning apex — hunts fish, crabs, squid' },
+  50: { name: 'Bacteria',       color: '#88FFCC', tier: 'decomposer',  breedRate: 0.28, moveRate: 0.28, hungerMax: 32, eats: [3],       desc: 'Rapidly consumes dead matter' },
+  51: { name: 'Sea Worm',       color: '#DDBB44', tier: 'decomposer',  breedRate: 0.06, moveRate: 0.34, hungerMax: 30, eats: [3,50],    desc: 'Feeds on dead cells and bacteria' },
+};
+
+// Pre-parse colours to RGB triples
+const COLOR_RGB = {};
+for (const id in SPECIES) {
+  const hex = SPECIES[id].color;
+  COLOR_RGB[id] = [
+    parseInt(hex.slice(1,3), 16),
+    parseInt(hex.slice(3,5), 16),
+    parseInt(hex.slice(5,7), 16)
+  ];
+}
+
+// Cardinal directions (N, E, S, W)
+const CARDINAL = [[0,-1],[1,0],[0,1],[-1,0]];
+// All 8 neighbours
+const NEIGHBOURS_8 = [[0,-1],[1,-1],[1,0],[1,1],[0,1],[-1,1],[-1,0],[-1,-1]];
+
+// Tier grouping for palette
+const TIER_ORDER = [
+  { label: 'ENVIRONMENT', ids: [0, 1, 2] },
+  { label: 'PRODUCERS',   ids: [10, 11, 12] },
+  { label: 'HERBIVORES',  ids: [20, 21, 22] },
+  { label: 'CONSUMERS',   ids: [30, 31, 32] },
+  { label: 'APEX',        ids: [40, 41] },
+  { label: 'DECOMPOSERS', ids: [50, 51] },
+];
+
+// ============================================================
+// 2. GRID STATE
+// ============================================================
+let gridW, gridH; // in cells
+let species, hunger, age; // typed arrays (flat: y * gridW + x)
+let canvasW, canvasH; // in pixels
+
+function allocGrid(cw, ch) {
+  gridW = cw; gridH = ch;
+  canvasW = cw * CELL_SIZE; canvasH = ch * CELL_SIZE;
+  const total = cw * ch;
+  species = new Uint8Array(total);
+  hunger  = new Int16Array(total);
+  age     = new Uint16Array(total);
+}
+
+function clearGrid() {
+  species.fill(0);
+  hunger.fill(0);
+  age.fill(0);
+  generation = 0;
+}
+
+function cellIdx(x, y) {
+  return y * gridW + x;
+}
+
+function wrapX(x) { return ((x % gridW) + gridW) % gridW; }
+function wrapY(y) { return ((y % gridH) + gridH) % gridH; }
+
+// ============================================================
+// 3. RENDER
+// ============================================================
+const canvas = document.getElementById('grid-canvas');
+const ctx = canvas.getContext('2d');
+let imgData, imgPixels;
+
+function initCanvas() {
+  canvas.width = canvasW;
+  canvas.height = canvasH;
+  imgData = ctx.createImageData(canvasW, canvasH);
+  imgPixels = imgData.data;
+}
+
+function render() {
+  const cw = gridW, ch = gridH, cs = CELL_SIZE;
+  const pw = canvasW;
+  const data = imgPixels;
+  for (let cy = 0; cy < ch; cy++) {
+    for (let cx = 0; cx < cw; cx++) {
+      const idx = cy * cw + cx;
+      const sid = species[idx];
+      const rgb = COLOR_RGB[sid] || COLOR_RGB[0];
+      let r = rgb[0], g = rgb[1], b = rgb[2];
+
+      // Dim colour based on hunger for animals
+      const sp = SPECIES[sid];
+      if (sp && sp.hungerMax) {
+        const f = Math.max(0.35, 1 - hunger[idx] / sp.hungerMax);
+        r = (r * f) | 0;
+        g = (g * f) | 0;
+        b = (b * f) | 0;
+      }
+
+      // Fill CELL_SIZE x CELL_SIZE block
+      const px0 = cx * cs;
+      const py0 = cy * cs;
+      for (let py = py0; py < py0 + cs; py++) {
+        const rowOff = py * pw * 4;
+        for (let px = px0; px < px0 + cs; px++) {
+          const off = rowOff + px * 4;
+          data[off]     = r;
+          data[off + 1] = g;
+          data[off + 2] = b;
+          data[off + 3] = 255;
+        }
+      }
+    }
+  }
+  ctx.putImageData(imgData, 0, 0);
+}
+
+// ============================================================
+// 4. SIMULATION ENGINE
+// ============================================================
+let generation = 0;
+let running = false;
+let tickInterval = 100;
+let tickTimer = null;
+
+// Fisher-Yates on typed array
+function shuffleIndices(arr) {
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = (Math.random() * (i + 1)) | 0;
+    const tmp = arr[i]; arr[i] = arr[j]; arr[j] = tmp;
+  }
+}
+
+// Shuffle a small array in-place
+function shuffleSmall(arr) {
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = (Math.random() * (i + 1)) | 0;
+    const tmp = arr[i]; arr[i] = arr[j]; arr[j] = tmp;
+  }
+  return arr;
+}
+
+function step() {
+  const total = gridW * gridH;
+  const processed = new Uint8Array(total);
+
+  // Build index list of non-empty cells for efficiency
+  const indices = [];
+  for (let i = 0; i < total; i++) {
+    if (species[i] !== 0) indices.push(i);
+  }
+  // Shuffle
+  for (let i = indices.length - 1; i > 0; i--) {
+    const j = (Math.random() * (i + 1)) | 0;
+    const tmp = indices[i]; indices[i] = indices[j]; indices[j] = tmp;
+  }
+
+  const cw = gridW, ch = gridH;
+
+  for (let k = 0; k < indices.length; k++) {
+    const idx = indices[k];
+    if (processed[idx]) continue;
+    const sid = species[idx];
+    if (sid === 0) continue; // empty
+    processed[idx] = 1;
+
+    const cx = idx % cw;
+    const cy = (idx / cw) | 0;
+    const sp = SPECIES[sid];
+
+    // Rock: do nothing
+    if (sid === 1) continue;
+
+    // Current: passive, handled during movement
+    if (sid === 2) continue;
+
+    // Dead cell: decay
+    if (sid === 3) {
+      age[idx]++;
+      if (age[idx] >= DEAD_DECAY_AGE) {
+        species[idx] = 0; hunger[idx] = 0; age[idx] = 0;
+      }
+      continue;
+    }
+
+    // Producer behaviour
+    if (sp.tier === 'producer') {
+      if (Math.random() < sp.breedRate) {
+        const dirs = shuffleSmall([0,1,2,3]);
+        for (let d = 0; d < 4; d++) {
+          const dir = CARDINAL[dirs[d]];
+          const nx = wrapX(cx + dir[0]);
+          const ny = wrapY(cy + dir[1]);
+          const ni = ny * cw + nx;
+          if (species[ni] === 0) {
+            species[ni] = sid; hunger[ni] = 0; age[ni] = 0;
+            processed[ni] = 1;
+            break;
+          }
+        }
+      }
+      continue;
+    }
+
+    // Animal behaviour (herbivore, consumer, apex, decomposer)
+    if (!sp.hungerMax) continue;
+
+    // 1. Increment hunger
+    hunger[idx]++;
+
+    // 2. Starvation check
+    if (hunger[idx] >= sp.hungerMax) {
+      species[idx] = 3; hunger[idx] = 0; age[idx] = 0; // become Dead
+      continue;
+    }
+
+    // 3. Eat: scan 8 neighbours for food
+    const eats = sp.eats;
+    if (eats) {
+      const nbrs = shuffleSmall([0,1,2,3,4,5,6,7]);
+      for (let n = 0; n < 8; n++) {
+        const dir = NEIGHBOURS_8[nbrs[n]];
+        const nx = wrapX(cx + dir[0]);
+        const ny = wrapY(cy + dir[1]);
+        const ni = ny * cw + nx;
+        const foodId = species[ni];
+        if (eats.indexOf(foodId) !== -1) {
+          species[ni] = 0; hunger[ni] = 0; age[ni] = 0;
+          hunger[idx] = Math.max(0, hunger[idx] - ((sp.hungerMax * HUNGER_RESTORE_FRACTION) | 0));
+          processed[ni] = 1;
+          break;
+        }
+      }
+    }
+
+    // 4. Movement
+    if (Math.random() < sp.moveRate) {
+      const dirs = shuffleSmall([0,1,2,3]);
+      for (let d = 0; d < 4; d++) {
+        const dir = CARDINAL[dirs[d]];
+        let nx = wrapX(cx + dir[0]);
+        let ny = wrapY(cy + dir[1]);
+        let ni = ny * cw + nx;
+        const targetSid = species[ni];
+
+        if (targetSid === 0) {
+          // Move into empty
+          species[ni] = sid; hunger[ni] = hunger[idx]; age[ni] = age[idx];
+          species[idx] = 0; hunger[idx] = 0; age[idx] = 0;
+          processed[ni] = 1;
+          break;
+        } else if (targetSid === 2) {
+          // Current: deflect one more step in same direction
+          const fx = wrapX(nx + dir[0]);
+          const fy = wrapY(ny + dir[1]);
+          const fi = fy * cw + fx;
+          if (species[fi] === 0) {
+            species[fi] = sid; hunger[fi] = hunger[idx]; age[fi] = age[idx];
+            species[idx] = 0; hunger[idx] = 0; age[idx] = 0;
+            processed[fi] = 1;
+            break;
+          }
+        }
+      }
+    }
+
+    // 5. Breed
+    if (Math.random() < sp.breedRate) {
+      const nbrs = shuffleSmall([0,1,2,3,4,5,6,7]);
+      for (let n = 0; n < 8; n++) {
+        const dir = NEIGHBOURS_8[nbrs[n]];
+        const nx = wrapX(cx + dir[0]);
+        const ny = wrapY(cy + dir[1]);
+        const ni = ny * cw + nx;
+        if (species[ni] === 0) {
+          species[ni] = sid; hunger[ni] = 0; age[ni] = 0;
+          processed[ni] = 1;
+          break;
+        }
+      }
+    }
+  }
+
+  generation++;
+}
+
+function tick() {
+  step();
+  render();
+  updateStats();
+}
+
+function startLoop() {
+  stopLoop();
+  if (running) {
+    tickTimer = setInterval(tick, tickInterval);
+  }
+}
+
+function stopLoop() {
+  if (tickTimer !== null) { clearInterval(tickTimer); tickTimer = null; }
+}
+
+// ============================================================
+// 5. STATS
+// ============================================================
+const statsEl = document.getElementById('stats-list');
+const genEl = document.getElementById('gen-counter');
+
+function updateStats() {
+  genEl.textContent = 'GEN ' + generation;
+  const counts = {};
+  const total = gridW * gridH;
+  for (let i = 0; i < total; i++) {
+    const s = species[i];
+    if (s === 0) continue;
+    counts[s] = (counts[s] || 0) + 1;
+  }
+  let html = '';
+  for (const tier of TIER_ORDER) {
+    for (const id of tier.ids) {
+      if (id === 0) continue;
+      const c = counts[id] || 0;
+      if (c > 0 || SPECIES[id].tier !== 'transient') {
+        html += '<div class="stat-row"><span class="stat-name" style="color:' +
+          SPECIES[id].color + '">' + SPECIES[id].name +
+          '</span><span class="stat-count">' + c + '</span></div>';
+      }
+    }
+  }
+  // Show dead count if any
+  if (counts[3]) {
+    html += '<div class="stat-row"><span class="stat-name" style="color:#1C1410">Dead</span><span class="stat-count">' + counts[3] + '</span></div>';
+  }
+  statsEl.innerHTML = html;
+}
+
+// ============================================================
+// 6. UI CONTROLS
+// ============================================================
+let selectedType = 10; // default to Phytoplankton
+
+function buildPalette() {
+  const list = document.getElementById('species-list');
+  let html = '';
+  for (const tier of TIER_ORDER) {
+    html += '<div class="tier-label">' + tier.label + '</div>';
+    for (const id of tier.ids) {
+      const sp = SPECIES[id];
+      const label = id === 0 ? 'Erase' : sp.name;
+      html += '<button class="sp-btn' + (id === selectedType ? ' active' : '') +
+        '" data-id="' + id + '">' +
+        '<span class="sp-swatch" style="background:' + sp.color + '"></span>' +
+        label + '</button>';
+    }
+  }
+  list.innerHTML = html;
+  list.addEventListener('click', function(e) {
+    const btn = e.target.closest('.sp-btn');
+    if (!btn) return;
+    const id = parseInt(btn.dataset.id);
+    selectType(id);
+  });
+}
+
+function selectType(id) {
+  selectedType = id;
+  document.querySelectorAll('.sp-btn').forEach(b => {
+    b.classList.toggle('active', parseInt(b.dataset.id) === id);
+  });
+  const sp = SPECIES[id];
+  document.getElementById('info-text').textContent = sp.desc || '';
+}
+
+// Play/Pause
+document.getElementById('btn-play').addEventListener('click', function() {
+  running = !running;
+  this.textContent = running ? '⏸ PAUSE' : '▶ PLAY';
+  startLoop();
+});
+
+// Step
+document.getElementById('btn-step').addEventListener('click', function() {
+  running = false;
+  document.getElementById('btn-play').textContent = '▶ PLAY';
+  stopLoop();
+  tick();
+});
+
+// Speed buttons
+document.querySelectorAll('.speed-btn').forEach(btn => {
+  btn.addEventListener('click', function() {
+    document.querySelectorAll('.speed-btn').forEach(b => b.classList.remove('active-speed'));
+    this.classList.add('active-speed');
+    tickInterval = parseInt(this.dataset.speed);
+    if (running) startLoop();
+  });
+});
+
+// Seed
+document.getElementById('btn-seed').addEventListener('click', function() {
+  clearGrid();
+  seedGrid();
+  render();
+  updateStats();
+});
+
+// Clear
+document.getElementById('btn-clear').addEventListener('click', function() {
+  clearGrid();
+  render();
+  updateStats();
+});
+
+// Grid resize
+document.getElementById('btn-apply').addEventListener('click', function() {
+  let w = parseInt(document.getElementById('cfg-w').value) || canvasW;
+  let h = parseInt(document.getElementById('cfg-h').value) || canvasH;
+  w = Math.max(MIN_GRID_PX, Math.min(MAX_GRID_PX, Math.floor(w / CELL_SIZE) * CELL_SIZE));
+  h = Math.max(MIN_GRID_PX, Math.min(MAX_GRID_PX, Math.floor(h / CELL_SIZE) * CELL_SIZE));
+  const wasRunning = running;
+  running = false; stopLoop();
+  allocGrid(w / CELL_SIZE, h / CELL_SIZE);
+  initCanvas();
+  render();
+  updateStats();
+  running = wasRunning;
+  if (running) startLoop();
+});
+
+// Brush slider
+const brushSlider = document.getElementById('brush-slider');
+const brushVal = document.getElementById('brush-val');
+let brushSize = 3;
+brushSlider.addEventListener('input', function() {
+  brushSize = parseInt(this.value);
+  brushVal.textContent = brushSize;
+});
+
+// ============================================================
+// 7. PAINTING — mouse + touch
+// ============================================================
+let painting = false;
+
+function paintAt(canvasX, canvasY) {
+  const cellX = (canvasX / CELL_SIZE) | 0;
+  const cellY = (canvasY / CELL_SIZE) | 0;
+  const r = brushSize - 1;
+  const r2 = r * r + r; // circular approximation
+  for (let dy = -r; dy <= r; dy++) {
+    for (let dx = -r; dx <= r; dx++) {
+      if (dx * dx + dy * dy > r2) continue;
+      const x = wrapX(cellX + dx);
+      const y = wrapY(cellY + dy);
+      const idx = y * gridW + x;
+      species[idx] = selectedType;
+      hunger[idx] = 0;
+      age[idx] = 0;
+    }
+  }
+  render();
+}
+
+function getCanvasCoords(e) {
+  const rect = canvas.getBoundingClientRect();
+  const scaleX = canvas.width / rect.width;
+  const scaleY = canvas.height / rect.height;
+  const x = (e.clientX - rect.left) * scaleX;
+  const y = (e.clientY - rect.top) * scaleY;
+  return [x, y];
+}
+
+canvas.addEventListener('mousedown', function(e) {
+  painting = true;
+  const [x, y] = getCanvasCoords(e);
+  paintAt(x, y);
+});
+canvas.addEventListener('mousemove', function(e) {
+  if (!painting) return;
+  const [x, y] = getCanvasCoords(e);
+  paintAt(x, y);
+});
+window.addEventListener('mouseup', function() { painting = false; });
+
+// Touch support
+canvas.addEventListener('touchstart', function(e) {
+  e.preventDefault();
+  painting = true;
+  const touch = e.touches[0];
+  const [x, y] = getCanvasCoords(touch);
+  paintAt(x, y);
+}, { passive: false });
+canvas.addEventListener('touchmove', function(e) {
+  e.preventDefault();
+  if (!painting) return;
+  const touch = e.touches[0];
+  const [x, y] = getCanvasCoords(touch);
+  paintAt(x, y);
+}, { passive: false });
+canvas.addEventListener('touchend', function() { painting = false; });
+
+// ============================================================
+// 8. SEED
+// ============================================================
+function seedGrid() {
+  const total = gridW * gridH;
+  const targets = [
+    [10, 0.090],  // Phytoplankton
+    [11, 0.020],  // Seaweed
+    [12, 0.005],  // Coral
+    [20, 0.012],  // Shrimp
+    [22, 0.005],  // Crab
+    [21, 0.004],  // Snail
+    [30, 0.004],  // Small Fish
+    [50, 0.006],  // Bacteria
+    [51, 0.003],  // Sea Worm
+    [1,  0.018],  // Rock
+  ];
+  for (const [sid, frac] of targets) {
+    let count = (total * frac) | 0;
+    let attempts = 0;
+    while (count > 0 && attempts < total * 2) {
+      const idx = (Math.random() * total) | 0;
+      if (species[idx] === 0) {
+        species[idx] = sid;
+        hunger[idx] = 0;
+        age[idx] = 0;
+        count--;
+      }
+      attempts++;
+    }
+  }
+}
+
+// ============================================================
+// 9. BOOT
+// ============================================================
+(function boot() {
+  // Auto-size grid to fill viewport
+  const wrap = document.getElementById('canvas-wrap');
+  const availW = wrap.clientWidth;
+  const availH = wrap.clientHeight;
+  let cw = Math.floor(availW / CELL_SIZE);
+  let ch = Math.floor(availH / CELL_SIZE);
+  // Enforce minimums
+  cw = Math.max(MIN_GRID_PX / CELL_SIZE, cw);
+  ch = Math.max(MIN_GRID_PX / CELL_SIZE, ch);
+  // Enforce maximums
+  cw = Math.min(MAX_GRID_PX / CELL_SIZE, cw);
+  ch = Math.min(MAX_GRID_PX / CELL_SIZE, ch);
+
+  allocGrid(cw, ch);
+  initCanvas();
+
+  // Set config inputs to current size
+  document.getElementById('cfg-w').value = canvasW;
+  document.getElementById('cfg-h').value = canvasH;
+
+  buildPalette();
+  selectType(10);
+  seedGrid();
+  render();
+  updateStats();
+})();
+</script>
+</body>
+</html>
