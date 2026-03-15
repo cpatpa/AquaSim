@@ -97,6 +97,9 @@ canvas { cursor: crosshair; display: block; }
   color: #7EE8FA; cursor: pointer; border-radius: 3px; margin-top: 4px;
 }
 #btn-apply:hover { border-color: #00E5FF; }
+.sp-btn.disaster { color: #FF6B6B; }
+.sp-btn.disaster:hover { border-color: #FF6B6B; }
+.sp-btn.disaster.active { border-color: #FF4400; background: rgba(255,68,0,0.1); }
 </style>
 </head>
 <body>
@@ -156,6 +159,8 @@ canvas { cursor: crosshair; display: block; }
 const CELL_SIZE = 8;
 const GRID_GAP = 1; // pixels of background visible between cells
 const DEAD_DECAY_AGE = 14;
+const OIL_SPREAD_RATE = 0.06;
+const OIL_DECAY_AGE = 40;
 const HUNGER_RESTORE_FRACTION = 0.65;
 const MIN_GRID_PX = 480;
 const MAX_GRID_PX = 3200;
@@ -165,6 +170,7 @@ const SPECIES = {
   1:  { name: 'Rock',           color: '#4A5A6A', tier: 'environment', desc: 'Impassable terrain blocker' },
   2:  { name: 'Current',        color: '#003D88', tier: 'environment', desc: 'Drag to paint — sweeps creatures in drag direction' },
   3:  { name: 'Dead',           color: '#1C1410', tier: 'transient',   desc: 'Decays to empty after 14 ticks' },
+  4:  { name: 'Oil',            color: '#2A1800', tier: 'transient',   desc: 'Toxic sludge — spreads, kills life, then decays' },
   10: { name: 'Phytoplankton',  color: '#00FF88', tier: 'producer',    breedRate: 0.13, desc: 'Fast-spreading base producer' },
   11: { name: 'Seaweed',        color: '#00CC44', tier: 'producer',    breedRate: 0.04, desc: 'Slow-growing plant, food for snails' },
   12: { name: 'Coral',          color: '#FF6EC7', tier: 'producer',    breedRate: 0.02, desc: 'Rare reef-builder, very slow growth' },
@@ -207,6 +213,14 @@ const TIER_ORDER = [
   { label: 'APEX',        ids: [40, 41] },
   { label: 'DECOMPOSERS', ids: [50, 51] },
 ];
+
+// Disaster tools (negative IDs to distinguish from species)
+const DISASTERS = {
+  '-1': { name: 'Bomb',      color: '#FF4400', desc: 'Obliterates all life and terrain in blast radius' },
+  '-2': { name: 'Oil Spill', color: '#2A1800', desc: 'Toxic sludge that spreads, kills, and slowly decays' },
+  '-3': { name: 'Heatwave',  color: '#FF8800', desc: 'Kills all animals in radius — plants survive' },
+  '-4': { name: 'Red Tide',  color: '#CC0033', desc: 'Algal bloom floods area — suffocates all animals' },
+};
 
 // ============================================================
 // 2. GRID STATE
@@ -302,7 +316,7 @@ function render() {
 
   // Current overlay pass — blend semi-transparent blue on top + arrow
   const curR = COLOR_RGB[2][0], curG = COLOR_RGB[2][1], curB = COLOR_RGB[2][2];
-  const alpha = 0.45; // overlay opacity
+  const alpha = 0.25; // overlay opacity
   const inv = 1 - alpha;
   // Arrow highlight colour (brighter blue)
   const arwR = 80, arwG = 160, arwB = 255;
@@ -413,6 +427,32 @@ function step() {
       age[idx]++;
       if (age[idx] >= DEAD_DECAY_AGE) {
         species[idx] = 0; hunger[idx] = 0; age[idx] = 0;
+      }
+      continue;
+    }
+
+    // Oil: spread, kill neighbours, decay
+    if (sid === 4) {
+      age[idx]++;
+      if (age[idx] >= OIL_DECAY_AGE) {
+        species[idx] = 0; hunger[idx] = 0; age[idx] = 0;
+        continue;
+      }
+      // Kill adjacent life and spread
+      const dirs = shuffleSmall([0,1,2,3]);
+      for (let d = 0; d < 4; d++) {
+        const dir = CARDINAL[dirs[d]];
+        const nx = wrapX(cx + dir[0]);
+        const ny = wrapY(cy + dir[1]);
+        const ni = ny * cw + nx;
+        const nSid = species[ni];
+        if (nSid === 0 || nSid === 1 || nSid === 4) continue; // skip empty, rock, oil
+        // Kill whatever is here
+        if (Math.random() < OIL_SPREAD_RATE) {
+          species[ni] = 4; hunger[ni] = 0; age[ni] = 0;
+          processed[ni] = 1;
+          break; // spread once per tick
+        }
       }
       continue;
     }
@@ -566,9 +606,12 @@ function updateStats() {
       }
     }
   }
-  // Show dead count if any
+  // Show transient counts
   if (counts[3]) {
     html += '<div class="stat-row"><span class="stat-name" style="color:#1C1410">Dead</span><span class="stat-count">' + counts[3] + '</span></div>';
+  }
+  if (counts[4]) {
+    html += '<div class="stat-row"><span class="stat-name" style="color:#2A1800">Oil</span><span class="stat-count">' + counts[4] + '</span></div>';
   }
   statsEl.innerHTML = html;
 }
@@ -592,6 +635,16 @@ function buildPalette() {
         label + '</button>';
     }
   }
+  // Disasters section
+  html += '<div class="tier-label" style="color:#FF6B6B;">DISASTERS</div>';
+  for (const did in DISASTERS) {
+    const d = DISASTERS[did];
+    html += '<button class="sp-btn disaster' + (parseInt(did) === selectedType ? ' active' : '') +
+      '" data-id="' + did + '">' +
+      '<span class="sp-swatch" style="background:' + d.color + '"></span>' +
+      d.name + '</button>';
+  }
+
   list.innerHTML = html;
   list.addEventListener('click', function(e) {
     const btn = e.target.closest('.sp-btn');
@@ -606,7 +659,7 @@ function selectType(id) {
   document.querySelectorAll('.sp-btn').forEach(b => {
     b.classList.toggle('active', parseInt(b.dataset.id) === id);
   });
-  const sp = SPECIES[id];
+  const sp = id < 0 ? DISASTERS[id] : SPECIES[id];
   document.getElementById('info-text').textContent = sp.desc || '';
 }
 
@@ -692,6 +745,79 @@ function dragDirection(x0, y0, x1, y1) {
   }
 }
 
+function triggerDisaster(canvasX, canvasY) {
+  const cellX = (canvasX / CELL_SIZE) | 0;
+  const cellY = (canvasY / CELL_SIZE) | 0;
+  // Disasters use a larger radius (brush × 2, min 5)
+  const r = Math.max(5, brushSize * 2) - 1;
+  const r2 = r * r + r;
+
+  if (selectedType === -1) {
+    // BOMB — obliterate everything in radius
+    for (let dy = -r; dy <= r; dy++) {
+      for (let dx = -r; dx <= r; dx++) {
+        if (dx * dx + dy * dy > r2) continue;
+        const x = wrapX(cellX + dx);
+        const y = wrapY(cellY + dy);
+        const idx = y * gridW + x;
+        species[idx] = 0; hunger[idx] = 0; age[idx] = 0;
+        currents[idx] = 0;
+      }
+    }
+  } else if (selectedType === -2) {
+    // OIL SPILL — place Oil cells
+    for (let dy = -r; dy <= r; dy++) {
+      for (let dx = -r; dx <= r; dx++) {
+        if (dx * dx + dy * dy > r2) continue;
+        const x = wrapX(cellX + dx);
+        const y = wrapY(cellY + dy);
+        const idx = y * gridW + x;
+        if (species[idx] !== 1) { // don't overwrite rock
+          species[idx] = 4; hunger[idx] = 0; age[idx] = 0;
+        }
+      }
+    }
+  } else if (selectedType === -3) {
+    // HEATWAVE — kill all animals, leave plants and environment
+    for (let dy = -r; dy <= r; dy++) {
+      for (let dx = -r; dx <= r; dx++) {
+        if (dx * dx + dy * dy > r2) continue;
+        const x = wrapX(cellX + dx);
+        const y = wrapY(cellY + dy);
+        const idx = y * gridW + x;
+        const sid = species[idx];
+        const sp = SPECIES[sid];
+        if (sp && sp.hungerMax) {
+          // It's an animal — kill it
+          species[idx] = 3; hunger[idx] = 0; age[idx] = 0;
+        }
+      }
+    }
+  } else if (selectedType === -4) {
+    // RED TIDE — flood with phytoplankton, suffocate animals
+    for (let dy = -r; dy <= r; dy++) {
+      for (let dx = -r; dx <= r; dx++) {
+        if (dx * dx + dy * dy > r2) continue;
+        const x = wrapX(cellX + dx);
+        const y = wrapY(cellY + dy);
+        const idx = y * gridW + x;
+        const sid = species[idx];
+        if (sid === 1) continue; // don't overwrite rock
+        const sp = SPECIES[sid];
+        if (sp && sp.hungerMax) {
+          // Animal — suffocate: becomes dead
+          species[idx] = 3; hunger[idx] = 0; age[idx] = 0;
+        } else if (sid === 0 || sid === 3) {
+          // Empty or dead — fill with phytoplankton
+          species[idx] = 10; hunger[idx] = 0; age[idx] = 0;
+        }
+      }
+    }
+  }
+  render();
+  updateStats();
+}
+
 function paintAt(canvasX, canvasY) {
   const cellX = (canvasX / CELL_SIZE) | 0;
   const cellY = (canvasY / CELL_SIZE) | 0;
@@ -740,10 +866,11 @@ canvas.addEventListener('mousedown', function(e) {
   painting = true;
   lastPaintX = -1; lastPaintY = -1;
   const [x, y] = getCanvasCoords(e);
-  paintAt(x, y);
+  if (selectedType < 0) { triggerDisaster(x, y); }
+  else { paintAt(x, y); }
 });
 canvas.addEventListener('mousemove', function(e) {
-  if (!painting) return;
+  if (!painting || selectedType < 0) return;
   const [x, y] = getCanvasCoords(e);
   paintAt(x, y);
 });
@@ -756,11 +883,12 @@ canvas.addEventListener('touchstart', function(e) {
   lastPaintX = -1; lastPaintY = -1;
   const touch = e.touches[0];
   const [x, y] = getCanvasCoords(touch);
-  paintAt(x, y);
+  if (selectedType < 0) { triggerDisaster(x, y); }
+  else { paintAt(x, y); }
 }, { passive: false });
 canvas.addEventListener('touchmove', function(e) {
   e.preventDefault();
-  if (!painting) return;
+  if (!painting || selectedType < 0) return;
   const touch = e.touches[0];
   const [x, y] = getCanvasCoords(touch);
   paintAt(x, y);
