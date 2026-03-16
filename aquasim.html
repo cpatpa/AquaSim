@@ -127,6 +127,36 @@ canvas { cursor: crosshair; display: block; }
 .sp-btn.disaster { color: #FF6B6B; }
 .sp-btn.disaster:hover { border-color: #FF6B6B; }
 .sp-btn.disaster.active { border-color: #FF4400; background: rgba(255,68,0,0.1); }
+
+/* Evolution Tree Popup */
+#evo-tree-popup {
+  display: none; position: fixed; z-index: 1000;
+  background: rgba(4,9,15,0.96); border: 1px solid #DDBB44; border-radius: 6px;
+  padding: 12px 14px; min-width: 220px; max-width: 340px;
+  backdrop-filter: blur(6px); box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+}
+#evo-tree-popup .etp-title {
+  font-family: 'Orbitron', monospace; font-size: 0.65rem; color: #DDBB44;
+  margin-bottom: 8px; letter-spacing: 1px; text-align: center;
+}
+#evo-tree-popup .etp-close {
+  position: absolute; top: 4px; right: 8px; cursor: pointer;
+  color: #FF6B6B; font-size: 0.75rem; background: none; border: none;
+  font-family: 'Share Tech Mono', monospace;
+}
+#evo-tree-popup .etp-close:hover { color: #FF4400; }
+#evo-tree-popup .etp-node {
+  display: flex; align-items: center; gap: 6px; padding: 3px 0;
+  font-size: 0.6rem; color: #7EE8FA; line-height: 1.3;
+}
+#evo-tree-popup .etp-node.etp-current { color: #00FF88; font-weight: bold; }
+#evo-tree-popup .etp-branch { color: #0C2D40; margin-right: 2px; }
+#evo-tree-popup .etp-swatch {
+  width: 10px; height: 10px; border-radius: 2px; flex-shrink: 0;
+  display: inline-block; border: 1px solid rgba(255,255,255,0.15);
+}
+#evo-tree-popup .etp-traits { font-size: 0.55rem; color: #DDBB44; font-style: italic; margin-left: 18px; }
+#evo-tree-popup .etp-stats { font-size: 0.55rem; color: #4A7A8A; margin-left: 18px; }
 </style>
 </head>
 <body>
@@ -187,6 +217,11 @@ canvas { cursor: crosshair; display: block; }
   </div>
 </div>
 <div id="cell-tooltip"></div>
+<div id="evo-tree-popup">
+  <div class="etp-title">EVOLUTION TREE</div>
+  <button class="etp-close" id="etp-close-btn">✕</button>
+  <div id="etp-content"></div>
+</div>
 
 <script>
 // ============================================================
@@ -195,6 +230,7 @@ canvas { cursor: crosshair; display: block; }
 const CELL_SIZE = 8;
 const GRID_GAP = 1; // pixels of background visible between cells
 const DEAD_DECAY_AGE = 14;
+const DEAD_FOSSILIZE_AGE = 40; // dead cells become rock after this many ticks if uneaten
 const OIL_SPREAD_RATE = 0.06;
 const OIL_DECAY_AGE = 40;
 const HUNGER_RESTORE_FRACTION = 0.65;
@@ -294,6 +330,8 @@ const TRAITS = {
 const TRAIT_KEYS = Object.keys(TRAITS);
 const TRAIT_ACQUIRE_CHANCE = 0.12; // chance per evo cycle per eligible species
 const MAX_TRAITS_PER_SPECIES = 2;
+const TRAIT_DEGRADE_GENS = 8;     // evo cycles of non-use before trait degrades
+const TRAIT_LOCAL_RADIUS = 8;     // trait acquisition only converts cells within this radius
 
 // Living species IDs (everything that evolves)
 const LIVING_IDS = [];
@@ -344,6 +382,7 @@ function initEvoStats() {
       hungerMax: sp.hungerMax || 0,
       eats:      sp.eats ? sp.eats.slice() : [],
       traits:    [],
+      traitAge:  {},  // trait_key → evo cycles since trait was last "useful"
     };
   }
   popHistory = [];
@@ -489,6 +528,62 @@ function evolve() {
     }
   }
 
+  // --- TRAIT DEGRADATION: unused traits fade over time ---
+  for (const id of LIVING_IDS) {
+    const sp = SPECIES[id];
+    const es = evoStats[id];
+    if (!es.traits || es.traits.length === 0) continue;
+    if (!es.traitAge) es.traitAge = {};
+    const popNow = now[id] || 0;
+    const popPrev = prev[id] || 0;
+    const trend = popPrev > 0 ? (popNow - popPrev) / popPrev : 0;
+
+    // Determine which traits are "in use" based on current pressures
+    let hasPredators = false, hasScarcity = false;
+    if (predators[id] && predators[id].length > 0) {
+      let predPop = 0;
+      for (const pid of predators[id]) predPop += (now[pid] || 0);
+      hasPredators = popNow > 0 && predPop / popNow > 0.3;
+    }
+    if (preyOf[id] && preyOf[id].length > 0) {
+      let preyPop = 0;
+      for (const prey of preyOf[id]) preyPop += (now[prey] || 0);
+      hasScarcity = popNow > 0 && preyPop < popNow * 1.5;
+    }
+
+    const toRemove = [];
+    for (const trait of es.traits) {
+      let useful = false;
+      if (trait === 'camouflage' || trait === 'toxic' || trait === 'shell') useful = hasPredators;
+      else if (trait === 'ambush' || trait === 'bioluminesc' || trait === 'lithivore') useful = hasScarcity;
+      else if (trait === 'schooling') useful = popNow > 20;
+      else if (trait === 'symbiosis') useful = hasScarcity || trend < -0.1;
+      else if (trait === 'spore') useful = trend < 0;
+      else useful = true;
+
+      if (useful) {
+        es.traitAge[trait] = 0;
+      } else {
+        es.traitAge[trait] = (es.traitAge[trait] || 0) + 1;
+        if (es.traitAge[trait] >= TRAIT_DEGRADE_GENS) {
+          toRemove.push(trait);
+        }
+      }
+    }
+    for (const t of toRemove) {
+      es.traits.splice(es.traits.indexOf(t), 1);
+      delete es.traitAge[t];
+      // Revert shell stat changes
+      if (t === 'shell') {
+        const baseMR = sp.moveRate || 0;
+        const baseHM = sp.hungerMax || 0;
+        if (baseMR > 0) es.moveRate = clamp(es.moveRate / 0.7, baseMR * 0.5, Math.min(0.98, baseMR * 2.0));
+        if (baseHM > 0) es.hungerMax = clamp(Math.round(es.hungerMax / 1.4), 8, 64);
+      }
+      addEvoEvent(sp.name + ' lost ' + TRAITS[t].name + ' (unused)');
+    }
+  }
+
   // --- OVERPOPULATION: a booming species may gain a new predator ---
   for (const id of LIVING_IDS) {
     const popNow = now[id] || 0;
@@ -576,9 +671,90 @@ function evolve() {
       if (r <= 0) { trait = available[i]; break; }
     }
 
-    es.traits.push(trait);
+    // Localized trait: if we can speciate, create a local variant with this trait
+    // instead of applying it globally to the whole species
+    if (nextSpeciesId <= 254 && dynamicSpeciesIds.length < MAX_DYNAMIC_SPECIES && popNow >= 20) {
+      // Find a random cell of this species to use as epicenter
+      const total = gridW * gridH;
+      let epicenter = -1;
+      for (let attempt = 0; attempt < 50; attempt++) {
+        const ri = (Math.random() * total) | 0;
+        if (species[ri] === id) { epicenter = ri; break; }
+      }
+      if (epicenter >= 0) {
+        const ecx = epicenter % gridW, ecy = (epicenter / gridW) | 0;
+        // Create a variant species with this trait
+        const varId = nextSpeciesId++;
+        const rootId = sp.rootAncestor || id;
+        const rootName = SPECIES[rootId] ? SPECIES[rootId].name : sp.name;
+        const lc = dynamicSpeciesIds.filter(d => {
+          const dsp = SPECIES[d];
+          return dsp && (dsp.rootAncestor === rootId || dsp.parentId === rootId);
+        }).length;
+        const varName = rootName + ' ' + toRoman(lc + 2);
+        const baseRGB = COLOR_RGB[id];
+        const sft = () => Math.round((Math.random() - 0.5) * 50);
+        const vr = clamp(baseRGB[0] + sft(), 20, 255);
+        const vg = clamp(baseRGB[1] + sft(), 20, 255);
+        const vb = clamp(baseRGB[2] + sft(), 20, 255);
+        const vHex = '#' + ((1 << 24) + (vr << 16) + (vg << 8) + vb).toString(16).slice(1).toUpperCase();
 
-    // Apply stat modifications for shell trait immediately
+        const varTraits = (es.traits ? es.traits.slice() : []);
+        varTraits.push(trait);
+
+        let varMR = es.moveRate, varHM = es.hungerMax;
+        if (trait === 'shell') {
+          if (sp.moveRate) varMR = clamp(varMR * 0.7, 0.05, 0.98);
+          if (sp.hungerMax) varHM = clamp(Math.round(varHM * 1.4), 8, 64);
+        }
+
+        SPECIES[varId] = {
+          name: varName, color: vHex, tier: sp.tier,
+          breedRate: es.breedRate, moveRate: varMR || undefined,
+          hungerMax: varHM || undefined, eats: es.eats.length ? es.eats.slice() : undefined,
+          desc: sp.name + ' with ' + TRAITS[trait].name + ' (gen ' + generation + ')',
+          parentId: id, rootAncestor: rootId,
+          lineageDepth: (sp.lineageDepth || 0) + 1,
+        };
+        COLOR_RGB[varId] = [vr, vg, vb];
+        LIVING_IDS.push(varId);
+        dynamicSpeciesIds.push(varId);
+        evoStats[varId] = {
+          breedRate: es.breedRate, moveRate: varMR, hungerMax: varHM,
+          eats: es.eats.slice(), traits: varTraits, traitAge: {},
+        };
+        let evT = TIER_ORDER.find(t2 => t2.label === 'EVOLVED');
+        if (!evT) { evT = { label: 'EVOLVED', ids: [] }; TIER_ORDER.push(evT); }
+        evT.ids.push(varId);
+        // Predators of parent also eat new variant
+        for (const oid of LIVING_IDS) {
+          if (oid === varId) continue;
+          const oe = evoStats[oid];
+          if (oe && oe.eats && oe.eats.indexOf(id) !== -1 && oe.eats.indexOf(varId) === -1) {
+            oe.eats.push(varId);
+          }
+        }
+        // Convert only cells within radius of epicenter
+        let converted = 0;
+        const r2 = TRAIT_LOCAL_RADIUS * TRAIT_LOCAL_RADIUS;
+        for (let dy = -TRAIT_LOCAL_RADIUS; dy <= TRAIT_LOCAL_RADIUS; dy++) {
+          for (let dx = -TRAIT_LOCAL_RADIUS; dx <= TRAIT_LOCAL_RADIUS; dx++) {
+            if (dx * dx + dy * dy > r2) continue;
+            const nx = wrapX(ecx + dx), ny = wrapY(ecy + dy);
+            const ni = ny * gridW + nx;
+            if (species[ni] === id) { species[ni] = varId; converted++; }
+          }
+        }
+        addEvoEvent(varName + ' evolved ' + TRAITS[trait].name + ' (local, ' + converted + ' cells)!');
+        continue; // skip the global fallback
+      }
+    }
+
+    // Fallback: apply trait globally if can't speciate
+    es.traits.push(trait);
+    if (!es.traitAge) es.traitAge = {};
+    es.traitAge[trait] = 0;
+
     if (trait === 'shell') {
       const baseMR = sp.moveRate || 0;
       const baseHM = sp.hungerMax || 0;
@@ -952,11 +1128,11 @@ function step() {
 
     // Current overlay is handled separately — no species ID 2 in grid
 
-    // Dead cell: decay
+    // Dead cell: fossilize into rock if uneaten
     if (sid === 3) {
       age[idx]++;
-      if (age[idx] >= DEAD_DECAY_AGE) {
-        species[idx] = 0; hunger[idx] = 0; age[idx] = 0;
+      if (age[idx] >= DEAD_FOSSILIZE_AGE) {
+        species[idx] = 1; hunger[idx] = 0; age[idx] = 0; // become rock
       }
       continue;
     }
@@ -1687,6 +1863,121 @@ canvas.addEventListener('mouseleave', function() {
     evoLogEl.style.height = newH + 'px';
   });
   window.addEventListener('mouseup', function() { resizing = false; });
+})();
+
+// ============================================================
+// 7d. EVOLUTION TREE POPUP (click on organism)
+// ============================================================
+(function() {
+  const popup = document.getElementById('evo-tree-popup');
+  const content = document.getElementById('etp-content');
+  const closeBtn = document.getElementById('etp-close-btn');
+
+  closeBtn.addEventListener('click', function() { popup.style.display = 'none'; });
+  document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') popup.style.display = 'none';
+  });
+
+  // Build lineage: walk from root ancestor down to the clicked species
+  function getLineageTree(sid) {
+    const sp = SPECIES[sid];
+    if (!sp) return [];
+
+    // Find root ancestor
+    let rootId = sid;
+    const visited = new Set();
+    while (SPECIES[rootId] && SPECIES[rootId].parentId !== undefined && !visited.has(rootId)) {
+      visited.add(rootId);
+      rootId = SPECIES[rootId].parentId;
+    }
+
+    // BFS from root to collect full tree
+    const tree = [];
+    const queue = [{ id: rootId, depth: 0 }];
+    const seen = new Set();
+    while (queue.length > 0) {
+      const { id, depth } = queue.shift();
+      if (seen.has(id)) continue;
+      seen.add(id);
+      tree.push({ id, depth });
+
+      // Find children of this species
+      const allIds = LIVING_IDS.concat(dynamicSpeciesIds);
+      for (const cid of allIds) {
+        if (SPECIES[cid] && SPECIES[cid].parentId === id && !seen.has(cid)) {
+          queue.push({ id: cid, depth: depth + 1 });
+        }
+      }
+    }
+    return tree;
+  }
+
+  canvas.addEventListener('contextmenu', function(e) {
+    e.preventDefault();
+    if (!evolveEnabled) return;
+
+    const rect = canvas.getBoundingClientRect();
+    const mx = e.clientX - rect.left;
+    const my = e.clientY - rect.top;
+    const cs = CELL_SIZE;
+    const cx = (mx / cs) | 0;
+    const cy = (my / cs) | 0;
+    if (cx < 0 || cx >= gridW || cy < 0 || cy >= gridH) return;
+
+    const idx = cy * gridW + cx;
+    const sid = species[idx];
+    if (sid === 0 || sid === 1 || sid === 2) return; // ignore empty/rock/current
+
+    const sp = SPECIES[sid];
+    if (!sp || sp.breedRate === undefined) return; // not a living species
+
+    const tree = getLineageTree(sid);
+    if (tree.length === 0) return;
+
+    let html = '';
+    for (const node of tree) {
+      const nsp = SPECIES[node.id];
+      if (!nsp) continue;
+      const es = evo(node.id);
+      const isCurrent = node.id === sid;
+      const indent = node.depth > 0 ? '<span class="etp-branch">' + '│ '.repeat(node.depth - 1) + '├─ </span>' : '';
+      const swatch = '<span class="etp-swatch" style="background:' + nsp.color + ';"></span>';
+      html += '<div class="etp-node' + (isCurrent ? ' etp-current' : '') + '">';
+      html += indent + swatch + ' ' + nsp.name;
+      html += '</div>';
+      // Stats line
+      if (es.hungerMax) {
+        html += '<div class="etp-stats">' + indent.replace(/[├─│]/g, ' ');
+        html += 'Spd:' + ((es.moveRate||0) * 100).toFixed(0) + '% Brd:' + ((es.breedRate||0) * 100).toFixed(1) + '% Hgr:' + es.hungerMax;
+        html += '</div>';
+      } else if (es.breedRate) {
+        html += '<div class="etp-stats">' + indent.replace(/[├─│]/g, ' ');
+        html += 'Brd:' + ((es.breedRate||0) * 100).toFixed(1) + '%';
+        html += '</div>';
+      }
+      // Traits line
+      if (es.traits && es.traits.length > 0) {
+        const traitStr = es.traits.map(function(t) { return TRAITS[t] ? TRAITS[t].icon + ' ' + TRAITS[t].name : t; }).join(', ');
+        html += '<div class="etp-traits">' + indent.replace(/[├─│]/g, ' ') + traitStr + '</div>';
+      }
+    }
+
+    content.innerHTML = html;
+    popup.style.display = 'block';
+
+    // Position near click
+    const px = Math.min(e.clientX + 10, window.innerWidth - 350);
+    const py = Math.min(e.clientY + 10, window.innerHeight - 300);
+    popup.style.left = Math.max(0, px) + 'px';
+    popup.style.top = Math.max(0, py) + 'px';
+  });
+
+  // Close when clicking outside the popup
+  document.addEventListener('mousedown', function(e) {
+    if (popup.style.display === 'block' && !popup.contains(e.target)) {
+      popup.style.display = 'none';
+    }
+  });
 })();
 
 // ============================================================
