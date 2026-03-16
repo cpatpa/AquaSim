@@ -251,13 +251,13 @@ const SPECIES = {
   21: { name: 'Snail',          color: '#CC88FF', tier: 'herbivore',   layer: 0, breedRate: 0.04, moveRate: 0.22, hungerMax: 28, eats: [11],      desc: 'Slow-moving seaweed consumer' },
   22: { name: 'Crab',           color: '#FF5533', tier: 'herbivore',   layer: 0, breedRate: 0.04, moveRate: 0.42, hungerMax: 24, eats: [10,11,3], desc: 'Omnivore — eats plants and dead matter' },
   23: { name: 'Sea Urchin',     color: '#BB4466', tier: 'herbivore',   layer: 0, breedRate: 0.02, moveRate: 0.18, hungerMax: 32, eats: [12],      desc: 'Slow grazer — the only coral predator' },
-  30: { name: 'Small Fish',     color: '#44CCFF', tier: 'consumer',    layer: 2, breedRate: 0.04, moveRate: 0.85, hungerMax: 20, eats: [20],      desc: 'Fast swimmer, hunts shrimp' },
-  31: { name: 'Squid',          color: '#AA44FF', tier: 'consumer',    layer: 2, breedRate: 0.03, moveRate: 0.62, hungerMax: 24, eats: [20,21],   desc: 'Agile predator of small herbivores' },
-  32: { name: 'Pufferfish',     color: '#FFEE22', tier: 'consumer',    layer: 1, breedRate: 0.025,moveRate: 0.38, hungerMax: 28, eats: [22,21],   desc: 'Tough consumer of crabs and snails' },
-  40: { name: 'Shark',          color: '#8899CC', tier: 'apex',        layer: 3, breedRate: 0.012,moveRate: 0.90, hungerMax: 32, eats: [30,31,32],desc: 'Top predator — feeds on all consumers' },
-  41: { name: 'Octopus',        color: '#CC3366', tier: 'apex',        layer: 1, breedRate: 0.012,moveRate: 0.58, hungerMax: 30, eats: [30,22,31],desc: 'Cunning apex — hunts fish, crabs, squid' },
-  42: { name: 'Whale',          color: '#6688AA', tier: 'megafauna',   layer: 3, breedRate: 0.004,moveRate: 0.30, hungerMax: 60, eats: [10,20,30], desc: 'Filter feeder — consumes plankton, shrimp, small fish in bulk' },
-  43: { name: 'Dolphin',        color: '#55BBEE', tier: 'megafauna',   layer: 3, breedRate: 0.008,moveRate: 0.92, hungerMax: 36, eats: [30,31,20], desc: 'Fast social hunter — pods chase fish and squid' },
+  30: { name: 'Small Fish',     color: '#44CCFF', tier: 'consumer',    layer: 2, breedRate: 0.04, moveRate: 0.85, hungerMax: 22, eats: [20],      desc: 'Fast swimmer, hunts shrimp', layerReach: 2 },
+  31: { name: 'Squid',          color: '#AA44FF', tier: 'consumer',    layer: 2, breedRate: 0.03, moveRate: 0.62, hungerMax: 26, eats: [20,21],   desc: 'Agile predator — dives deep for prey', layerReach: 2 },
+  32: { name: 'Pufferfish',     color: '#FFEE22', tier: 'consumer',    layer: 1, breedRate: 0.028,moveRate: 0.38, hungerMax: 30, eats: [22,21],   desc: 'Tough consumer of crabs and snails' },
+  40: { name: 'Shark',          color: '#8899CC', tier: 'apex',        layer: 3, breedRate: 0.015,moveRate: 0.90, hungerMax: 38, eats: [30,31,32],desc: 'Top predator — dives to hunt all consumers', layerReach: 3 },
+  41: { name: 'Octopus',        color: '#CC3366', tier: 'apex',        layer: 1, breedRate: 0.015,moveRate: 0.58, hungerMax: 34, eats: [30,22,31],desc: 'Cunning apex — crawls between layers', layerReach: 2 },
+  42: { name: 'Whale',          color: '#6688AA', tier: 'megafauna',   layer: 2, breedRate: 0.006,moveRate: 0.30, hungerMax: 50, eats: [10,20,30], desc: 'Filter feeder — dives through all layers', layerReach: 3 },
+  43: { name: 'Dolphin',        color: '#55BBEE', tier: 'megafauna',   layer: 2, breedRate: 0.010,moveRate: 0.92, hungerMax: 34, eats: [30,31,20], desc: 'Fast social hunter — ranges all depths', layerReach: 3 },
   50: { name: 'Bacteria',       color: '#88FFCC', tier: 'decomposer',  layer: 0, breedRate: 0.28, moveRate: 0.28, hungerMax: 32, eats: [3],       desc: 'Rapidly consumes dead matter' },
   51: { name: 'Sea Worm',       color: '#DDBB44', tier: 'decomposer',  layer: 0, breedRate: 0.025, moveRate: 0.34, hungerMax: 30, eats: [3,50],    desc: 'Feeds on dead cells and bacteria' },
 };
@@ -265,18 +265,26 @@ const SPECIES = {
 // Layer system: 4 logical depth layers
 // Layer 0 = Benthic (seafloor): Rock, Coral, Seaweed, Crab, Snail, Urchin, Bacteria, Worm
 // Layer 1 = Shallow: Phytoplankton, Shrimp, Pufferfish, Octopus
-// Layer 2 = Mid-water: Small Fish, Squid
-// Layer 3 = Surface: Shark, Whale, Dolphin, Oil
+// Layer 2 = Mid-water: Small Fish, Squid, Whale, Dolphin
+// Layer 3 = Surface: Shark, Oil
 // layer -1 = all layers (Empty, Current, Dead)
-// Interaction rule: can only eat/target species on same layer ± 1
+// Interaction rule: can eat species within layerReach (default ±1)
 const LAYER_NAMES = ['Benthic', 'Shallow', 'Mid-water', 'Surface'];
 const LAYER_COLORS = ['#886644', '#44AA88', '#4488CC', '#88CCFF'];
 function layerOf(sid) {
   const sp = SPECIES[sid];
   return sp ? sp.layer : -1;
 }
+function layersCanReach(predatorSid, preyLayer) {
+  if (preyLayer === -1) return true; // -1 means all layers
+  const sp = SPECIES[predatorSid];
+  if (!sp || sp.layer === -1) return true;
+  const reach = sp.layerReach || 1;
+  return Math.abs(sp.layer - preyLayer) <= reach;
+}
+// Backward compat wrapper for non-predation checks (movement, breeding)
 function layersAdjacent(l1, l2) {
-  if (l1 === -1 || l2 === -1) return true; // -1 means all layers
+  if (l1 === -1 || l2 === -1) return true;
   return Math.abs(l1 - l2) <= 1;
 }
 
@@ -319,21 +327,21 @@ const DISASTERS = {
 // ============================================================
 // 1b. EVOLUTION STATE
 // ============================================================
-const EVO_CHANCE_PER_GEN  = 0.04; // 4% per gen (~once every 25 gens on avg)
-const EVO_COOLDOWN_MIN    = 15;   // minimum gens between evo events
-const EVO_COOLDOWN_MAX    = 45;   // max cooldown (randomized each time)
-const EVO_MUTATION_RATE  = 0.08; // max % change per cycle
+const EVO_CHANCE_PER_GEN  = 0.08; // 8% per gen (~once every 12 gens on avg)
+const EVO_COOLDOWN_MIN    = 8;    // minimum gens between evo events
+const EVO_COOLDOWN_MAX    = 25;   // max cooldown (randomized each time)
+const EVO_MUTATION_RATE  = 0.12; // max % change per cycle
 const EVO_HISTORY_LEN    = 10;   // snapshots to track trends
 const OVERPOP_THRESHOLD  = 2.5;  // × average = "overpopulated"
 const PRESSURE_HIGH      = 1.5;  // predator:prey ratio that triggers adaptation
 const POP_SNAPSHOT_INTERVAL = 10; // record population every N gens
 
 // Speciation constants
-const SPECIATION_MIN_POP   = 80;   // species must have this many cells to fork
-const SPECIATION_DRIFT     = 0.25; // stats must have drifted 25%+ from baseline
-const SPECIATION_CHANCE    = 0.20; // probability per eligible species per evo cycle
-const SPECIATION_CONVERT   = 0.35; // fraction of parent cells converted to new species
-const MAX_DYNAMIC_SPECIES  = 10;   // cap on total new species
+const SPECIATION_MIN_POP   = 40;   // species must have this many cells to fork
+const SPECIATION_DRIFT     = 0.18; // stats must have drifted 18%+ from baseline
+const SPECIATION_CHANCE    = 0.30; // probability per eligible species per evo cycle
+const SPECIATION_CONVERT   = 0.40; // fraction of parent cells converted to new species
+const MAX_DYNAMIC_SPECIES  = 20;   // cap on total new species
 let nextSpeciesId = 100;           // dynamic IDs start at 100 (Uint8Array max = 255)
 let dynamicSpeciesIds = [];        // track which IDs are dynamically created
 
@@ -1050,18 +1058,23 @@ function speciate() {
     const nb = clamp(baseRGB[2] + shift(), 20, 255);
     const newHex = '#' + ((1 << 24) + (nr << 16) + (ng << 8) + nb).toString(16).slice(1).toUpperCase();
 
-    // Mutate stats further from parent's evolved values
+    // Mutate stats with hybrid vigor — new species get a competitive edge
     const mutRange = 0.15;
-    const randMut = (v) => v * (1 + (Math.random() - 0.5) * 2 * mutRange);
-    const newBreedRate = clamp(randMut(es.breedRate), sp.breedRate * 0.3, sp.breedRate * 3.5);
+    const vigor = 1.12 + Math.random() * 0.08; // 12-20% bonus
+    const randMut = (v) => v * vigor * (1 + (Math.random() - 0.5) * 2 * mutRange);
+    const newBreedRate = clamp(randMut(es.breedRate), sp.breedRate * 0.3, sp.breedRate * 4.0);
     const newMoveRate  = sp.moveRate ? clamp(randMut(es.moveRate), 0.05, 0.98) : 0;
-    const newHungerMax = sp.hungerMax ? clamp(Math.round(randMut(es.hungerMax)), 8, 64) : 0;
+    const newHungerMax = sp.hungerMax ? clamp(Math.round(es.hungerMax * (vigor + Math.random() * 0.1)), 8, 80) : 0;
 
-    // Diet: inherit parent's evolved diet, possibly drop or gain one item
+    // Diet: inherit parent's evolved diet, possibly gain one item instead of losing
     const newEats = es.eats.slice();
-    if (newEats.length > 1 && Math.random() < 0.3) {
-      // Drop a random food source (specialization)
+    if (newEats.length > 1 && Math.random() < 0.15) {
+      // Occasionally drop a food source (specialization) — less likely now
       newEats.splice((Math.random() * newEats.length) | 0, 1);
+    }
+    // New species can prey on parent (competitive displacement)
+    if (sp.hungerMax && newEats.indexOf(id) === -1 && Math.random() < 0.35) {
+      newEats.push(id);
     }
 
     // Track lineage depth (how many speciations deep)
@@ -1673,7 +1686,6 @@ function step() {
     }
 
     // 3. Eat: scan 8 neighbours for food (layer-aware)
-    const myLayer = sp.layer;
     const eats = es.eats;
     let ate = false;
     if (eats && eats.length) {
@@ -1684,7 +1696,7 @@ function step() {
         const ny = wrapY(cy + dir[1]);
         const ni = ny * cw + nx;
         const foodId = species[ni];
-        if (eats.indexOf(foodId) !== -1 && layersAdjacent(myLayer, layerOf(foodId))) {
+        if (eats.indexOf(foodId) !== -1 && layersCanReach(sid, layerOf(foodId))) {
           // Camouflage: prey has 40% chance to evade
           const preyEs = evo(foodId);
           if (preyEs.traits && preyEs.traits.indexOf('camouflage') !== -1 && Math.random() < 0.4) continue;
@@ -1748,7 +1760,7 @@ function step() {
         const nSp = SPECIES[nSid];
         if (!nSp || !nSp.hungerMax) continue;
         const nEs = evo(nSid);
-        if (nEs.traits && nEs.traits.indexOf('softshell') !== -1 && nSp.tier === sp.tier && layersAdjacent(myLayer, nSp.layer)) {
+        if (nEs.traits && nEs.traits.indexOf('softshell') !== -1 && nSp.tier === sp.tier && layersCanReach(sid, nSp.layer)) {
           // Can eat this soft-shelled same-tier creature
           species[ni] = 0; hunger[ni] = 0; age[ni] = 0;
           hunger[idx] = Math.max(0, hunger[idx] - ((es.hungerMax * HUNGER_RESTORE_FRACTION) | 0));
@@ -1767,7 +1779,7 @@ function step() {
         const nx = wrapX(cx + dir[0]);
         const ny = wrapY(cy + dir[1]);
         const ni = ny * cw + nx;
-        if (eats.indexOf(species[ni]) !== -1 && layersAdjacent(myLayer, layerOf(species[ni]))) {
+        if (eats.indexOf(species[ni]) !== -1 && layersCanReach(sid, layerOf(species[ni]))) {
           species[ni] = 0; hunger[ni] = 0; age[ni] = 0;
           hunger[idx] = Math.max(0, hunger[idx] - ((es.hungerMax * 0.3) | 0));
           processed[ni] = 1;
@@ -1802,7 +1814,7 @@ function step() {
         const ny = wrapY(cy + dir[1] * 2);
         const ni = ny * cw + nx;
         const foodId = species[ni];
-        if (eats.indexOf(foodId) !== -1 && layersAdjacent(myLayer, layerOf(foodId))) {
+        if (eats.indexOf(foodId) !== -1 && layersCanReach(sid, layerOf(foodId))) {
           const preyEs = evo(foodId);
           if (preyEs.traits && preyEs.traits.indexOf('camouflage') !== -1 && Math.random() < 0.4) continue;
           if (preyEs.traits && preyEs.traits.indexOf('toxic') !== -1) hunger[idx] += 4;
@@ -1838,7 +1850,7 @@ function step() {
           const px = wrapX(cx + dx);
           const py = wrapY(cy + dy);
           const pi = py * cw + px;
-          if (eats.indexOf(species[pi]) !== -1 && !processed[pi] && layersAdjacent(myLayer, layerOf(species[pi]))) {
+          if (eats.indexOf(species[pi]) !== -1 && !processed[pi] && layersCanReach(sid, layerOf(species[pi]))) {
             // Move prey one step closer to this predator
             const stepX = dx > 0 ? -1 : dx < 0 ? 1 : 0;
             const stepY = dy > 0 ? -1 : dy < 0 ? 1 : 0;
@@ -1886,7 +1898,7 @@ function step() {
             if (dist > 16 || dist >= bestDist) continue;
             const px = wrapX(cx + dx), py = wrapY(cy + dy);
             const echoSid = species[py * cw + px];
-            if (eats.indexOf(echoSid) !== -1 && layersAdjacent(myLayer, layerOf(echoSid))) {
+            if (eats.indexOf(echoSid) !== -1 && layersCanReach(sid, layerOf(echoSid))) {
               bestDist = dist; bestDx = dx; bestDy = dy;
             }
           }
@@ -1949,6 +1961,29 @@ function step() {
         }
       }
     }
+
+    // 7. Competitive displacement: evolved species can outcompete parent/ancestor
+    if (sp.parentId !== undefined && evolveEnabled && Math.random() < 0.06) {
+      const parentId = sp.parentId;
+      const rootId = sp.rootAncestor || parentId;
+      const nbrs4 = shuffleSmall([0,1,2,3,4,5,6,7]);
+      for (let n = 0; n < 8; n++) {
+        const dir = NEIGHBOURS_8[nbrs4[n]];
+        const nx = wrapX(cx + dir[0]);
+        const ny = wrapY(cy + dir[1]);
+        const ni = ny * cw + nx;
+        const nSid = species[ni];
+        // Can displace parent or any ancestor in same lineage
+        if (nSid === parentId || nSid === rootId) {
+          // Fitness check: only displace if we're healthier
+          if (hunger[idx] < hunger[ni] || (hunger[ni] > es.hungerMax * 0.5)) {
+            species[ni] = sid; hunger[ni] = 0; age[ni] = 0;
+            processed[ni] = 1;
+            break;
+          }
+        }
+      }
+    }
   }
 
   generation++;
@@ -1967,8 +2002,38 @@ function step() {
       speciate();
       nicheShift();
       lastEvoGen = generation;
-      // Randomized cooldown before next evo event
       evoCooldown = EVO_COOLDOWN_MIN + ((Math.random() * (EVO_COOLDOWN_MAX - EVO_COOLDOWN_MIN)) | 0);
+    }
+
+    // Extinction cleanup: free slots for extinct evolved species
+    if (generation % 50 === 0 && popHistory.length >= 2) {
+      const now = popHistory[popHistory.length - 1];
+      const prev = popHistory.length >= 2 ? popHistory[popHistory.length - 2] : {};
+      for (let di = dynamicSpeciesIds.length - 1; di >= 0; di--) {
+        const did = dynamicSpeciesIds[di];
+        if ((now[did] || 0) === 0 && (prev[did] || 0) === 0) {
+          // Species is extinct — clean up
+          delete SPECIES[did];
+          delete COLOR_RGB[did];
+          delete evoStats[did];
+          const li = LIVING_IDS.indexOf(did);
+          if (li !== -1) LIVING_IDS.splice(li, 1);
+          dynamicSpeciesIds.splice(di, 1);
+          const evoTier = TIER_ORDER.find(t => t.label === 'EVOLVED');
+          if (evoTier) {
+            const ti = evoTier.ids.indexOf(did);
+            if (ti !== -1) evoTier.ids.splice(ti, 1);
+          }
+          // Remove from all species' eats lists
+          for (const oid of LIVING_IDS) {
+            if (evoStats[oid] && evoStats[oid].eats) {
+              const ei = evoStats[oid].eats.indexOf(did);
+              if (ei !== -1) evoStats[oid].eats.splice(ei, 1);
+            }
+          }
+          addEvoEvent(did + ' went extinct — slot freed');
+        }
+      }
     }
   }
 }
@@ -2591,20 +2656,20 @@ function seedGrid() {
     [31, 0.003],  // Squid
     [32, 0.002],  // Pufferfish
 
-    // Apex — scarce
-    [40, 0.0008], // Shark
-    [41, 0.0008], // Octopus
+    // Apex — small but viable
+    [40, 0.002],  // Shark
+    [41, 0.002],  // Octopus
 
-    // Megafauna — very rare
-    [42, 0.0003], // Whale
-    [43, 0.0005], // Dolphin
+    // Megafauna — rare but viable
+    [42, 0.001],  // Whale
+    [43, 0.0015], // Dolphin
 
     // Decomposers
     [50, 0.007],  // Bacteria
     [51, 0.003],  // Sea Worm
   ];
   for (const [sid, frac] of targets) {
-    let count = Math.max(1, (total * frac) | 0); // at least 1 of each
+    let count = Math.max(2, (total * frac) | 0); // at least 2 of each
     let attempts = 0;
     while (count > 0 && attempts < total * 2) {
       const idx = (Math.random() * total) | 0;
@@ -2701,13 +2766,13 @@ function seedBalanced() {
     [31, 0.003],  // Squid      (eats shrimp, snails)
     [32, 0.002],  // Pufferfish (eats crabs, snails)
 
-    // Apex — very few
-    [40, 0.0008], // Shark   (eats consumers)
-    [41, 0.0008], // Octopus (eats consumers)
+    // Apex — small but viable
+    [40, 0.002],  // Shark   (eats consumers)
+    [41, 0.002],  // Octopus (eats consumers)
 
-    // Megafauna — rare but present
-    [42, 0.0003], // Whale   (filter feeder)
-    [43, 0.0005], // Dolphin (social hunter)
+    // Megafauna — rare but viable
+    [42, 0.001],  // Whale   (filter feeder)
+    [43, 0.0015], // Dolphin (social hunter)
 
     // Decomposers — enough to handle death spiral
     [50, 0.008],  // Bacteria
@@ -2715,7 +2780,7 @@ function seedBalanced() {
   ];
 
   for (const [sid, frac] of balanced) {
-    let count = Math.max(1, (total * frac) | 0);
+    let count = Math.max(2, (total * frac) | 0);
     let attempts = 0;
     while (count > 0 && attempts < total * 2) {
       const idx = (Math.random() * total) | 0;
