@@ -1396,7 +1396,20 @@ function step() {
     // Producer behaviour
     if (sp.tier === 'producer') {
       const pes = evo(sid);
-      if (Math.random() < pes.breedRate) {
+      let breedChance = pes.breedRate;
+
+      // Coral grows faster near rock (reef affinity)
+      let nearRock = false;
+      if (sid === 12) {
+        for (let n = 0; n < 4; n++) {
+          const dir = CARDINAL[n];
+          const ni = wrapY(cy + dir[1]) * cw + wrapX(cx + dir[0]);
+          if (species[ni] === 1) { nearRock = true; break; }
+        }
+        if (nearRock) breedChance *= 3; // triple breed rate near rock
+      }
+
+      if (Math.random() < breedChance) {
         // Spore Burst: can spread 2 tiles away
         const maxDist = (pes.traits && pes.traits.indexOf('spore') !== -1) ? 2 : 1;
         const dirs = shuffleSmall([0,1,2,3]);
@@ -1407,7 +1420,8 @@ function step() {
             const nx = wrapX(cx + dir[0] * dist);
             const ny = wrapY(cy + dir[1] * dist);
             const ni = ny * cw + nx;
-            if (species[ni] === 0) {
+            // Coral can grow on rock (colonizes reef substrate)
+            if (species[ni] === 0 || (sid === 12 && species[ni] === 1)) {
               species[ni] = sid; hunger[ni] = 0; age[ni] = 0;
               processed[ni] = 1;
               bred = true;
