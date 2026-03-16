@@ -66,6 +66,8 @@ canvas { cursor: crosshair; display: block; }
 #btn-clear:hover { background: rgba(255,107,107,0.12) !important; }
 #btn-balance { color: #00FF88 !important; border-color: #00FF88 !important; }
 #btn-balance:hover { background: rgba(0,255,136,0.12) !important; }
+#btn-biome { color: #44AAFF !important; border-color: #44AAFF !important; }
+#btn-biome:hover { background: rgba(68,170,255,0.12) !important; }
 .divider { width: 1px; height: 24px; background: #0C2D40; margin: 0 4px; }
 #gen-counter { margin-left: auto; font-size: 0.65rem; color: #00E5FF; white-space: nowrap; }
 #info-text { font-size: 0.55rem; color: #4A7A8A; margin-left: 10px; max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -190,6 +192,7 @@ canvas { cursor: crosshair; display: block; }
       <div class="divider"></div>
       <button id="btn-seed">⚡ SEED</button>
       <button id="btn-balance">☯ BALANCE</button>
+      <button id="btn-biome">🌊 BIOME</button>
       <button id="btn-clear">✕ CLEAR</button>
       <span id="season-display" style="font-size:0.65rem;color:#88FF88;white-space:nowrap;">Spring</span>
       <span id="gen-counter">GEN 0</span>
@@ -235,6 +238,10 @@ const DEAD_FOSSILIZE_AGE = 120; // dead cells become rock after this many ticks 
 const OIL_SPREAD_RATE = 0.06;
 const OIL_DECAY_AGE = 40;
 const HUNGER_RESTORE_FRACTION = 0.65;
+// Metabolic scaling: chance of hunger incrementing per tick (lower = slower metabolism)
+const METABOLISM = { herbivore: 1.0, consumer: 0.8, apex: 0.5, megafauna: 0.35, decomposer: 0.9 };
+// Hunger restored per meal scales with tier (apex/mega get more per kill)
+const HUNGER_RESTORE_BY_TIER = { herbivore: 0.65, consumer: 0.70, apex: 0.85, megafauna: 0.90, decomposer: 0.65 };
 const MIN_GRID_PX = 480;
 const MAX_GRID_PX = 3200;
 
@@ -251,13 +258,13 @@ const SPECIES = {
   21: { name: 'Snail',          color: '#CC88FF', tier: 'herbivore',   layer: 0, breedRate: 0.04, moveRate: 0.22, hungerMax: 28, eats: [11],      desc: 'Slow-moving seaweed consumer' },
   22: { name: 'Crab',           color: '#FF5533', tier: 'herbivore',   layer: 0, breedRate: 0.04, moveRate: 0.42, hungerMax: 24, eats: [10,11,3], desc: 'Omnivore — eats plants and dead matter' },
   23: { name: 'Sea Urchin',     color: '#BB4466', tier: 'herbivore',   layer: 0, breedRate: 0.02, moveRate: 0.18, hungerMax: 32, eats: [12],      desc: 'Slow grazer — the only coral predator' },
-  30: { name: 'Small Fish',     color: '#44CCFF', tier: 'consumer',    layer: 2, breedRate: 0.04, moveRate: 0.85, hungerMax: 22, eats: [20],      desc: 'Fast swimmer, hunts shrimp', layerReach: 2 },
-  31: { name: 'Squid',          color: '#AA44FF', tier: 'consumer',    layer: 2, breedRate: 0.03, moveRate: 0.62, hungerMax: 26, eats: [20,21],   desc: 'Agile predator — dives deep for prey', layerReach: 2 },
-  32: { name: 'Pufferfish',     color: '#FFEE22', tier: 'consumer',    layer: 1, breedRate: 0.028,moveRate: 0.38, hungerMax: 30, eats: [22,21],   desc: 'Tough consumer of crabs and snails' },
-  40: { name: 'Shark',          color: '#8899CC', tier: 'apex',        layer: 3, breedRate: 0.015,moveRate: 0.90, hungerMax: 38, eats: [30,31,32],desc: 'Top predator — dives to hunt all consumers', layerReach: 3 },
-  41: { name: 'Octopus',        color: '#CC3366', tier: 'apex',        layer: 1, breedRate: 0.015,moveRate: 0.58, hungerMax: 34, eats: [30,22,31],desc: 'Cunning apex — crawls between layers', layerReach: 2 },
-  42: { name: 'Whale',          color: '#6688AA', tier: 'megafauna',   layer: 2, breedRate: 0.006,moveRate: 0.30, hungerMax: 50, eats: [10,20,30], desc: 'Filter feeder — dives through all layers', layerReach: 3 },
-  43: { name: 'Dolphin',        color: '#55BBEE', tier: 'megafauna',   layer: 2, breedRate: 0.010,moveRate: 0.92, hungerMax: 34, eats: [30,31,20], desc: 'Fast social hunter — ranges all depths', layerReach: 3 },
+  30: { name: 'Small Fish',     color: '#44CCFF', tier: 'consumer',    layer: 2, breedRate: 0.05, moveRate: 0.85, hungerMax: 24, eats: [20],      desc: 'Fast swimmer, hunts shrimp', layerReach: 2 },
+  31: { name: 'Squid',          color: '#AA44FF', tier: 'consumer',    layer: 2, breedRate: 0.04, moveRate: 0.62, hungerMax: 28, eats: [20,21],   desc: 'Agile predator — dives deep for prey', layerReach: 2 },
+  32: { name: 'Pufferfish',     color: '#FFEE22', tier: 'consumer',    layer: 1, breedRate: 0.035,moveRate: 0.38, hungerMax: 32, eats: [22,21,23],desc: 'Tough consumer of crabs, snails, urchins' },
+  40: { name: 'Shark',          color: '#8899CC', tier: 'apex',        layer: 3, breedRate: 0.02, moveRate: 0.90, hungerMax: 50, eats: [30,31,32,20,3],desc: 'Top predator — hunts consumers, scavenges', layerReach: 3 },
+  41: { name: 'Octopus',        color: '#CC3366', tier: 'apex',        layer: 1, breedRate: 0.02, moveRate: 0.58, hungerMax: 44, eats: [30,22,31,21,3],desc: 'Cunning apex — eats anything it catches', layerReach: 2 },
+  42: { name: 'Whale',          color: '#6688AA', tier: 'megafauna',   layer: 2, breedRate: 0.008,moveRate: 0.30, hungerMax: 60, eats: [10,20,30,21,3], desc: 'Filter feeder — bulk feeds on everything below', layerReach: 3 },
+  43: { name: 'Dolphin',        color: '#55BBEE', tier: 'megafauna',   layer: 2, breedRate: 0.012,moveRate: 0.92, hungerMax: 42, eats: [30,31,20,22], desc: 'Fast social hunter — versatile predator', layerReach: 3 },
   50: { name: 'Bacteria',       color: '#88FFCC', tier: 'decomposer',  layer: 0, breedRate: 0.28, moveRate: 0.28, hungerMax: 32, eats: [3],       desc: 'Rapidly consumes dead matter' },
   51: { name: 'Sea Worm',       color: '#DDBB44', tier: 'decomposer',  layer: 0, breedRate: 0.025, moveRate: 0.34, hungerMax: 30, eats: [3,50],    desc: 'Feeds on dead cells and bacteria' },
 };
@@ -1645,6 +1652,7 @@ function step() {
     const es = evo(sid);
     const traits = es.traits || [];
     const hasTrait = (t) => traits.indexOf(t) !== -1;
+    const restoreFrac = HUNGER_RESTORE_BY_TIER[sp.tier] || HUNGER_RESTORE_FRACTION;
 
     // Seasonal adaptation check
     const isColdAdapt = hasTrait('coldadapt');
@@ -1661,8 +1669,10 @@ function step() {
     }
     if (isMigratory) seasonMoveMult = Math.min(1.5, seasonMoveMult * 1.3);
 
-    // 1. Increment hunger (seasonal modifier)
-    hunger[idx] += seasonHungerMult >= 1.2 ? (Math.random() < (seasonHungerMult - 1.0) ? 2 : 1) : 1;
+    // 1. Increment hunger (metabolic scaling + seasonal modifier)
+    const metab = METABOLISM[sp.tier] || 1.0;
+    const hungerChance = metab * seasonHungerMult;
+    if (Math.random() < hungerChance) hunger[idx]++;
 
     // Symbiosis: heal hunger if adjacent to a producer
     if (hasTrait('symbiosis') && hunger[idx] > 2) {
@@ -1685,15 +1695,25 @@ function step() {
       continue;
     }
 
-    // 3. Eat: scan 8 neighbours for food (layer-aware)
+    // 3. Eat: scan neighbours for food (layer-aware)
+    // Apex/megafauna scan 2-tile radius; others scan 8 immediate neighbours
     const eats = es.eats;
     let ate = false;
+    const huntRange = (sp.tier === 'apex' || sp.tier === 'megafauna') ? 2 : 1;
     if (eats && eats.length) {
-      const nbrs = shuffleSmall([0,1,2,3,4,5,6,7]);
-      for (let n = 0; n < 8; n++) {
-        const dir = NEIGHBOURS_8[nbrs[n]];
-        const nx = wrapX(cx + dir[0]);
-        const ny = wrapY(cy + dir[1]);
+      // Build randomized scan list
+      const scanCells = [];
+      for (let dy = -huntRange; dy <= huntRange; dy++) {
+        for (let dx = -huntRange; dx <= huntRange; dx++) {
+          if (dx === 0 && dy === 0) continue;
+          scanCells.push([dx, dy]);
+        }
+      }
+      shuffleSmall(scanCells);
+      for (let n = 0; n < scanCells.length; n++) {
+        const [dx, dy] = scanCells[n];
+        const nx = wrapX(cx + dx);
+        const ny = wrapY(cy + dy);
         const ni = ny * cw + nx;
         const foodId = species[ni];
         if (eats.indexOf(foodId) !== -1 && layersCanReach(sid, layerOf(foodId))) {
@@ -1721,7 +1741,7 @@ function step() {
           // Deep Root: producer has 35% chance to survive being eaten
           if (preyEs.traits && preyEs.traits.indexOf('deeproot') !== -1 && Math.random() < 0.35) {
             // Prey survives — predator still gets partial food
-            hunger[idx] = Math.max(0, hunger[idx] - ((es.hungerMax * HUNGER_RESTORE_FRACTION * 0.4) | 0));
+            hunger[idx] = Math.max(0, hunger[idx] - ((es.hungerMax * restoreFrac * 0.4) | 0));
             ate = true;
             break;
           }
@@ -1739,7 +1759,7 @@ function step() {
             }
           }
           species[ni] = 0; hunger[ni] = 0; age[ni] = 0;
-          hunger[idx] = Math.max(0, hunger[idx] - ((es.hungerMax * HUNGER_RESTORE_FRACTION) | 0));
+          hunger[idx] = Math.max(0, hunger[idx] - ((es.hungerMax * restoreFrac) | 0));
           processed[ni] = 1;
           ate = true;
           break;
@@ -1763,7 +1783,7 @@ function step() {
         if (nEs.traits && nEs.traits.indexOf('softshell') !== -1 && nSp.tier === sp.tier && layersCanReach(sid, nSp.layer)) {
           // Can eat this soft-shelled same-tier creature
           species[ni] = 0; hunger[ni] = 0; age[ni] = 0;
-          hunger[idx] = Math.max(0, hunger[idx] - ((es.hungerMax * HUNGER_RESTORE_FRACTION) | 0));
+          hunger[idx] = Math.max(0, hunger[idx] - ((es.hungerMax * restoreFrac) | 0));
           processed[ni] = 1;
           ate = true;
         }
@@ -1820,7 +1840,7 @@ function step() {
           if (preyEs.traits && preyEs.traits.indexOf('toxic') !== -1) hunger[idx] += 4;
           if (preyEs.traits && preyEs.traits.indexOf('thorns') !== -1) hunger[idx] += 7;
           if (preyEs.traits && preyEs.traits.indexOf('deeproot') !== -1 && Math.random() < 0.35) {
-            hunger[idx] = Math.max(0, hunger[idx] - ((es.hungerMax * HUNGER_RESTORE_FRACTION * 0.4) | 0));
+            hunger[idx] = Math.max(0, hunger[idx] - ((es.hungerMax * restoreFrac * 0.4) | 0));
             ate = true; break;
           }
           if (preyEs.traits && preyEs.traits.indexOf('regrowth') !== -1) {
@@ -1833,7 +1853,7 @@ function step() {
             }
           }
           species[ni] = 0; hunger[ni] = 0; age[ni] = 0;
-          hunger[idx] = Math.max(0, hunger[idx] - ((es.hungerMax * HUNGER_RESTORE_FRACTION) | 0));
+          hunger[idx] = Math.max(0, hunger[idx] - ((es.hungerMax * restoreFrac) | 0));
           processed[ni] = 1;
           ate = true;
           break;
@@ -2202,6 +2222,14 @@ document.getElementById('btn-seed').addEventListener('click', function() {
 document.getElementById('btn-balance').addEventListener('click', function() {
   clearGrid();
   seedBalanced();
+  render();
+  updateStats();
+});
+
+// Biome
+document.getElementById('btn-biome').addEventListener('click', function() {
+  clearGrid();
+  seedBiome();
   render();
   updateStats();
 });
@@ -2794,6 +2822,178 @@ function seedBalanced() {
     }
   }
   // Reset season on balanced seed
+  currentSeason = 'Spring';
+  seasonTick = 0;
+}
+
+// Detailed biome environment seed — rich terrain + balanced ecosystem
+function seedBiome() {
+  const total = gridW * gridH;
+  const cw = gridW, ch = gridH;
+
+  // --- 1. Seafloor topology: reef walls, rocky ridges, caves ---
+  // Large central reef
+  const reefCx = (cw * 0.5) | 0, reefCy = (ch * 0.4) | 0;
+  const reefW = (cw * 0.35) | 0, reefH = (ch * 0.08) | 0;
+  for (let dy = -reefH; dy <= reefH; dy++) {
+    for (let dx = -reefW; dx <= reefW; dx++) {
+      // Organic shape: sine wave distortion
+      const waveDist = reefH * (0.6 + 0.4 * Math.sin(dx * 0.15));
+      if (Math.abs(dy) > waveDist) continue;
+      // Add gaps for caves/passages
+      if (Math.random() < 0.15) continue;
+      const x = wrapX(reefCx + dx), y = wrapY(reefCy + dy);
+      species[y * cw + x] = 1;
+    }
+  }
+
+  // Scattered rock clusters (6-12 clusters)
+  const numClusters = 6 + ((Math.random() * 7) | 0);
+  for (let c = 0; c < numClusters; c++) {
+    let rx = (Math.random() * cw) | 0;
+    let ry = (Math.random() * ch) | 0;
+    const size = 12 + ((Math.random() * 30) | 0);
+    for (let s = 0; s < size; s++) {
+      const idx = wrapY(ry) * cw + wrapX(rx);
+      if (species[idx] === 0) species[idx] = 1;
+      rx = wrapX(rx + ((Math.random() * 3) | 0) - 1);
+      ry = wrapY(ry + ((Math.random() * 3) | 0) - 1);
+    }
+  }
+
+  // Rocky ridges along edges (top and bottom)
+  for (let x = 0; x < cw; x++) {
+    const topH = 2 + ((Math.sin(x * 0.08) + 1) * 3) | 0;
+    for (let y = 0; y < topH; y++) {
+      if (Math.random() < 0.7) species[y * cw + x] = 1;
+    }
+    const botH = 2 + ((Math.cos(x * 0.06) + 1) * 2) | 0;
+    for (let y = ch - botH; y < ch; y++) {
+      if (Math.random() < 0.7) species[y * cw + x] = 1;
+    }
+  }
+
+  // --- 2. Current channels: 4-6 flowing streams for water circulation ---
+  const numStreams = 4 + ((Math.random() * 3) | 0);
+  for (let s = 0; s < numStreams; s++) {
+    let sx = (Math.random() * cw) | 0;
+    let sy = (Math.random() * ch) | 0;
+    const dir = 1 + ((Math.random() * 4) | 0); // 1-4
+    const cd = CARDINAL[dir - 1];
+    const len = 30 + ((Math.random() * 60) | 0);
+    const width = 1 + ((Math.random() * 3) | 0);
+    for (let step = 0; step < len; step++) {
+      for (let w = -width; w <= width; w++) {
+        const px = wrapX(sx + (cd[1] !== 0 ? w : 0));
+        const py = wrapY(sy + (cd[0] !== 0 ? w : 0));
+        currents[py * cw + px] = dir;
+      }
+      sx = wrapX(sx + cd[0]);
+      sy = wrapY(sy + cd[1]);
+      if (Math.random() < 0.12) {
+        sx = wrapX(sx + ((Math.random() * 3) | 0) - 1);
+        sy = wrapY(sy + ((Math.random() * 3) | 0) - 1);
+      }
+    }
+  }
+
+  // Circular gyre current
+  const gyreCx = (cw * (0.3 + Math.random() * 0.4)) | 0;
+  const gyreCy = (ch * (0.5 + Math.random() * 0.3)) | 0;
+  const gyreR = 8 + ((Math.random() * 12) | 0);
+  for (let dy = -gyreR; dy <= gyreR; dy++) {
+    for (let dx = -gyreR; dx <= gyreR; dx++) {
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist < gyreR - 2 || dist > gyreR + 1) continue;
+      const x = wrapX(gyreCx + dx), y = wrapY(gyreCy + dy);
+      // Tangent direction for circular flow
+      let dir;
+      if (Math.abs(dx) > Math.abs(dy)) dir = dy > 0 ? 4 : 2; // W or E
+      else dir = dx > 0 ? 3 : 1; // S or N
+      currents[y * cw + x] = dir;
+    }
+  }
+
+  // --- 3. Coral patches near all rocks ---
+  for (let i = 0; i < total; i++) {
+    if (species[i] !== 1) continue;
+    const cx2 = i % cw, cy2 = (i / cw) | 0;
+    for (const [dx, dy] of NEIGHBOURS_8) {
+      const ni = wrapY(cy2 + dy) * cw + wrapX(cx2 + dx);
+      if (species[ni] === 0 && Math.random() < 0.18) species[ni] = 12;
+    }
+  }
+
+  // --- 4. Kelp forests (seaweed patches) ---
+  const numForests = 3 + ((Math.random() * 4) | 0);
+  for (let f = 0; f < numForests; f++) {
+    let fx = (Math.random() * cw) | 0;
+    let fy = (Math.random() * ch) | 0;
+    const fSize = 20 + ((Math.random() * 40) | 0);
+    for (let s = 0; s < fSize; s++) {
+      const idx = wrapY(fy) * cw + wrapX(fx);
+      if (species[idx] === 0) species[idx] = 11;
+      fx = wrapX(fx + ((Math.random() * 3) | 0) - 1);
+      fy = wrapY(fy + ((Math.random() * 3) | 0) - 1);
+    }
+  }
+
+  // --- 5. Phytoplankton bloom zones ---
+  const numBlooms = 5 + ((Math.random() * 4) | 0);
+  for (let b = 0; b < numBlooms; b++) {
+    const bx = (Math.random() * cw) | 0;
+    const by = (Math.random() * ch) | 0;
+    const bR = 8 + ((Math.random() * 15) | 0);
+    for (let dy = -bR; dy <= bR; dy++) {
+      for (let dx = -bR; dx <= bR; dx++) {
+        if (dx * dx + dy * dy > bR * bR) continue;
+        if (Math.random() > 0.6) continue;
+        const x = wrapX(bx + dx), y = wrapY(by + dy);
+        const idx = y * cw + x;
+        if (species[idx] === 0) species[idx] = 10;
+      }
+    }
+  }
+
+  // --- 6. Populate all animal species with generous counts ---
+  const animalSeeds = [
+    // Herbivores — healthy populations near food
+    [20, 0.018],  // Shrimp
+    [21, 0.008],  // Snail
+    [22, 0.006],  // Crab
+    [23, 0.003],  // Sea Urchin
+
+    // Consumers — good starting numbers
+    [30, 0.008],  // Small Fish
+    [31, 0.005],  // Squid
+    [32, 0.004],  // Pufferfish
+
+    // Apex — viable breeding populations
+    [40, 0.003],  // Shark
+    [41, 0.003],  // Octopus
+
+    // Megafauna — enough to sustain pods
+    [42, 0.002],  // Whale
+    [43, 0.003],  // Dolphin
+
+    // Decomposers
+    [50, 0.010],  // Bacteria
+    [51, 0.005],  // Sea Worm
+  ];
+
+  for (const [sid, frac] of animalSeeds) {
+    let count = Math.max(4, (total * frac) | 0);
+    let attempts = 0;
+    while (count > 0 && attempts < total * 2) {
+      const idx = (Math.random() * total) | 0;
+      if (species[idx] === 0) {
+        species[idx] = sid; hunger[idx] = 0; age[idx] = 0;
+        count--;
+      }
+      attempts++;
+    }
+  }
+
   currentSeason = 'Spring';
   seasonTick = 0;
 }
