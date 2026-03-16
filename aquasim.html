@@ -326,6 +326,9 @@ const TRAITS = {
   bioluminesc: { name: 'Bioluminescent',icon: '*', desc: 'Attracts prey within 3 tiles',             eligible: t => t === 'consumer' || t === 'apex' },
   spore:       { name: 'Spore Burst',   icon: '%', desc: 'Can spread 2 tiles away',                  eligible: t => t === 'producer' },
   lithivore:   { name: 'Lithivore',    icon: '&', desc: 'Can eat rock — clears terrain, restores hunger', eligible: t => t === 'herbivore' || t === 'decomposer' },
+  thorns:      { name: 'Thorns',       icon: '/', desc: 'Predators take heavy hunger penalty when grazing', eligible: t => t === 'producer' },
+  deeproot:    { name: 'Deep Root',    icon: 'r', desc: '35% chance to survive being eaten',               eligible: t => t === 'producer' },
+  regrowth:    { name: 'Rapid Regrowth',icon:'g', desc: 'When eaten, spreads to 2 adjacent empty tiles',   eligible: t => t === 'producer' },
 };
 const TRAIT_KEYS = Object.keys(TRAITS);
 const TRAIT_ACQUIRE_CHANCE = 0.12; // chance per evo cycle per eligible species
@@ -506,10 +509,25 @@ function evolve() {
       }
     }
 
-    // --- PRODUCER ADAPTATION: heavily grazed → faster growth ---
-    if (sp.tier === 'producer' && trend < -0.2 && popNow > 0) {
-      es.breedRate = clamp(es.breedRate + baseBR * mut * (0.5 + Math.random()), baseBR * 0.5, baseBR * 3.0);
-      addEvoEvent(sp.name + ' evolved faster growth');
+    // --- PRODUCER ADAPTATION: heavily grazed → multiple defensive responses ---
+    if (sp.tier === 'producer' && popNow > 0) {
+      // Measure grazing pressure: how many herbivores eat this producer
+      let grazerPop = 0;
+      if (predators[id]) {
+        for (const pid of predators[id]) grazerPop += (now[pid] || 0);
+      }
+      const grazePressure = popNow > 0 ? grazerPop / popNow : 0;
+
+      if (trend < -0.2 || grazePressure > 0.8) {
+        // Boost breed rate to compensate for being eaten
+        es.breedRate = clamp(es.breedRate + baseBR * mut * (0.5 + Math.random()), baseBR * 0.5, baseBR * 4.0);
+        addEvoEvent(sp.name + ' evolved faster growth (grazing pressure)');
+      }
+      if (trend < -0.35 && grazePressure > 1.0) {
+        // Under extreme pressure: also boost further to outpace consumption
+        es.breedRate = clamp(es.breedRate + baseBR * mut * (0.3 + Math.random() * 0.5), baseBR * 0.5, baseBR * 4.0);
+        addEvoEvent(sp.name + ' evolved explosive growth under heavy grazing');
+      }
     }
 
     // --- ABUNDANCE DECAY: thriving species slowly revert toward baseline ---
@@ -532,6 +550,14 @@ function evolve() {
         if (trait === 'camouflage' && trend > 0 && baseMR > 0) {
           // Camo working, surviving → can afford to slow down, breed more
           es.breedRate = clamp(es.breedRate + baseBR * mut * 0.15, baseBR * 0.5, baseBR * 3.0);
+        }
+        if ((trait === 'thorns' || trait === 'deeproot') && trend >= -0.05) {
+          // Defensive traits working → lean into breeding harder
+          es.breedRate = clamp(es.breedRate + baseBR * mut * 0.2, baseBR * 0.5, baseBR * 4.0);
+        }
+        if (trait === 'regrowth' && trend >= 0) {
+          // Regrowth compensating → double down on breed rate
+          es.breedRate = clamp(es.breedRate + baseBR * mut * 0.25, baseBR * 0.5, baseBR * 4.0);
         }
       }
     }
@@ -563,7 +589,7 @@ function evolve() {
     const toRemove = [];
     for (const trait of es.traits) {
       let useful = false;
-      if (trait === 'camouflage' || trait === 'toxic' || trait === 'shell') useful = hasPredators;
+      if (trait === 'camouflage' || trait === 'toxic' || trait === 'shell' || trait === 'thorns' || trait === 'deeproot' || trait === 'regrowth') useful = hasPredators;
       else if (trait === 'ambush' || trait === 'bioluminesc' || trait === 'lithivore') useful = hasScarcity;
       else if (trait === 'schooling') useful = popNow > 20;
       else if (trait === 'symbiosis') useful = hasScarcity || trend < -0.1;
@@ -716,6 +742,9 @@ function evolve() {
         case 'lithivore':  w += foodScarcity * 3; break;
         case 'symbiosis':  w += foodScarcity * 2 + predationPressure * 1; break;
         case 'spore':      w += predationPressure * 2 + crowding * 1; break;
+        case 'thorns':     w += predationPressure * 4; break;
+        case 'deeproot':   w += predationPressure * 3.5; break;
+        case 'regrowth':   w += predationPressure * 3 + foodScarcity * 1; break;
       }
       return Math.max(0.1, w);
     });
@@ -1482,6 +1511,30 @@ function step() {
           if (preyEs.traits && preyEs.traits.indexOf('toxic') !== -1) {
             hunger[idx] += 4;
           }
+          // Thorns: predator takes heavy hunger penalty
+          if (preyEs.traits && preyEs.traits.indexOf('thorns') !== -1) {
+            hunger[idx] += 7;
+          }
+          // Deep Root: producer has 35% chance to survive being eaten
+          if (preyEs.traits && preyEs.traits.indexOf('deeproot') !== -1 && Math.random() < 0.35) {
+            // Prey survives — predator still gets partial food
+            hunger[idx] = Math.max(0, hunger[idx] - ((es.hungerMax * HUNGER_RESTORE_FRACTION * 0.4) | 0));
+            ate = true;
+            break;
+          }
+          // Rapid Regrowth: when eaten, spreads to up to 2 adjacent empty tiles
+          if (preyEs.traits && preyEs.traits.indexOf('regrowth') !== -1) {
+            let rg = 0;
+            for (let rd = 0; rd < 4 && rg < 2; rd++) {
+              const rdir = CARDINAL[rd];
+              const rx = wrapX(nx + rdir[0]), ry = wrapY(ny + rdir[1]);
+              const ri = ry * cw + rx;
+              if (species[ri] === 0) {
+                species[ri] = foodId; hunger[ri] = 0; age[ri] = 0;
+                processed[ri] = 1; rg++;
+              }
+            }
+          }
           species[ni] = 0; hunger[ni] = 0; age[ni] = 0;
           hunger[idx] = Math.max(0, hunger[idx] - ((es.hungerMax * HUNGER_RESTORE_FRACTION) | 0));
           processed[ni] = 1;
@@ -1521,6 +1574,20 @@ function step() {
           const preyEs = evo(foodId);
           if (preyEs.traits && preyEs.traits.indexOf('camouflage') !== -1 && Math.random() < 0.4) continue;
           if (preyEs.traits && preyEs.traits.indexOf('toxic') !== -1) hunger[idx] += 4;
+          if (preyEs.traits && preyEs.traits.indexOf('thorns') !== -1) hunger[idx] += 7;
+          if (preyEs.traits && preyEs.traits.indexOf('deeproot') !== -1 && Math.random() < 0.35) {
+            hunger[idx] = Math.max(0, hunger[idx] - ((es.hungerMax * HUNGER_RESTORE_FRACTION * 0.4) | 0));
+            ate = true; break;
+          }
+          if (preyEs.traits && preyEs.traits.indexOf('regrowth') !== -1) {
+            let rg = 0;
+            for (let rd = 0; rd < 4 && rg < 2; rd++) {
+              const rdir = CARDINAL[rd];
+              const rx = wrapX(nx + rdir[0]), ry = wrapY(ny + rdir[1]);
+              const ri = ry * cw + rx;
+              if (species[ri] === 0) { species[ri] = foodId; hunger[ri] = 0; age[ri] = 0; processed[ri] = 1; rg++; }
+            }
+          }
           species[ni] = 0; hunger[ni] = 0; age[ni] = 0;
           hunger[idx] = Math.max(0, hunger[idx] - ((es.hungerMax * HUNGER_RESTORE_FRACTION) | 0));
           processed[ni] = 1;
