@@ -313,6 +313,57 @@ const CARDINAL = [[0,-1],[1,0],[0,1],[-1,0]];
 // All 8 neighbours
 const NEIGHBOURS_8 = [[0,-1],[1,-1],[1,0],[1,1],[0,1],[-1,1],[-1,0],[-1,-1]];
 
+// --- Simplex-like 2D noise for natural terrain generation ---
+const _noiseP = new Uint8Array(512);
+function noiseSeed(s) {
+  const perm = new Uint8Array(256);
+  for (let i = 0; i < 256; i++) perm[i] = i;
+  // Fisher-Yates with seeded PRNG
+  let t = s | 0;
+  for (let i = 255; i > 0; i--) {
+    t = (t * 16807 + 0) & 0x7fffffff;
+    const j = t % (i + 1);
+    const tmp = perm[i]; perm[i] = perm[j]; perm[j] = tmp;
+  }
+  for (let i = 0; i < 512; i++) _noiseP[i] = perm[i & 255];
+}
+function _grad2(hash, x, y) {
+  const h = hash & 7;
+  const u = h < 4 ? x : y, v = h < 4 ? y : x;
+  return ((h & 1) ? -u : u) + ((h & 2) ? -v : v);
+}
+function noise2D(x, y) {
+  const F2 = 0.5 * (Math.sqrt(3) - 1), G2 = (3 - Math.sqrt(3)) / 6;
+  const s = (x + y) * F2;
+  const i = Math.floor(x + s), j = Math.floor(y + s);
+  const t = (i + j) * G2;
+  const X0 = i - t, Y0 = j - t;
+  const x0 = x - X0, y0 = y - Y0;
+  const i1 = x0 > y0 ? 1 : 0, j1 = x0 > y0 ? 0 : 1;
+  const x1 = x0 - i1 + G2, y1 = y0 - j1 + G2;
+  const x2 = x0 - 1.0 + 2.0 * G2, y2 = y0 - 1.0 + 2.0 * G2;
+  const ii = i & 255, jj = j & 255;
+  let n0 = 0, n1 = 0, n2 = 0;
+  let t0 = 0.5 - x0 * x0 - y0 * y0;
+  if (t0 > 0) { t0 *= t0; n0 = t0 * t0 * _grad2(_noiseP[ii + _noiseP[jj]], x0, y0); }
+  let t1 = 0.5 - x1 * x1 - y1 * y1;
+  if (t1 > 0) { t1 *= t1; n1 = t1 * t1 * _grad2(_noiseP[ii + i1 + _noiseP[jj + j1]], x1, y1); }
+  let t2 = 0.5 - x2 * x2 - y2 * y2;
+  if (t2 > 0) { t2 *= t2; n2 = t2 * t2 * _grad2(_noiseP[ii + 1 + _noiseP[jj + 1]], x2, y2); }
+  return 70.0 * (n0 + n1 + n2); // returns -1..1
+}
+// Fractal Brownian Motion — layered noise for natural textures
+function fbm(x, y, octaves, lacunarity, gain) {
+  let sum = 0, amp = 1, freq = 1, max = 0;
+  for (let o = 0; o < octaves; o++) {
+    sum += amp * noise2D(x * freq, y * freq);
+    max += amp;
+    amp *= gain;
+    freq *= lacunarity;
+  }
+  return sum / max; // normalized -1..1
+}
+
 // Tier grouping for palette
 const TIER_ORDER = [
   { label: 'ENVIRONMENT', ids: [0, 1, 2] },
@@ -2851,170 +2902,250 @@ function seedBalanced() {
 function seedBiome() {
   const total = gridW * gridH;
   const cw = gridW, ch = gridH;
+  const seed = (Math.random() * 2147483647) | 0;
+  noiseSeed(seed);
 
-  // --- 1. Seafloor topology: reef walls, rocky ridges, caves ---
-  // Large central reef
-  const reefCx = (cw * 0.5) | 0, reefCy = (ch * 0.4) | 0;
-  const reefW = (cw * 0.35) | 0, reefH = (ch * 0.08) | 0;
-  for (let dy = -reefH; dy <= reefH; dy++) {
-    for (let dx = -reefW; dx <= reefW; dx++) {
-      // Organic shape: sine wave distortion
-      const waveDist = reefH * (0.6 + 0.4 * Math.sin(dx * 0.15));
-      if (Math.abs(dy) > waveDist) continue;
-      // Add gaps for caves/passages
-      if (Math.random() < 0.15) continue;
-      const x = wrapX(reefCx + dx), y = wrapY(reefCy + dy);
-      species[y * cw + x] = 1;
+  // Noise helper: sample at (x,y) with given scale
+  const N = (x, y, scale) => noise2D(x / scale, y / scale);
+  const F = (x, y, scale, oct) => fbm(x / scale, y / scale, oct || 5, 2.0, 0.5);
+
+  // ====================================================================
+  // 1. SEAFLOOR TOPOLOGY — noise-driven rock formations
+  // ====================================================================
+  // Base terrain heightmap: large-scale geological features
+  const rockThresh = 0.32; // higher = less rock
+  const ridgeScale = cw * 0.22; // scale of major ridges
+  const detailScale = cw * 0.06; // fine rock detail
+
+  for (let y = 0; y < ch; y++) {
+    for (let x = 0; x < cw; x++) {
+      // Multi-octave terrain: broad ridges + fine detail
+      const broad = F(x, y, ridgeScale, 4);
+      const detail = F(x + 500, y + 500, detailScale, 3) * 0.4;
+      // Edge affinity: rocks more likely near top/bottom (seafloor walls)
+      const edgeDist = Math.min(y, ch - 1 - y) / (ch * 0.12);
+      const edgeBias = Math.max(0, 1.0 - edgeDist) * 0.45;
+      const h = broad + detail + edgeBias;
+      if (h > rockThresh) {
+        // Probability falls off smoothly above threshold — organic edges
+        const p = Math.min(1.0, (h - rockThresh) * 3.0);
+        if (Math.random() < p) species[y * cw + x] = 1; // Rock
+      }
     }
   }
 
-  // Scattered rock clusters (6-12 clusters)
-  const numClusters = 6 + ((Math.random() * 7) | 0);
-  for (let c = 0; c < numClusters; c++) {
-    let rx = (Math.random() * cw) | 0;
-    let ry = (Math.random() * ch) | 0;
-    const size = 12 + ((Math.random() * 30) | 0);
-    for (let s = 0; s < size; s++) {
-      const idx = wrapY(ry) * cw + wrapX(rx);
-      if (species[idx] === 0) species[idx] = 1;
-      rx = wrapX(rx + ((Math.random() * 3) | 0) - 1);
-      ry = wrapY(ry + ((Math.random() * 3) | 0) - 1);
+  // Reef formations: 1-3 reef ridges using warped noise
+  const numReefs = 1 + ((Math.random() * 2.5) | 0);
+  for (let r = 0; r < numReefs; r++) {
+    const ry0 = ch * (0.25 + Math.random() * 0.5);
+    const reefAmp = ch * (0.06 + Math.random() * 0.08);
+    const reefFreq = 0.02 + Math.random() * 0.03;
+    const reefThick = 2 + ((Math.random() * 4) | 0);
+    const offsetX = Math.random() * 1000;
+    for (let x = 0; x < cw; x++) {
+      // Meandering reef centerline using noise
+      const centerY = ry0 + reefAmp * noise2D((x + offsetX) * reefFreq, r * 7.7);
+      for (let dy = -reefThick; dy <= reefThick; dy++) {
+        const wy = wrapY(Math.round(centerY + dy));
+        const idx = wy * cw + x;
+        // Gaps for passages and caves
+        if (Math.random() < 0.12) continue;
+        if (species[idx] === 0) species[idx] = 1;
+      }
     }
   }
 
-  // Rocky ridges along edges (top and bottom)
-  for (let x = 0; x < cw; x++) {
-    const topH = 2 + ((Math.sin(x * 0.08) + 1) * 3) | 0;
-    for (let y = 0; y < topH; y++) {
-      if (Math.random() < 0.7) species[y * cw + x] = 1;
-    }
-    const botH = 2 + ((Math.cos(x * 0.06) + 1) * 2) | 0;
-    for (let y = ch - botH; y < ch; y++) {
-      if (Math.random() < 0.7) species[y * cw + x] = 1;
-    }
-  }
-
-  // --- 2. Current channels: 6-10 wide flowing streams ---
-  const numStreams = 6 + ((Math.random() * 5) | 0);
+  // ====================================================================
+  // 2. OCEAN CURRENTS — meandering rivers + natural gyres
+  // ====================================================================
+  // Flowing current streams that meander via noise displacement
+  const numStreams = 4 + ((Math.random() * 4) | 0);
   for (let s = 0; s < numStreams; s++) {
-    let sx = (Math.random() * cw) | 0;
-    let sy = (Math.random() * ch) | 0;
-    const dir = 1 + ((Math.random() * 4) | 0); // 1-4
-    const cd = CARDINAL[dir - 1];
-    const len = 50 + ((Math.random() * 100) | 0);
-    const width = 3 + ((Math.random() * 5) | 0);
+    // Pick a primary flow direction and entry point
+    const horizontal = Math.random() < 0.6;
+    let cx0, cy0, mainDir;
+    if (horizontal) {
+      cx0 = 0;
+      cy0 = (ch * (0.1 + Math.random() * 0.8)) | 0;
+      mainDir = Math.random() < 0.5 ? 2 : 4; // E or W
+    } else {
+      cx0 = (cw * (0.1 + Math.random() * 0.8)) | 0;
+      cy0 = 0;
+      mainDir = Math.random() < 0.5 ? 3 : 1; // S or N
+    }
+    const cd = CARDINAL[mainDir - 1];
+    const len = Math.max(cw, ch) * (0.5 + Math.random() * 0.6) | 0;
+    const width = 4 + ((Math.random() * 8) | 0);
+    const meander = 0.015 + Math.random() * 0.02; // noise frequency for meandering
+    const amp = 6 + Math.random() * 12; // meander amplitude
+    const noiseOff = Math.random() * 1000;
+
     for (let step = 0; step < len; step++) {
+      // Displace perpendicular to flow using noise
+      const perpNoise = noise2D((step + noiseOff) * meander, s * 13.3) * amp;
       for (let w = -width; w <= width; w++) {
-        const px = wrapX(sx + (cd[1] !== 0 ? w : 0));
-        const py = wrapY(sy + (cd[0] !== 0 ? w : 0));
-        currents[py * cw + px] = dir;
-      }
-      sx = wrapX(sx + cd[0]);
-      sy = wrapY(sy + cd[1]);
-      if (Math.random() < 0.15) {
-        sx = wrapX(sx + ((Math.random() * 3) | 0) - 1);
-        sy = wrapY(sy + ((Math.random() * 3) | 0) - 1);
+        // Feathered edges: weaker current at edges
+        const edgeFade = 1.0 - Math.abs(w) / (width + 1);
+        if (Math.random() > edgeFade * 0.9 + 0.1) continue;
+        let px, py;
+        if (horizontal) {
+          px = wrapX(cx0 + step * cd[0]);
+          py = wrapY(Math.round(cy0 + step * cd[1] + perpNoise + w));
+        } else {
+          px = wrapX(Math.round(cx0 + step * cd[0] + perpNoise + w));
+          py = wrapY(cy0 + step * cd[1]);
+        }
+        currents[py * cw + px] = mainDir;
       }
     }
   }
 
-  // 2-3 large circular gyre currents
+  // Natural gyres: elliptical with noise-perturbed boundaries
   const numGyres = 2 + ((Math.random() * 2) | 0);
   for (let g = 0; g < numGyres; g++) {
-    const gyreCx = (cw * (0.15 + Math.random() * 0.7)) | 0;
-    const gyreCy = (ch * (0.2 + Math.random() * 0.6)) | 0;
-    const gyreR = 15 + ((Math.random() * 25) | 0);
-    const gyreThick = 2 + ((Math.random() * 3) | 0);
-    for (let dy = -gyreR - gyreThick; dy <= gyreR + gyreThick; dy++) {
-      for (let dx = -gyreR - gyreThick; dx <= gyreR + gyreThick; dx++) {
-        const dist = Math.sqrt(dx * dx + dy * dy);
-        if (dist < gyreR - gyreThick || dist > gyreR + gyreThick) continue;
-        const x = wrapX(gyreCx + dx), y = wrapY(gyreCy + dy);
+    const gx = (cw * (0.2 + Math.random() * 0.6)) | 0;
+    const gy = (ch * (0.2 + Math.random() * 0.6)) | 0;
+    const rx = 18 + ((Math.random() * 30) | 0);
+    const ry = 14 + ((Math.random() * 25) | 0);
+    const thick = 3 + ((Math.random() * 4) | 0);
+    const cw2 = Math.random() < 0.5 ? 1 : -1; // clockwise or counter
+    const noiseOff = Math.random() * 1000;
+
+    for (let dy = -(ry + thick + 3); dy <= ry + thick + 3; dy++) {
+      for (let dx = -(rx + thick + 3); dx <= rx + thick + 3; dx++) {
+        const normDist = Math.sqrt((dx / rx) * (dx / rx) + (dy / ry) * (dy / ry));
+        // Noise-perturbed boundary
+        const nPerturb = noise2D((dx + noiseOff) * 0.08, (dy + noiseOff) * 0.08) * 0.15;
+        const innerEdge = 1.0 - (thick / Math.max(rx, ry)) + nPerturb;
+        const outerEdge = 1.0 + (thick / Math.max(rx, ry)) + nPerturb;
+        if (normDist < innerEdge || normDist > outerEdge) continue;
+        const wx = wrapX(gx + dx), wy = wrapY(gy + dy);
         // Tangent direction for circular flow
+        const angle = Math.atan2(dy, dx);
+        const tang = angle + cw2 * Math.PI / 2;
+        const tdx = Math.cos(tang), tdy = Math.sin(tang);
         let dir;
-        if (Math.abs(dx) > Math.abs(dy)) dir = dy > 0 ? 4 : 2; // W or E
-        else dir = dx > 0 ? 3 : 1; // S or N
-        currents[y * cw + x] = dir;
+        if (Math.abs(tdx) > Math.abs(tdy)) dir = tdx > 0 ? 2 : 4;
+        else dir = tdy > 0 ? 3 : 1;
+        currents[wy * cw + wx] = dir;
       }
     }
   }
 
-  // --- 3. Coral patches near all rocks ---
+  // ====================================================================
+  // 3. CORAL — grows naturally around rock formations
+  // ====================================================================
+  // Two-pass: first mark rock adjacency, then place with noise modulation
+  const coralNoise = (x, y) => F(x + 1234, y + 5678, cw * 0.12, 3);
   for (let i = 0; i < total; i++) {
     if (species[i] !== 1) continue;
-    const cx2 = i % cw, cy2 = (i / cw) | 0;
+    const cx3 = i % cw, cy3 = (i / cw) | 0;
     for (const [dx, dy] of NEIGHBOURS_8) {
-      const ni = wrapY(cy2 + dy) * cw + wrapX(cx2 + dx);
-      if (species[ni] === 0 && Math.random() < 0.18) species[ni] = 12;
+      const nx = wrapX(cx3 + dx), ny = wrapY(cy3 + dy);
+      const ni = ny * cw + nx;
+      if (species[ni] !== 0) continue;
+      // Coral density modulated by noise — creates patchy reef clusters
+      const cn = (coralNoise(nx, ny) + 1) * 0.5; // 0..1
+      if (Math.random() < cn * 0.30) species[ni] = 12;
+    }
+  }
+  // Extra coral in reef-favorable zones (warm shallow areas via noise)
+  for (let y = 0; y < ch; y++) {
+    for (let x = 0; x < cw; x++) {
+      const idx = y * cw + x;
+      if (species[idx] !== 0) continue;
+      const warmZone = (F(x + 2000, y + 2000, cw * 0.18, 3) + 1) * 0.5;
+      if (warmZone > 0.72 && Math.random() < 0.04) species[idx] = 12;
     }
   }
 
-  // --- 4. Kelp forests (seaweed patches) ---
-  const numForests = 3 + ((Math.random() * 4) | 0);
-  for (let f = 0; f < numForests; f++) {
-    let fx = (Math.random() * cw) | 0;
-    let fy = (Math.random() * ch) | 0;
-    const fSize = 20 + ((Math.random() * 40) | 0);
-    for (let s = 0; s < fSize; s++) {
-      const idx = wrapY(fy) * cw + wrapX(fx);
-      if (species[idx] === 0) species[idx] = 11;
-      fx = wrapX(fx + ((Math.random() * 3) | 0) - 1);
-      fy = wrapY(fy + ((Math.random() * 3) | 0) - 1);
-    }
-  }
-
-  // --- 5. Phytoplankton bloom zones ---
-  const numBlooms = 5 + ((Math.random() * 4) | 0);
-  for (let b = 0; b < numBlooms; b++) {
-    const bx = (Math.random() * cw) | 0;
-    const by = (Math.random() * ch) | 0;
-    const bR = 8 + ((Math.random() * 15) | 0);
-    for (let dy = -bR; dy <= bR; dy++) {
-      for (let dx = -bR; dx <= bR; dx++) {
-        if (dx * dx + dy * dy > bR * bR) continue;
-        if (Math.random() > 0.6) continue;
-        const x = wrapX(bx + dx), y = wrapY(by + dy);
-        const idx = y * cw + x;
-        if (species[idx] === 0) species[idx] = 10;
+  // ====================================================================
+  // 4. KELP FORESTS — noise-field growth with natural clustering
+  // ====================================================================
+  const kelpNoise = (x, y) => F(x + 3456, y + 7890, cw * 0.10, 4);
+  for (let y = 0; y < ch; y++) {
+    for (let x = 0; x < cw; x++) {
+      const idx = y * cw + x;
+      if (species[idx] !== 0) continue;
+      const kn = (kelpNoise(x, y) + 1) * 0.5; // 0..1
+      // Kelp grows in distinct forest patches where noise > threshold
+      if (kn > 0.62) {
+        // Density increases toward patch centers
+        const density = (kn - 0.62) / 0.38;
+        if (Math.random() < density * 0.55) species[idx] = 11;
       }
     }
   }
 
-  // --- 6. Populate all animal species with generous counts ---
+  // ====================================================================
+  // 5. PHYTOPLANKTON — gradient bloom zones with soft edges
+  // ====================================================================
+  const plankNoise = (x, y) => F(x + 6789, y + 1234, cw * 0.16, 5);
+  // Also influenced by currents (nutrients concentrate along current paths)
+  for (let y = 0; y < ch; y++) {
+    for (let x = 0; x < cw; x++) {
+      const idx = y * cw + x;
+      if (species[idx] !== 0) continue;
+      let pn = (plankNoise(x, y) + 1) * 0.5; // 0..1
+      // Boost near currents (upwelling nutrients)
+      if (currents[idx] > 0) pn += 0.12;
+      // Avoid rock-heavy areas
+      if (pn > 0.52) {
+        const density = (pn - 0.52) / 0.48;
+        if (Math.random() < density * 0.45) species[idx] = 10;
+      }
+    }
+  }
+
+  // ====================================================================
+  // 6. ANIMAL PLACEMENT — habitat-aware seeding
+  // ====================================================================
+  // Build quick lookup of nearby terrain for habitat preference
+  function nearbyHas(idx, sid, radius) {
+    const cx4 = idx % cw, cy4 = (idx / cw) | 0;
+    for (let dy = -radius; dy <= radius; dy++) {
+      for (let dx = -radius; dx <= radius; dx++) {
+        if (dx === 0 && dy === 0) continue;
+        const ni = wrapY(cy4 + dy) * cw + wrapX(cx4 + dx);
+        if (species[ni] === sid) return true;
+      }
+    }
+    return false;
+  }
+
   const animalSeeds = [
-    // Herbivores — healthy populations near food
-    [20, 0.018],  // Shrimp
-    [21, 0.008],  // Snail
-    [22, 0.006],  // Crab
-    [23, 0.003],  // Sea Urchin
-
-    // Consumers — good starting numbers
-    [30, 0.008],  // Small Fish
-    [31, 0.005],  // Squid
-    [32, 0.004],  // Pufferfish
-
-    // Apex — viable breeding populations
-    [40, 0.003],  // Shark
-    [41, 0.003],  // Octopus
-
-    // Megafauna — enough to sustain pods
-    [42, 0.002],  // Whale
-    [43, 0.003],  // Dolphin
-
-    // Decomposers
-    [50, 0.010],  // Bacteria
-    [51, 0.005],  // Sea Worm
+    // [speciesId, fraction, habitatPreference]
+    // habitatPreference: null = anywhere empty, or [nearbySid, radius, boostFactor]
+    [20, 0.018, [10, 4, 3.0]],  // Shrimp near phytoplankton
+    [21, 0.008, [11, 4, 3.0]],  // Snail near seaweed
+    [22, 0.006, [1,  5, 2.0]],  // Crab near rocks
+    [23, 0.003, [12, 4, 3.0]],  // Sea Urchin near coral
+    [30, 0.008, [10, 5, 2.0]],  // Small Fish near plankton
+    [31, 0.005, null],           // Squid — open water
+    [32, 0.004, [12, 5, 2.0]],  // Pufferfish near reef
+    [40, 0.003, null],           // Shark — open water
+    [41, 0.003, [1, 5, 2.5]],   // Octopus near rocks
+    [42, 0.002, null],           // Whale — open water
+    [43, 0.003, null],           // Dolphin — open water
+    [50, 0.010, null],           // Bacteria — everywhere
+    [51, 0.005, [1, 4, 2.0]],   // Sea Worm near rocks
   ];
 
-  for (const [sid, frac] of animalSeeds) {
+  for (const [sid, frac, habitat] of animalSeeds) {
     let count = Math.max(4, (total * frac) | 0);
     let attempts = 0;
-    while (count > 0 && attempts < total * 2) {
+    const maxAttempts = total * 3;
+    while (count > 0 && attempts < maxAttempts) {
       const idx = (Math.random() * total) | 0;
-      if (species[idx] === 0) {
-        species[idx] = sid; hunger[idx] = 0; age[idx] = 0;
-        count--;
+      if (species[idx] !== 0) { attempts++; continue; }
+      // Habitat preference: more likely to place near preferred terrain
+      if (habitat) {
+        const [hSid, hRad, hBoost] = habitat;
+        const near = nearbyHas(idx, hSid, hRad);
+        if (!near && Math.random() > 1.0 / hBoost) { attempts++; continue; }
       }
+      species[idx] = sid; hunger[idx] = 0; age[idx] = 0;
+      count--;
       attempts++;
     }
   }
