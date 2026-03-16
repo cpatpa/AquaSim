@@ -255,7 +255,7 @@ const SPECIES = {
   11: { name: 'Seaweed',        color: '#00CC44', tier: 'producer',    layer: 0, breedRate: 0.04, desc: 'Slow-growing plant, food for snails' },
   12: { name: 'Coral',          color: '#FF6EC7', tier: 'producer',    layer: 0, breedRate: 0.02, desc: 'Rare reef-builder, very slow growth' },
   20: { name: 'Shrimp',         color: '#FF9944', tier: 'herbivore',   layer: 1, breedRate: 0.09, moveRate: 0.70, hungerMax: 18, eats: [10],      desc: 'Fast-breeding plankton grazer' },
-  21: { name: 'Snail',          color: '#CC88FF', tier: 'herbivore',   layer: 0, breedRate: 0.04, moveRate: 0.22, hungerMax: 28, eats: [11],      desc: 'Slow-moving seaweed consumer' },
+  21: { name: 'Snail',          color: '#CC88FF', tier: 'herbivore',   layer: 0, breedRate: 0.04, moveRate: 0.22, hungerMax: 28, eats: [11,3],    desc: 'Slow-moving seaweed consumer, scavenges dead' },
   22: { name: 'Crab',           color: '#FF5533', tier: 'herbivore',   layer: 0, breedRate: 0.04, moveRate: 0.42, hungerMax: 24, eats: [10,11,3], desc: 'Omnivore — eats plants and dead matter' },
   23: { name: 'Sea Urchin',     color: '#BB4466', tier: 'herbivore',   layer: 0, breedRate: 0.02, moveRate: 0.18, hungerMax: 32, eats: [12],      desc: 'Slow grazer — the only coral predator' },
   30: { name: 'Small Fish',     color: '#44CCFF', tier: 'consumer',    layer: 2, breedRate: 0.05, moveRate: 0.85, hungerMax: 24, eats: [20],      desc: 'Fast swimmer, hunts shrimp', layerReach: 2 },
