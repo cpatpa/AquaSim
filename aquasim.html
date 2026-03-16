@@ -425,16 +425,55 @@ const TRAITS = {
   bulkfeeder:  { name: 'Bulk Feeder',  icon: 'B', desc: 'Eats up to 3 prey per tick in adjacent cells',                  eligible: t => t === 'megafauna' },
   echoloc:     { name: 'Echolocation', icon: '◎', desc: 'Detects prey within 4 tiles, moves toward nearest',             eligible: t => t === 'megafauna' },
   poddefense:  { name: 'Pod Defense',  icon: '⊕', desc: 'Predators have 50% miss chance when 2+ same species nearby',    eligible: t => t === 'megafauna' },
+
+  // --- Predator / hunting traits ---
+  packhunter:  { name: 'Pack Hunter', icon: 'P', desc: 'Ignores camouflage and pod defense when 2+ allies adjacent to prey',  eligible: t => t === 'consumer' || t === 'apex' },
+  venomous:    { name: 'Venomous',    icon: 'V', desc: 'Prey takes 3 hunger damage even if hunt fails; successful kills poison area', eligible: t => t === 'consumer' || t === 'apex' },
+  stalker:     { name: 'Stalker',     icon: '▸', desc: 'Moves 2 tiles toward nearest prey per tick instead of 1',             eligible: t => t === 'consumer' || t === 'apex' },
+  trapjaw:     { name: 'Trap Jaw',    icon: 'J', desc: 'First attack each tick is instant kill — ignores all prey defenses',   eligible: t => t === 'apex' },
+
+  // --- Defensive / survival traits ---
+  armored:     { name: 'Armored',     icon: 'A', desc: '30% chance to survive being eaten, predator still gets partial food',  eligible: t => t === 'herbivore' || t === 'consumer' },
+  inkcloud:    { name: 'Ink Cloud',   icon: '●', desc: '50% chance to dodge attack and teleport 2 tiles away',                eligible: t => t === 'consumer' || t === 'herbivore' },
+  mimicry:     { name: 'Mimicry',     icon: 'M', desc: 'Appears dangerous — predators have 45% chance to skip this prey',     eligible: t => t === 'herbivore' || t === 'consumer' },
+  regen:       { name: 'Regeneration',icon: '♥', desc: 'Heals 1 hunger every 3 ticks passively',                              eligible: t => t !== 'producer' },
+  nocturnal:   { name: 'Nocturnal',   icon: '☽', desc: '+40% breed and move in Winter/Autumn, -20% in Summer/Spring',         eligible: t => t !== 'producer' },
+  diurnal:     { name: 'Diurnal',     icon: '☼', desc: '+40% breed and move in Summer/Spring, -20% in Winter/Autumn',         eligible: t => t !== 'producer' },
+
+  // --- Resource / feeding traits ---
+  parasite:    { name: 'Parasitic',   icon: '⊘', desc: 'Steals 2 hunger from adjacent non-same species without killing',      eligible: t => t === 'herbivore' || t === 'consumer' || t === 'decomposer' },
+  scavenger:   { name: 'Scavenger',   icon: 'S', desc: 'Can eat dead matter as fallback food for 60% hunger restore',         eligible: t => t === 'consumer' || t === 'apex' || t === 'herbivore' },
+  photosyn:    { name: 'Photosynthetic', icon:'◇', desc: 'Slowly restores hunger (1 per 4 ticks) in open water',              eligible: t => t === 'herbivore' },
+  nitrofix:    { name: 'Nitrogen Fix',icon: 'N', desc: 'Breeds 2x faster when adjacent to dead matter',                       eligible: t => t === 'producer' },
+  filterfeeder:{ name: 'Filter Feeder',icon:'F', desc: 'Passively feeds from any producer within 2 tiles',                    eligible: t => t === 'herbivore' || t === 'consumer' },
+
+  // --- Body plan traits ---
+  dwarfism:    { name: 'Dwarfism',    icon: 'd', desc: '-35% hunger needed but can be eaten by same tier',                    eligible: t => t !== 'producer' && t !== 'decomposer' },
+  gigantism:   { name: 'Gigantism',   icon: 'G', desc: '+40% hunger needed but 30% chance predators miss',                    eligible: t => t !== 'producer' && t !== 'decomposer' },
+  colonial:    { name: 'Colonial',    icon: 'C', desc: 'Adjacent same-species share hunger — averages across cluster',         eligible: t => t === 'producer' || t === 'decomposer' || t === 'herbivore' },
+
+  // --- Social / behavioral traits ---
+  territorial: { name: 'Territorial', icon: 'T', desc: 'Kills same-species neighbours when crowded, but +60% breed when alone', eligible: t => t === 'apex' || t === 'consumer' },
+  maternal:    { name: 'Maternal',    icon: '♀', desc: 'Offspring start well-fed (0 hunger) and get +15% stats',               eligible: t => t !== 'producer' },
+  biofilm:     { name: 'Biofilm',     icon: 'b', desc: 'Forms protective clusters — 35% damage reduction when 3+ adjacent',    eligible: t => t === 'decomposer' || t === 'producer' },
+  allelopathy: { name: 'Allelopathy', icon: 'X', desc: 'Inhibits other producer species growth within 2 tiles',                eligible: t => t === 'producer' },
 };
 const TRAIT_KEYS = Object.keys(TRAITS);
 const TRAIT_ACQUIRE_CHANCE = 0.12; // chance per evo cycle per eligible species
-const MAX_TRAITS_PER_SPECIES = 2;
+const MAX_TRAITS_PER_SPECIES = 3;
 
 // Mutually exclusive trait groups — a species can only have one trait from each group
 const EXCLUSIVE_TRAIT_GROUPS = [
   ['coldadapt', 'warmadapt'],       // temperature specialization
-  ['camouflage', 'bioluminesc'],    // can't hide and glow at the same time
-  ['shell', 'softshell'],           // armor vs vulnerability
+  ['nocturnal', 'diurnal'],         // activity cycle
+  ['camouflage', 'bioluminesc', 'mimicry'], // visibility strategy
+  ['shell', 'softshell', 'armored'],// body protection
+  ['dwarfism', 'gigantism'],        // body size
+  ['ambush', 'stalker'],            // hunting strategy
+  ['thorns', 'allelopathy'],        // producer competition strategy
+  ['deeproot', 'regrowth', 'nitrofix'], // producer survival strategy
+  ['packhunter', 'trapjaw'],        // attack specialization
+  ['inkcloud', 'poddefense'],       // evasion strategy
 ];
 function getExclusiveConflict(traitKey, currentTraits) {
   for (const group of EXCLUSIVE_TRAIT_GROUPS) {
@@ -685,6 +724,40 @@ function evolve() {
           // Regrowth compensating → double down on breed rate
           es.breedRate = clamp(es.breedRate + baseBR * mut * 0.25, baseBR * 0.5, baseBR * 4.0);
         }
+        // New trait stat drift
+        if (trait === 'stalker' && baseMR > 0 && trend >= -0.05) {
+          // Stalker succeeding → get even faster
+          es.moveRate = clamp(es.moveRate + baseMR * mut * 0.15, baseMR * 0.5, 0.98);
+        }
+        if (trait === 'packhunter' && trend >= 0) {
+          // Pack works → breed more to maintain packs
+          es.breedRate = clamp(es.breedRate + baseBR * mut * 0.15, baseBR * 0.5, baseBR * 3.0);
+        }
+        if (trait === 'regen' && trend >= 0) {
+          // Regen working → invest in slower metabolism (hunger tolerance)
+          if (baseHM > 0) es.hungerMax = clamp(es.hungerMax + 0.3, baseHM, baseHM * 1.5);
+        }
+        if (trait === 'parasite' && trend >= 0) {
+          // Parasitism successful → slow down, specialize
+          if (baseMR > 0) es.moveRate = clamp(es.moveRate - baseMR * mut * 0.1, baseMR * 0.3, baseMR * 1.5);
+        }
+        if (trait === 'maternal' && trend >= 0) {
+          // Maternal care working → breed less but better
+          es.breedRate = clamp(es.breedRate - baseBR * mut * 0.1, baseBR * 0.3, baseBR * 2.0);
+          if (baseHM > 0) es.hungerMax = clamp(es.hungerMax + 0.4, baseHM, baseHM * 1.8);
+        }
+        if (trait === 'territorial' && trend >= 0 && baseMR > 0) {
+          // Territorial working → faster, more aggressive
+          es.moveRate = clamp(es.moveRate + baseMR * mut * 0.1, baseMR * 0.5, 0.98);
+        }
+        if (trait === 'allelopathy' && trend >= -0.05) {
+          // Chemical warfare working → breed harder
+          es.breedRate = clamp(es.breedRate + baseBR * mut * 0.2, baseBR * 0.5, baseBR * 3.5);
+        }
+        if (trait === 'nitrofix' && trend >= 0) {
+          // Nitrogen cycling efficient → breed faster
+          es.breedRate = clamp(es.breedRate + baseBR * mut * 0.15, baseBR * 0.5, baseBR * 3.0);
+        }
       }
     }
   }
@@ -724,6 +797,23 @@ function evolve() {
       else if (trait === 'coldadapt') useful = currentSeason === 'Winter' || currentSeason === 'Autumn';
       else if (trait === 'warmadapt') useful = currentSeason === 'Summer' || currentSeason === 'Spring';
       else if (trait === 'migratory' || trait === 'bulkfeeder' || trait === 'echoloc' || trait === 'poddefense') useful = true;
+      // New traits
+      else if (trait === 'packhunter') useful = hasScarcity || popNow > 10;
+      else if (trait === 'venomous') useful = hasScarcity || hasPredators;
+      else if (trait === 'stalker') useful = hasScarcity;
+      else if (trait === 'trapjaw') useful = hasScarcity;
+      else if (trait === 'armored' || trait === 'inkcloud' || trait === 'mimicry') useful = hasPredators;
+      else if (trait === 'regen') useful = true; // always useful
+      else if (trait === 'nocturnal') useful = currentSeason === 'Winter' || currentSeason === 'Autumn';
+      else if (trait === 'diurnal') useful = currentSeason === 'Summer' || currentSeason === 'Spring';
+      else if (trait === 'parasite' || trait === 'filterfeeder' || trait === 'photosyn') useful = hasScarcity || trend < -0.05;
+      else if (trait === 'scavenger') useful = hasScarcity;
+      else if (trait === 'nitrofix') useful = true; // producer always benefits
+      else if (trait === 'dwarfism' || trait === 'gigantism') useful = true; // body plan is permanent
+      else if (trait === 'colonial' || trait === 'biofilm') useful = popNow > 15;
+      else if (trait === 'territorial') useful = popNow > 30; // useful when crowded
+      else if (trait === 'maternal') useful = true; // always useful
+      else if (trait === 'allelopathy') useful = popNow > 10;
       else useful = true;
 
       if (useful) {
@@ -743,6 +833,16 @@ function evolve() {
         const baseMR = sp.moveRate || 0;
         const baseHM = sp.hungerMax || 0;
         if (baseMR > 0) es.moveRate = clamp(es.moveRate / 0.7, baseMR * 0.5, Math.min(0.98, baseMR * 2.0));
+        if (baseHM > 0) es.hungerMax = clamp(Math.round(es.hungerMax / 1.4), 8, 64);
+      }
+      // Revert dwarfism stat changes
+      if (t === 'dwarfism') {
+        const baseHM = sp.hungerMax || 0;
+        if (baseHM > 0) es.hungerMax = clamp(Math.round(es.hungerMax / 0.65), 8, 64);
+      }
+      // Revert gigantism stat changes
+      if (t === 'gigantism') {
+        const baseHM = sp.hungerMax || 0;
         if (baseHM > 0) es.hungerMax = clamp(Math.round(es.hungerMax / 1.4), 8, 64);
       }
       addEvoEvent(sp.name + ' lost ' + TRAITS[t].name + ' (unused)');
@@ -941,6 +1041,33 @@ function evolve() {
         case 'bulkfeeder': w += foodScarcity * 4 + crowding * 1; break;
         case 'echoloc':    w += foodScarcity * 4; break;
         case 'poddefense': w += predationPressure * 3; break;
+        // New predator/hunting traits
+        case 'packhunter': w += foodScarcity * 3 + crowding * 2; break;
+        case 'venomous':   w += foodScarcity * 2.5 + predationPressure * 1.5; break;
+        case 'stalker':    w += foodScarcity * 3.5; break;
+        case 'trapjaw':    w += foodScarcity * 4.5; break;
+        // New defensive traits
+        case 'armored':    w += predationPressure * 3.5; break;
+        case 'inkcloud':   w += predationPressure * 3; break;
+        case 'mimicry':    w += predationPressure * 3.5; break;
+        case 'regen':      w += foodScarcity * 2 + predationPressure * 1.5; break;
+        case 'nocturnal':  w += (currentSeason === 'Winter' || currentSeason === 'Autumn') ? 3.5 : 0.5; break;
+        case 'diurnal':    w += (currentSeason === 'Summer' || currentSeason === 'Spring') ? 3.5 : 0.5; break;
+        // New resource/feeding traits
+        case 'parasite':   w += foodScarcity * 3.5 + crowding * 1; break;
+        case 'scavenger':  w += foodScarcity * 3; break;
+        case 'photosyn':   w += foodScarcity * 4; break;
+        case 'nitrofix':   w += crowding * 2 + foodScarcity * 2; break;
+        case 'filterfeeder': w += foodScarcity * 3.5; break;
+        // New body plan traits
+        case 'dwarfism':   w += foodScarcity * 3 + 1; break;
+        case 'gigantism':  w += predationPressure * 3 + 1; break;
+        case 'colonial':   w += foodScarcity * 2 + crowding * 1.5; break;
+        // New social/behavioral traits
+        case 'territorial': w += crowding * 4; break;
+        case 'maternal':   w += predationPressure * 2 + foodScarcity * 2; break;
+        case 'biofilm':    w += predationPressure * 2.5 + crowding * 1; break;
+        case 'allelopathy': w += crowding * 3.5; break;
       }
       return Math.max(0.1, w);
     });
@@ -989,6 +1116,12 @@ function evolve() {
         if (trait === 'shell') {
           if (sp.moveRate) varMR = clamp(varMR * 0.7, 0.05, 0.98);
           if (sp.hungerMax) varHM = clamp(Math.round(varHM * 1.4), 8, 64);
+        }
+        if (trait === 'dwarfism') {
+          if (sp.hungerMax) varHM = clamp(Math.round(varHM * 0.65), 6, 64);
+        }
+        if (trait === 'gigantism') {
+          if (sp.hungerMax) varHM = clamp(Math.round(varHM * 1.4), 8, 80);
         }
 
         SPECIES[varId] = {
@@ -1043,6 +1176,14 @@ function evolve() {
       const baseHM = sp.hungerMax || 0;
       if (baseMR > 0) es.moveRate = clamp(es.moveRate * 0.7, 0.05, 0.98);
       if (baseHM > 0) es.hungerMax = clamp(Math.round(es.hungerMax * 1.4), 8, 64);
+    }
+    if (trait === 'dwarfism') {
+      const baseHM = sp.hungerMax || 0;
+      if (baseHM > 0) es.hungerMax = clamp(Math.round(es.hungerMax * 0.65), 6, 64);
+    }
+    if (trait === 'gigantism') {
+      const baseHM = sp.hungerMax || 0;
+      if (baseHM > 0) es.hungerMax = clamp(Math.round(es.hungerMax * 1.4), 8, 80);
     }
 
     addEvoEvent(sp.name + ' evolved ' + TRAITS[trait].name + '!');
@@ -1683,6 +1824,43 @@ function step() {
         if (nearRock) breedChance *= 3; // triple breed rate near rock
       }
 
+      // Nitrogen Fix: breed 2x faster near dead matter
+      if (pes.traits && pes.traits.indexOf('nitrofix') !== -1) {
+        for (let n = 0; n < 4; n++) {
+          const dir = CARDINAL[n];
+          const ni = wrapY(cy + dir[1]) * cw + wrapX(cx + dir[0]);
+          if (species[ni] === 3) { breedChance *= 2; break; }
+        }
+      }
+
+      // Allelopathy: inhibit other producer species within 2 tiles
+      if (pes.traits && pes.traits.indexOf('allelopathy') !== -1 && Math.random() < 0.08) {
+        for (let ady = -2; ady <= 2; ady++) {
+          for (let adx = -2; adx <= 2; adx++) {
+            if (adx === 0 && ady === 0) continue;
+            const ani = wrapY(cy + ady) * cw + wrapX(cx + adx);
+            const aSid = species[ani];
+            if (aSid !== sid && aSid !== 0 && SPECIES[aSid] && SPECIES[aSid].tier === 'producer') {
+              // 15% chance to kill rival producer
+              if (Math.random() < 0.15) {
+                species[ani] = 0; hunger[ani] = 0; age[ani] = 0;
+                processed[ani] = 1;
+              }
+            }
+          }
+        }
+      }
+
+      // Nocturnal/diurnal for producers (via pes)
+      if (pes.traits && pes.traits.indexOf('nocturnal') !== -1) {
+        if (currentSeason === 'Winter' || currentSeason === 'Autumn') breedChance *= 1.4;
+        else breedChance *= 0.8;
+      }
+      if (pes.traits && pes.traits.indexOf('diurnal') !== -1) {
+        if (currentSeason === 'Summer' || currentSeason === 'Spring') breedChance *= 1.4;
+        else breedChance *= 0.8;
+      }
+
       if (Math.random() < breedChance) {
         // Spore Burst: can spread 2 tiles away
         const maxDist = (pes.traits && pes.traits.indexOf('spore') !== -1) ? 2 : 1;
@@ -1728,6 +1906,22 @@ function step() {
       seasonBreedMult = 1.4; seasonHungerMult = 0.85;
     }
     if (isMigratory) seasonMoveMult = Math.min(1.5, seasonMoveMult * 1.3);
+    // Nocturnal: +40% in cold seasons, -20% in warm
+    if (hasTrait('nocturnal')) {
+      if (currentSeason === 'Winter' || currentSeason === 'Autumn') {
+        seasonBreedMult *= 1.4; seasonMoveMult *= 1.4;
+      } else {
+        seasonBreedMult *= 0.8; seasonMoveMult *= 0.8;
+      }
+    }
+    // Diurnal: +40% in warm seasons, -20% in cold
+    if (hasTrait('diurnal')) {
+      if (currentSeason === 'Summer' || currentSeason === 'Spring') {
+        seasonBreedMult *= 1.4; seasonMoveMult *= 1.4;
+      } else {
+        seasonBreedMult *= 0.8; seasonMoveMult *= 0.8;
+      }
+    }
 
     // 1. Increment hunger (metabolic scaling + seasonal modifier)
     const metab = METABOLISM[sp.tier] || 1.0;
@@ -1749,6 +1943,75 @@ function step() {
       }
     }
 
+    // Regeneration: heal 1 hunger every 3 ticks
+    if (hasTrait('regen') && age[idx] % 3 === 0 && hunger[idx] > 0) {
+      hunger[idx]--;
+    }
+
+    // Photosynthetic: herbivore slowly restores hunger in open water
+    if (hasTrait('photosyn') && hunger[idx] > 0 && age[idx] % 4 === 0) {
+      // Only works if no rock adjacent (open water)
+      let hasRock = false;
+      for (let n = 0; n < 4; n++) {
+        const dir = CARDINAL[n];
+        if (species[wrapY(cy + dir[1]) * cw + wrapX(cx + dir[0])] === 1) { hasRock = true; break; }
+      }
+      if (!hasRock) hunger[idx]--;
+    }
+
+    // Parasitic: steal 2 hunger from adjacent non-same species
+    if (hasTrait('parasite') && hunger[idx] > 3) {
+      for (let n = 0; n < 4; n++) {
+        const dir = CARDINAL[n];
+        const pnx = wrapX(cx + dir[0]), pny = wrapY(cy + dir[1]);
+        const pni = pny * cw + pnx;
+        const pSid = species[pni];
+        if (pSid > 0 && pSid !== sid && SPECIES[pSid] && SPECIES[pSid].hungerMax) {
+          hunger[idx] = Math.max(0, hunger[idx] - 2);
+          hunger[pni] = Math.min(hunger[pni] + 2, (evoStats[pSid] || {}).hungerMax || 30);
+          break;
+        }
+      }
+    }
+
+    // Filter Feeder: passively feeds from any producer within 2 tiles
+    if (hasTrait('filterfeeder') && hunger[idx] > 2 && Math.random() < 0.3) {
+      for (let fdy = -2; fdy <= 2; fdy++) {
+        let fed = false;
+        for (let fdx = -2; fdx <= 2; fdx++) {
+          if (fdx === 0 && fdy === 0) continue;
+          const fni = wrapY(cy + fdy) * cw + wrapX(cx + fdx);
+          const fsp = SPECIES[species[fni]];
+          if (fsp && fsp.tier === 'producer') {
+            hunger[idx] = Math.max(0, hunger[idx] - 2);
+            fed = true; break;
+          }
+        }
+        if (fed) break;
+      }
+    }
+
+    // Colonial: average hunger with adjacent same-species (once per 2 ticks)
+    if (hasTrait('colonial') && age[idx] % 2 === 0) {
+      let totalH = hunger[idx], cnt = 1;
+      for (let n = 0; n < 8; n++) {
+        const dir = NEIGHBOURS_8[n];
+        const cni = wrapY(cy + dir[1]) * cw + wrapX(cx + dir[0]);
+        if (species[cni] === sid) { totalH += hunger[cni]; cnt++; }
+      }
+      if (cnt > 1) {
+        const avg = (totalH / cnt) | 0;
+        hunger[idx] = avg;
+        for (let n = 0; n < 8; n++) {
+          const dir = NEIGHBOURS_8[n];
+          const cni = wrapY(cy + dir[1]) * cw + wrapX(cx + dir[0]);
+          if (species[cni] === sid) hunger[cni] = avg;
+        }
+      }
+    }
+
+    // Biofilm: damage reduction tracked via biofilm flag (used during predation checks)
+
     // 2. Starvation check
     if (hunger[idx] >= es.hungerMax) {
       species[idx] = 3; hunger[idx] = 0; age[idx] = 0; // become Dead
@@ -1760,6 +2023,11 @@ function step() {
     const eats = es.eats;
     let ate = false;
     const huntRange = (sp.tier === 'apex' || sp.tier === 'megafauna') ? 2 : 1;
+    const isPackHunter = hasTrait('packhunter');
+    const isTrapJaw = hasTrait('trapjaw');
+    const isVenomous = hasTrait('venomous');
+    let trapJawUsed = false; // trap jaw only works once per tick
+
     if (eats && eats.length) {
       // Build randomized scan list
       const scanCells = [];
@@ -1770,6 +2038,18 @@ function step() {
         }
       }
       shuffleSmall(scanCells);
+
+      // Pack hunter: count allies near self
+      let packAllyCount = 0;
+      if (isPackHunter) {
+        for (let pn = 0; pn < 8; pn++) {
+          const pdir = NEIGHBOURS_8[pn];
+          const pni = wrapY(cy + pdir[1]) * cw + wrapX(cx + pdir[0]);
+          if (species[pni] === sid) packAllyCount++;
+        }
+      }
+      const packActive = isPackHunter && packAllyCount >= 2;
+
       for (let n = 0; n < scanCells.length; n++) {
         const [dx, dy] = scanCells[n];
         const nx = wrapX(cx + dx);
@@ -1777,36 +2057,87 @@ function step() {
         const ni = ny * cw + nx;
         const foodId = species[ni];
         if (eats.indexOf(foodId) !== -1 && layersCanReach(sid, layerOf(foodId))) {
-          // Camouflage: prey has 40% chance to evade
           const preyEs = evo(foodId);
-          if (preyEs.traits && preyEs.traits.indexOf('camouflage') !== -1 && Math.random() < 0.4) continue;
-          // Pod Defense: 50% miss if 2+ same species nearby
-          if (preyEs.traits && preyEs.traits.indexOf('poddefense') !== -1) {
-            let podCount = 0;
-            for (let pn = 0; pn < 8; pn++) {
-              const pdir = NEIGHBOURS_8[pn];
-              const pni = wrapY(ny + pdir[1]) * cw + wrapX(nx + pdir[0]);
-              if (species[pni] === foodId) podCount++;
+          const preyTraits = preyEs.traits || [];
+
+          // Trap Jaw: first attack ignores ALL prey defenses
+          if (isTrapJaw && !trapJawUsed) {
+            trapJawUsed = true;
+            // Skip all defensive checks — instant kill
+          } else {
+            // Mimicry: 45% chance predator avoids this prey
+            if (preyTraits.indexOf('mimicry') !== -1 && !packActive && Math.random() < 0.45) continue;
+            // Camouflage: prey has 40% chance to evade (pack hunters ignore)
+            if (preyTraits.indexOf('camouflage') !== -1 && !packActive && Math.random() < 0.4) continue;
+            // Pod Defense: 50% miss if 2+ same species nearby (pack hunters ignore)
+            if (preyTraits.indexOf('poddefense') !== -1 && !packActive) {
+              let podCount = 0;
+              for (let pn = 0; pn < 8; pn++) {
+                const pdir = NEIGHBOURS_8[pn];
+                const pni = wrapY(ny + pdir[1]) * cw + wrapX(nx + pdir[0]);
+                if (species[pni] === foodId) podCount++;
+              }
+              if (podCount >= 2 && Math.random() < 0.5) continue;
             }
-            if (podCount >= 2 && Math.random() < 0.5) continue;
+            // Gigantism: 30% miss chance
+            if (preyTraits.indexOf('gigantism') !== -1 && Math.random() < 0.3) continue;
+            // Ink Cloud: 50% dodge + teleport 2 tiles
+            if (preyTraits.indexOf('inkcloud') !== -1 && Math.random() < 0.5) {
+              // Teleport prey 2 tiles in random direction
+              const tDir = CARDINAL[(Math.random() * 4) | 0];
+              const tnx = wrapX(nx + tDir[0] * 2), tny = wrapY(ny + tDir[1] * 2);
+              const tni = tny * cw + tnx;
+              if (species[tni] === 0) {
+                species[tni] = foodId; hunger[tni] = hunger[ni]; age[tni] = age[ni];
+                species[ni] = 0; hunger[ni] = 0; age[ni] = 0;
+                processed[tni] = 1;
+              }
+              continue;
+            }
+            // Biofilm: 35% damage reduction when 3+ same species adjacent
+            if (preyTraits.indexOf('biofilm') !== -1) {
+              let bfCount = 0;
+              for (let bn = 0; bn < 8; bn++) {
+                const bdir = NEIGHBOURS_8[bn];
+                if (species[wrapY(ny + bdir[1]) * cw + wrapX(nx + bdir[0])] === foodId) bfCount++;
+              }
+              if (bfCount >= 3 && Math.random() < 0.35) continue;
+            }
           }
+
           // Toxic: predator takes hunger damage
-          if (preyEs.traits && preyEs.traits.indexOf('toxic') !== -1) {
+          if (preyTraits.indexOf('toxic') !== -1) {
             hunger[idx] += 4;
           }
           // Thorns: predator takes heavy hunger penalty
-          if (preyEs.traits && preyEs.traits.indexOf('thorns') !== -1) {
+          if (preyTraits.indexOf('thorns') !== -1) {
             hunger[idx] += 7;
           }
+          // Venomous predator: extra damage to prey's neighbors (area denial)
+          if (isVenomous) {
+            for (let vn = 0; vn < 4; vn++) {
+              const vdir = CARDINAL[vn];
+              const vni = wrapY(ny + vdir[1]) * cw + wrapX(nx + vdir[0]);
+              const vSid = species[vni];
+              if (vSid === foodId && SPECIES[vSid] && SPECIES[vSid].hungerMax) {
+                hunger[vni] = Math.min(hunger[vni] + 3, (evoStats[vSid] || {}).hungerMax || 30);
+              }
+            }
+          }
           // Deep Root: producer has 35% chance to survive being eaten
-          if (preyEs.traits && preyEs.traits.indexOf('deeproot') !== -1 && Math.random() < 0.35) {
-            // Prey survives — predator still gets partial food
+          if (preyTraits.indexOf('deeproot') !== -1 && Math.random() < 0.35) {
+            hunger[idx] = Math.max(0, hunger[idx] - ((es.hungerMax * restoreFrac * 0.4) | 0));
+            ate = true;
+            break;
+          }
+          // Armored: animal has 30% chance to survive being eaten
+          if (preyTraits.indexOf('armored') !== -1 && Math.random() < 0.3) {
             hunger[idx] = Math.max(0, hunger[idx] - ((es.hungerMax * restoreFrac * 0.4) | 0));
             ate = true;
             break;
           }
           // Rapid Regrowth: when eaten, spreads to up to 2 adjacent empty tiles
-          if (preyEs.traits && preyEs.traits.indexOf('regrowth') !== -1) {
+          if (preyTraits.indexOf('regrowth') !== -1) {
             let rg = 0;
             for (let rd = 0; rd < 4 && rg < 2; rd++) {
               const rdir = CARDINAL[rd];
@@ -1827,7 +2158,7 @@ function step() {
       }
     }
 
-    // Softshell: same-tier species can eat neighbours with softshell trait
+    // Softshell / Dwarfism: same-tier species can eat neighbours with softshell or dwarfism
     if (!ate && sp.hungerMax) {
       const nbrs2 = shuffleSmall([0,1,2,3,4,5,6,7]);
       for (let n = 0; n < 8 && !ate; n++) {
@@ -1840,8 +2171,9 @@ function step() {
         const nSp = SPECIES[nSid];
         if (!nSp || !nSp.hungerMax) continue;
         const nEs = evo(nSid);
-        if (nEs.traits && nEs.traits.indexOf('softshell') !== -1 && nSp.tier === sp.tier && layersCanReach(sid, nSp.layer)) {
-          // Can eat this soft-shelled same-tier creature
+        const nTraits = nEs.traits || [];
+        const vulnerable = nTraits.indexOf('softshell') !== -1 || nTraits.indexOf('dwarfism') !== -1;
+        if (vulnerable && nSp.tier === sp.tier && layersCanReach(sid, nSp.layer)) {
           species[ni] = 0; hunger[ni] = 0; age[ni] = 0;
           hunger[idx] = Math.max(0, hunger[idx] - ((es.hungerMax * restoreFrac) | 0));
           processed[ni] = 1;
@@ -1886,6 +2218,24 @@ function step() {
       }
     }
 
+    // Scavenger: if didn't eat normally, eat adjacent dead matter
+    if (!ate && hasTrait('scavenger')) {
+      const sdirs = shuffleSmall([0,1,2,3,4,5,6,7]);
+      for (let d = 0; d < 8; d++) {
+        const dir = NEIGHBOURS_8[sdirs[d]];
+        const nx = wrapX(cx + dir[0]);
+        const ny = wrapY(cy + dir[1]);
+        const ni = ny * cw + nx;
+        if (species[ni] === 3) { // Dead
+          species[ni] = 0; hunger[ni] = 0; age[ni] = 0;
+          hunger[idx] = Math.max(0, hunger[idx] - ((es.hungerMax * 0.6) | 0));
+          processed[ni] = 1;
+          ate = true;
+          break;
+        }
+      }
+    }
+
     // Ambush: if didn't eat normally, check 2-tile range on cardinal axes
     if (!ate && hasTrait('ambush') && eats && eats.length) {
       for (let d = 0; d < 4; d++) {
@@ -1896,14 +2246,31 @@ function step() {
         const foodId = species[ni];
         if (eats.indexOf(foodId) !== -1 && layersCanReach(sid, layerOf(foodId))) {
           const preyEs = evo(foodId);
-          if (preyEs.traits && preyEs.traits.indexOf('camouflage') !== -1 && Math.random() < 0.4) continue;
-          if (preyEs.traits && preyEs.traits.indexOf('toxic') !== -1) hunger[idx] += 4;
-          if (preyEs.traits && preyEs.traits.indexOf('thorns') !== -1) hunger[idx] += 7;
-          if (preyEs.traits && preyEs.traits.indexOf('deeproot') !== -1 && Math.random() < 0.35) {
+          const aPT = preyEs.traits || [];
+          if (aPT.indexOf('mimicry') !== -1 && Math.random() < 0.45) continue;
+          if (aPT.indexOf('camouflage') !== -1 && Math.random() < 0.4) continue;
+          if (aPT.indexOf('gigantism') !== -1 && Math.random() < 0.3) continue;
+          if (aPT.indexOf('inkcloud') !== -1 && Math.random() < 0.5) {
+            const tDir2 = CARDINAL[(Math.random() * 4) | 0];
+            const tnx2 = wrapX(nx + tDir2[0] * 2), tny2 = wrapY(ny + tDir2[1] * 2);
+            const tni2 = tny2 * cw + tnx2;
+            if (species[tni2] === 0) {
+              species[tni2] = foodId; hunger[tni2] = hunger[ni]; age[tni2] = age[ni];
+              species[ni] = 0; hunger[ni] = 0; age[ni] = 0; processed[tni2] = 1;
+            }
+            continue;
+          }
+          if (aPT.indexOf('toxic') !== -1) hunger[idx] += 4;
+          if (aPT.indexOf('thorns') !== -1) hunger[idx] += 7;
+          if (aPT.indexOf('deeproot') !== -1 && Math.random() < 0.35) {
             hunger[idx] = Math.max(0, hunger[idx] - ((es.hungerMax * restoreFrac * 0.4) | 0));
             ate = true; break;
           }
-          if (preyEs.traits && preyEs.traits.indexOf('regrowth') !== -1) {
+          if (aPT.indexOf('armored') !== -1 && Math.random() < 0.3) {
+            hunger[idx] = Math.max(0, hunger[idx] - ((es.hungerMax * restoreFrac * 0.4) | 0));
+            ate = true; break;
+          }
+          if (aPT.indexOf('regrowth') !== -1) {
             let rg = 0;
             for (let rd = 0; rd < 4 && rg < 2; rd++) {
               const rdir = CARDINAL[rd];
@@ -1996,6 +2363,39 @@ function step() {
         }
       }
 
+      // Stalker: move 2 tiles toward nearest prey (within 3 tiles)
+      if (!moved && hasTrait('stalker') && eats && eats.length) {
+        let bestDist = 999, bestDx = 0, bestDy = 0;
+        for (let dy = -3; dy <= 3; dy++) {
+          for (let dx = -3; dx <= 3; dx++) {
+            if (dx === 0 && dy === 0) continue;
+            const dist = dx * dx + dy * dy;
+            if (dist > 9 || dist >= bestDist) continue;
+            const px = wrapX(cx + dx), py = wrapY(cy + dy);
+            const stSid = species[py * cw + px];
+            if (eats.indexOf(stSid) !== -1 && layersCanReach(sid, layerOf(stSid))) {
+              bestDist = dist; bestDx = dx; bestDy = dy;
+            }
+          }
+        }
+        if (bestDist < 999) {
+          const s1x = bestDx > 0 ? 1 : bestDx < 0 ? -1 : 0;
+          const s1y = bestDy > 0 ? 1 : bestDy < 0 ? -1 : 0;
+          // First step
+          const m1x = wrapX(cx + s1x), m1y = wrapY(cy + s1y);
+          const m1i = m1y * cw + m1x;
+          if (species[m1i] === 0) {
+            // Second step
+            const m2x = wrapX(m1x + s1x), m2y = wrapY(m1y + s1y);
+            const m2i = m2y * cw + m2x;
+            const dest = (species[m2i] === 0) ? m2i : m1i;
+            species[dest] = sid; hunger[dest] = hunger[idx]; age[dest] = age[idx];
+            species[idx] = 0; hunger[idx] = 0; age[idx] = 0;
+            processed[dest] = 1; moved = true;
+          }
+        }
+      }
+
       if (!moved) {
         const dirs = shuffleSmall([0,1,2,3]);
         for (let d = 0; d < 4; d++) {
@@ -2018,15 +2418,33 @@ function step() {
     // 6. Breed (with seasonal modifier)
     // Schooling: boost breed rate if 3+ same species adjacent
     let breedRate = es.breedRate * seasonBreedMult;
-    if (hasTrait('schooling')) {
-      let sameCount = 0;
-      for (let n = 0; n < 8; n++) {
-        const dir = NEIGHBOURS_8[n];
-        const ni = wrapY(cy + dir[1]) * cw + wrapX(cx + dir[0]);
-        if (species[ni] === sid) sameCount++;
-      }
-      if (sameCount >= 3) breedRate *= 1.5;
+    let sameAdjacentCount = 0;
+    for (let n = 0; n < 8; n++) {
+      const dir = NEIGHBOURS_8[n];
+      const ni = wrapY(cy + dir[1]) * cw + wrapX(cx + dir[0]);
+      if (species[ni] === sid) sameAdjacentCount++;
     }
+    if (hasTrait('schooling') && sameAdjacentCount >= 3) breedRate *= 1.5;
+
+    // Territorial: kill adjacent same-species when crowded, breed faster when alone
+    if (hasTrait('territorial')) {
+      if (sameAdjacentCount >= 4 && Math.random() < 0.3) {
+        // Too crowded — kill a random neighbor of same species
+        const tNbrs = shuffleSmall([0,1,2,3,4,5,6,7]);
+        for (let tn = 0; tn < 8; tn++) {
+          const tdir = NEIGHBOURS_8[tNbrs[tn]];
+          const tni = wrapY(cy + tdir[1]) * cw + wrapX(cx + tdir[0]);
+          if (species[tni] === sid) {
+            species[tni] = 3; hunger[tni] = 0; age[tni] = 0; // becomes dead
+            processed[tni] = 1;
+            break;
+          }
+        }
+      } else if (sameAdjacentCount <= 1) {
+        breedRate *= 1.6; // alone — breed faster to claim territory
+      }
+    }
+
     if (Math.random() < breedRate) {
       const nbrs = shuffleSmall([0,1,2,3,4,5,6,7]);
       for (let n = 0; n < 8; n++) {
@@ -2035,7 +2453,10 @@ function step() {
         const ny = wrapY(cy + dir[1]);
         const ni = ny * cw + nx;
         if (species[ni] === 0) {
-          species[ni] = sid; hunger[ni] = 0; age[ni] = 0;
+          species[ni] = sid;
+          // Maternal: offspring start well-fed
+          hunger[ni] = hasTrait('maternal') ? 0 : Math.min(hunger[idx], ((es.hungerMax * 0.3) | 0));
+          age[ni] = 0;
           processed[ni] = 1;
           break;
         }
