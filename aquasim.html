@@ -239,28 +239,46 @@ const MIN_GRID_PX = 480;
 const MAX_GRID_PX = 3200;
 
 const SPECIES = {
-  0:  { name: 'Empty',          color: '#060E16', tier: 'none' },
-  1:  { name: 'Rock',           color: '#4A5A6A', tier: 'environment', desc: 'Impassable terrain blocker' },
-  2:  { name: 'Current',        color: '#003D88', tier: 'environment', desc: 'Drag to paint — sweeps creatures in drag direction' },
-  3:  { name: 'Dead',           color: '#1C1410', tier: 'transient',   desc: 'Decays to empty after 14 ticks' },
-  4:  { name: 'Oil',            color: '#2A1800', tier: 'transient',   desc: 'Toxic sludge — spreads, kills life, then decays' },
-  10: { name: 'Phytoplankton',  color: '#00FF88', tier: 'producer',    breedRate: 0.13, desc: 'Fast-spreading base producer' },
-  11: { name: 'Seaweed',        color: '#00CC44', tier: 'producer',    breedRate: 0.04, desc: 'Slow-growing plant, food for snails' },
-  12: { name: 'Coral',          color: '#FF6EC7', tier: 'producer',    breedRate: 0.02, desc: 'Rare reef-builder, very slow growth' },
-  20: { name: 'Shrimp',         color: '#FF9944', tier: 'herbivore',   breedRate: 0.09, moveRate: 0.70, hungerMax: 18, eats: [10],      desc: 'Fast-breeding plankton grazer' },
-  21: { name: 'Snail',          color: '#CC88FF', tier: 'herbivore',   breedRate: 0.04, moveRate: 0.22, hungerMax: 28, eats: [11],      desc: 'Slow-moving seaweed consumer' },
-  22: { name: 'Crab',           color: '#FF5533', tier: 'herbivore',   breedRate: 0.04, moveRate: 0.42, hungerMax: 24, eats: [10,11,3], desc: 'Omnivore — eats plants and dead matter' },
-  23: { name: 'Sea Urchin',     color: '#BB4466', tier: 'herbivore',   breedRate: 0.02, moveRate: 0.18, hungerMax: 32, eats: [12],      desc: 'Slow grazer — the only coral predator' },
-  30: { name: 'Small Fish',     color: '#44CCFF', tier: 'consumer',    breedRate: 0.04, moveRate: 0.85, hungerMax: 20, eats: [20],      desc: 'Fast swimmer, hunts shrimp' },
-  31: { name: 'Squid',          color: '#AA44FF', tier: 'consumer',    breedRate: 0.03, moveRate: 0.62, hungerMax: 24, eats: [20,21],   desc: 'Agile predator of small herbivores' },
-  32: { name: 'Pufferfish',     color: '#FFEE22', tier: 'consumer',    breedRate: 0.025,moveRate: 0.38, hungerMax: 28, eats: [22,21],   desc: 'Tough consumer of crabs and snails' },
-  40: { name: 'Shark',          color: '#8899CC', tier: 'apex',        breedRate: 0.012,moveRate: 0.90, hungerMax: 32, eats: [30,31,32],desc: 'Top predator — feeds on all consumers' },
-  41: { name: 'Octopus',        color: '#CC3366', tier: 'apex',        breedRate: 0.012,moveRate: 0.58, hungerMax: 30, eats: [30,22,31],desc: 'Cunning apex — hunts fish, crabs, squid' },
-  42: { name: 'Whale',          color: '#6688AA', tier: 'megafauna',   breedRate: 0.004,moveRate: 0.30, hungerMax: 60, eats: [10,20,30], desc: 'Filter feeder — consumes plankton, shrimp, small fish in bulk' },
-  43: { name: 'Dolphin',        color: '#55BBEE', tier: 'megafauna',   breedRate: 0.008,moveRate: 0.92, hungerMax: 36, eats: [30,31,20], desc: 'Fast social hunter — pods chase fish and squid' },
-  50: { name: 'Bacteria',       color: '#88FFCC', tier: 'decomposer',  breedRate: 0.28, moveRate: 0.28, hungerMax: 32, eats: [3],       desc: 'Rapidly consumes dead matter' },
-  51: { name: 'Sea Worm',       color: '#DDBB44', tier: 'decomposer',  breedRate: 0.025, moveRate: 0.34, hungerMax: 30, eats: [3,50],    desc: 'Feeds on dead cells and bacteria' },
+  0:  { name: 'Empty',          color: '#060E16', tier: 'none',        layer: -1 },
+  1:  { name: 'Rock',           color: '#4A5A6A', tier: 'environment', layer: 0, desc: 'Impassable terrain blocker' },
+  2:  { name: 'Current',        color: '#003D88', tier: 'environment', layer: -1, desc: 'Drag to paint — sweeps creatures in drag direction' },
+  3:  { name: 'Dead',           color: '#1C1410', tier: 'transient',   layer: -1, desc: 'Decays to empty after 14 ticks' },
+  4:  { name: 'Oil',            color: '#2A1800', tier: 'transient',   layer: 3, desc: 'Toxic sludge — spreads, kills life, then decays' },
+  10: { name: 'Phytoplankton',  color: '#00FF88', tier: 'producer',    layer: 1, breedRate: 0.13, desc: 'Fast-spreading base producer' },
+  11: { name: 'Seaweed',        color: '#00CC44', tier: 'producer',    layer: 0, breedRate: 0.04, desc: 'Slow-growing plant, food for snails' },
+  12: { name: 'Coral',          color: '#FF6EC7', tier: 'producer',    layer: 0, breedRate: 0.02, desc: 'Rare reef-builder, very slow growth' },
+  20: { name: 'Shrimp',         color: '#FF9944', tier: 'herbivore',   layer: 1, breedRate: 0.09, moveRate: 0.70, hungerMax: 18, eats: [10],      desc: 'Fast-breeding plankton grazer' },
+  21: { name: 'Snail',          color: '#CC88FF', tier: 'herbivore',   layer: 0, breedRate: 0.04, moveRate: 0.22, hungerMax: 28, eats: [11],      desc: 'Slow-moving seaweed consumer' },
+  22: { name: 'Crab',           color: '#FF5533', tier: 'herbivore',   layer: 0, breedRate: 0.04, moveRate: 0.42, hungerMax: 24, eats: [10,11,3], desc: 'Omnivore — eats plants and dead matter' },
+  23: { name: 'Sea Urchin',     color: '#BB4466', tier: 'herbivore',   layer: 0, breedRate: 0.02, moveRate: 0.18, hungerMax: 32, eats: [12],      desc: 'Slow grazer — the only coral predator' },
+  30: { name: 'Small Fish',     color: '#44CCFF', tier: 'consumer',    layer: 2, breedRate: 0.04, moveRate: 0.85, hungerMax: 20, eats: [20],      desc: 'Fast swimmer, hunts shrimp' },
+  31: { name: 'Squid',          color: '#AA44FF', tier: 'consumer',    layer: 2, breedRate: 0.03, moveRate: 0.62, hungerMax: 24, eats: [20,21],   desc: 'Agile predator of small herbivores' },
+  32: { name: 'Pufferfish',     color: '#FFEE22', tier: 'consumer',    layer: 1, breedRate: 0.025,moveRate: 0.38, hungerMax: 28, eats: [22,21],   desc: 'Tough consumer of crabs and snails' },
+  40: { name: 'Shark',          color: '#8899CC', tier: 'apex',        layer: 3, breedRate: 0.012,moveRate: 0.90, hungerMax: 32, eats: [30,31,32],desc: 'Top predator — feeds on all consumers' },
+  41: { name: 'Octopus',        color: '#CC3366', tier: 'apex',        layer: 1, breedRate: 0.012,moveRate: 0.58, hungerMax: 30, eats: [30,22,31],desc: 'Cunning apex — hunts fish, crabs, squid' },
+  42: { name: 'Whale',          color: '#6688AA', tier: 'megafauna',   layer: 3, breedRate: 0.004,moveRate: 0.30, hungerMax: 60, eats: [10,20,30], desc: 'Filter feeder — consumes plankton, shrimp, small fish in bulk' },
+  43: { name: 'Dolphin',        color: '#55BBEE', tier: 'megafauna',   layer: 3, breedRate: 0.008,moveRate: 0.92, hungerMax: 36, eats: [30,31,20], desc: 'Fast social hunter — pods chase fish and squid' },
+  50: { name: 'Bacteria',       color: '#88FFCC', tier: 'decomposer',  layer: 0, breedRate: 0.28, moveRate: 0.28, hungerMax: 32, eats: [3],       desc: 'Rapidly consumes dead matter' },
+  51: { name: 'Sea Worm',       color: '#DDBB44', tier: 'decomposer',  layer: 0, breedRate: 0.025, moveRate: 0.34, hungerMax: 30, eats: [3,50],    desc: 'Feeds on dead cells and bacteria' },
 };
+
+// Layer system: 4 logical depth layers
+// Layer 0 = Benthic (seafloor): Rock, Coral, Seaweed, Crab, Snail, Urchin, Bacteria, Worm
+// Layer 1 = Shallow: Phytoplankton, Shrimp, Pufferfish, Octopus
+// Layer 2 = Mid-water: Small Fish, Squid
+// Layer 3 = Surface: Shark, Whale, Dolphin, Oil
+// layer -1 = all layers (Empty, Current, Dead)
+// Interaction rule: can only eat/target species on same layer ± 1
+const LAYER_NAMES = ['Benthic', 'Shallow', 'Mid-water', 'Surface'];
+const LAYER_COLORS = ['#886644', '#44AA88', '#4488CC', '#88CCFF'];
+function layerOf(sid) {
+  const sp = SPECIES[sid];
+  return sp ? sp.layer : -1;
+}
+function layersAdjacent(l1, l2) {
+  if (l1 === -1 || l2 === -1) return true; // -1 means all layers
+  return Math.abs(l1 - l2) <= 1;
+}
 
 // Pre-parse colours to RGB triples
 const COLOR_RGB = {};
@@ -334,8 +352,8 @@ const TRAITS = {
   deeproot:    { name: 'Deep Root',    icon: 'r', desc: '35% chance to survive being eaten',               eligible: t => t === 'producer' },
   regrowth:    { name: 'Rapid Regrowth',icon:'g', desc: 'When eaten, spreads to 2 adjacent empty tiles',   eligible: t => t === 'producer' },
   softshell:   { name: 'Soft Shell',   icon: 's', desc: 'Vulnerable phase — same-tier species can consume this creature', eligible: t => t === 'herbivore' },
-  coldadapt:   { name: 'Cold Adapted', icon: '❄', desc: 'Thrives in winter — no breed/speed penalty in cold seasons',     eligible: t => t !== 'producer' || t === 'producer' },
-  warmadapt:   { name: 'Warm Adapted', icon: '☀', desc: 'Thrives in summer — bonus breed rate in warm seasons',           eligible: t => t !== 'producer' || t === 'producer' },
+  coldadapt:   { name: 'Cold Adapted', icon: '❄', desc: 'Thrives in winter — no breed/speed penalty in cold seasons',     eligible: () => true },
+  warmadapt:   { name: 'Warm Adapted', icon: '☀', desc: 'Thrives in summer — bonus breed rate in warm seasons',           eligible: () => true },
   migratory:   { name: 'Migratory',    icon: '→', desc: 'Moves faster during seasonal transitions',                      eligible: t => t === 'megafauna' || t === 'consumer' || t === 'apex' },
   bulkfeeder:  { name: 'Bulk Feeder',  icon: 'B', desc: 'Eats up to 3 prey per tick in adjacent cells',                  eligible: t => t === 'megafauna' },
   echoloc:     { name: 'Echolocation', icon: '◎', desc: 'Detects prey within 4 tiles, moves toward nearest',             eligible: t => t === 'megafauna' },
@@ -344,6 +362,22 @@ const TRAITS = {
 const TRAIT_KEYS = Object.keys(TRAITS);
 const TRAIT_ACQUIRE_CHANCE = 0.12; // chance per evo cycle per eligible species
 const MAX_TRAITS_PER_SPECIES = 2;
+
+// Mutually exclusive trait groups — a species can only have one trait from each group
+const EXCLUSIVE_TRAIT_GROUPS = [
+  ['coldadapt', 'warmadapt'],       // temperature specialization
+  ['camouflage', 'bioluminesc'],    // can't hide and glow at the same time
+  ['shell', 'softshell'],           // armor vs vulnerability
+];
+function getExclusiveConflict(traitKey, currentTraits) {
+  for (const group of EXCLUSIVE_TRAIT_GROUPS) {
+    if (group.indexOf(traitKey) === -1) continue;
+    for (const t of currentTraits) {
+      if (t !== traitKey && group.indexOf(t) !== -1) return t;
+    }
+  }
+  return null;
+}
 const TRAIT_DEGRADE_GENS = 8;     // evo cycles of non-use before trait degrades
 const TRAIT_LOCAL_RADIUS = 8;     // trait acquisition only converts cells within this radius
 
@@ -754,9 +788,68 @@ function evolve() {
     crowding = popNow / Math.max(1, avgPop);
 
     // Score each eligible trait by how much it helps current survival needs
-    const available = TRAIT_KEYS.filter(k =>
-      TRAITS[k].eligible(sp.tier) && es.traits.indexOf(k) === -1
-    );
+    // Filter available traits: must be eligible, not already owned, and not excluded by existing trait
+    const available = TRAIT_KEYS.filter(k => {
+      if (!TRAITS[k].eligible(sp.tier)) return false;
+      if (es.traits.indexOf(k) !== -1) return false;
+      // Exclude if mutually exclusive conflict exists
+      if (getExclusiveConflict(k, es.traits)) return false;
+      return true;
+    });
+
+    // Divergent speciation: if there are exclusive pairs where neither is owned yet,
+    // and population is large enough, fork into two variants with opposing traits
+    if (available.length === 0 && nextSpeciesId <= 253 && dynamicSpeciesIds.length < MAX_DYNAMIC_SPECIES - 1 && popNow >= 40) {
+      for (const group of EXCLUSIVE_TRAIT_GROUPS) {
+        const eligible = group.filter(k => TRAITS[k].eligible(sp.tier) && es.traits.indexOf(k) === -1);
+        if (eligible.length >= 2 && Math.random() < 0.15) {
+          // Fork: create two new species, each with one of the exclusive traits
+          const traitA = eligible[0], traitB = eligible[1];
+          const forkTraits = [traitA, traitB];
+          let forked = false;
+          for (let fi = 0; fi < 2 && nextSpeciesId <= 254 && dynamicSpeciesIds.length < MAX_DYNAMIC_SPECIES; fi++) {
+            const fTrait = forkTraits[fi];
+            const varId = nextSpeciesId++;
+            const rootId = sp.rootAncestor || id;
+            const rootName = SPECIES[rootId] ? SPECIES[rootId].name : sp.name;
+            const lc = dynamicSpeciesIds.filter(d => { const dsp = SPECIES[d]; return dsp && (dsp.rootAncestor === rootId || dsp.parentId === rootId); }).length;
+            const varName = rootName + ' ' + toRoman(lc + 2);
+            const baseRGB = COLOR_RGB[id];
+            const sft = () => Math.round((Math.random() - 0.5) * 50);
+            const vr = clamp(baseRGB[0] + sft(), 20, 255), vg = clamp(baseRGB[1] + sft(), 20, 255), vb = clamp(baseRGB[2] + sft(), 20, 255);
+            const vHex = '#' + ((1 << 24) + (vr << 16) + (vg << 8) + vb).toString(16).slice(1).toUpperCase();
+            const varTraits = (es.traits ? es.traits.slice() : []);
+            varTraits.push(fTrait);
+            SPECIES[varId] = {
+              name: varName, color: vHex, tier: sp.tier, layer: sp.layer,
+              breedRate: es.breedRate, moveRate: es.moveRate || undefined,
+              hungerMax: es.hungerMax || undefined, eats: es.eats.length ? es.eats.slice() : undefined,
+              desc: sp.name + ' diverged with ' + TRAITS[fTrait].name + ' (gen ' + generation + ')',
+              parentId: id, rootAncestor: rootId, lineageDepth: (sp.lineageDepth || 0) + 1,
+            };
+            COLOR_RGB[varId] = [vr, vg, vb];
+            LIVING_IDS.push(varId);
+            dynamicSpeciesIds.push(varId);
+            evoStats[varId] = { breedRate: es.breedRate, moveRate: es.moveRate, hungerMax: es.hungerMax, eats: es.eats.slice(), traits: varTraits, traitAge: {} };
+            let evT = TIER_ORDER.find(t2 => t2.label === 'EVOLVED');
+            if (!evT) { evT = { label: 'EVOLVED', ids: [] }; TIER_ORDER.push(evT); }
+            evT.ids.push(varId);
+            for (const oid of LIVING_IDS) { if (oid === varId) continue; const oe = evoStats[oid]; if (oe && oe.eats && oe.eats.indexOf(id) !== -1 && oe.eats.indexOf(varId) === -1) oe.eats.push(varId); }
+            // Convert a fraction of parent cells
+            const convertFrac = 0.2;
+            const parentCells = [];
+            for (let ci = 0; ci < total; ci++) { if (species[ci] === id) parentCells.push(ci); }
+            for (let ci = parentCells.length - 1; ci > 0; ci--) { const cj = (Math.random() * (ci + 1)) | 0; const tmp = parentCells[ci]; parentCells[ci] = parentCells[cj]; parentCells[cj] = tmp; }
+            const convertTarget = (parentCells.length * convertFrac) | 0;
+            for (let ci = 0; ci < convertTarget; ci++) species[parentCells[ci]] = varId;
+            addEvoEvent(varName + ' diverged with ' + TRAITS[fTrait].name + '!');
+            forked = true;
+          }
+          if (forked) break; // only one divergent split per species per cycle
+        }
+      }
+      continue; // skip normal trait acquisition
+    }
     if (available.length === 0) continue;
 
     const weights = available.map(k => {
@@ -832,7 +925,7 @@ function evolve() {
         }
 
         SPECIES[varId] = {
-          name: varName, color: vHex, tier: sp.tier,
+          name: varName, color: vHex, tier: sp.tier, layer: sp.layer,
           breedRate: es.breedRate, moveRate: varMR || undefined,
           hungerMax: varHM || undefined, eats: es.eats.length ? es.eats.slice() : undefined,
           desc: sp.name + ' with ' + TRAITS[trait].name + ' (gen ' + generation + ')',
@@ -979,6 +1072,7 @@ function speciate() {
       name: newName,
       color: newHex,
       tier: sp.tier,
+      layer: sp.layer,
       breedRate: newBreedRate,
       moveRate: newMoveRate || undefined,
       hungerMax: newHungerMax || undefined,
@@ -1192,8 +1286,11 @@ function nicheShift() {
       for (let i = 0; i < preyCount; i++) newEats.push(shuffled[i]);
     }
 
+    // Assign layer based on new tier
+    const tierLayerMap = { herbivore: 1, consumer: 2, apex: 3, megafauna: 3 };
+    const newLayer = tierLayerMap[newTier] !== undefined ? tierLayerMap[newTier] : sp.layer;
     SPECIES[newId] = {
-      name: newName, color: newHex, tier: newTier,
+      name: newName, color: newHex, tier: newTier, layer: newLayer,
       breedRate: newBR, moveRate: newMR || undefined,
       hungerMax: newHM || undefined, eats: newEats.length ? newEats : undefined,
       desc: sp.name + ' shifted to ' + newTier + ' niche (gen ' + generation + ')',
@@ -1575,7 +1672,8 @@ function step() {
       continue;
     }
 
-    // 3. Eat: scan 8 neighbours for food
+    // 3. Eat: scan 8 neighbours for food (layer-aware)
+    const myLayer = sp.layer;
     const eats = es.eats;
     let ate = false;
     if (eats && eats.length) {
@@ -1586,7 +1684,7 @@ function step() {
         const ny = wrapY(cy + dir[1]);
         const ni = ny * cw + nx;
         const foodId = species[ni];
-        if (eats.indexOf(foodId) !== -1) {
+        if (eats.indexOf(foodId) !== -1 && layersAdjacent(myLayer, layerOf(foodId))) {
           // Camouflage: prey has 40% chance to evade
           const preyEs = evo(foodId);
           if (preyEs.traits && preyEs.traits.indexOf('camouflage') !== -1 && Math.random() < 0.4) continue;
@@ -1650,7 +1748,7 @@ function step() {
         const nSp = SPECIES[nSid];
         if (!nSp || !nSp.hungerMax) continue;
         const nEs = evo(nSid);
-        if (nEs.traits && nEs.traits.indexOf('softshell') !== -1 && nSp.tier === sp.tier) {
+        if (nEs.traits && nEs.traits.indexOf('softshell') !== -1 && nSp.tier === sp.tier && layersAdjacent(myLayer, nSp.layer)) {
           // Can eat this soft-shelled same-tier creature
           species[ni] = 0; hunger[ni] = 0; age[ni] = 0;
           hunger[idx] = Math.max(0, hunger[idx] - ((es.hungerMax * HUNGER_RESTORE_FRACTION) | 0));
@@ -1669,7 +1767,7 @@ function step() {
         const nx = wrapX(cx + dir[0]);
         const ny = wrapY(cy + dir[1]);
         const ni = ny * cw + nx;
-        if (eats.indexOf(species[ni]) !== -1) {
+        if (eats.indexOf(species[ni]) !== -1 && layersAdjacent(myLayer, layerOf(species[ni]))) {
           species[ni] = 0; hunger[ni] = 0; age[ni] = 0;
           hunger[idx] = Math.max(0, hunger[idx] - ((es.hungerMax * 0.3) | 0));
           processed[ni] = 1;
@@ -1704,7 +1802,7 @@ function step() {
         const ny = wrapY(cy + dir[1] * 2);
         const ni = ny * cw + nx;
         const foodId = species[ni];
-        if (eats.indexOf(foodId) !== -1) {
+        if (eats.indexOf(foodId) !== -1 && layersAdjacent(myLayer, layerOf(foodId))) {
           const preyEs = evo(foodId);
           if (preyEs.traits && preyEs.traits.indexOf('camouflage') !== -1 && Math.random() < 0.4) continue;
           if (preyEs.traits && preyEs.traits.indexOf('toxic') !== -1) hunger[idx] += 4;
@@ -1740,7 +1838,7 @@ function step() {
           const px = wrapX(cx + dx);
           const py = wrapY(cy + dy);
           const pi = py * cw + px;
-          if (eats.indexOf(species[pi]) !== -1 && !processed[pi]) {
+          if (eats.indexOf(species[pi]) !== -1 && !processed[pi] && layersAdjacent(myLayer, layerOf(species[pi]))) {
             // Move prey one step closer to this predator
             const stepX = dx > 0 ? -1 : dx < 0 ? 1 : 0;
             const stepY = dy > 0 ? -1 : dy < 0 ? 1 : 0;
@@ -1787,7 +1885,8 @@ function step() {
             const dist = dx * dx + dy * dy;
             if (dist > 16 || dist >= bestDist) continue;
             const px = wrapX(cx + dx), py = wrapY(cy + dy);
-            if (eats.indexOf(species[py * cw + px]) !== -1) {
+            const echoSid = species[py * cw + px];
+            if (eats.indexOf(echoSid) !== -1 && layersAdjacent(myLayer, layerOf(echoSid))) {
               bestDist = dist; bestDx = dx; bestDy = dy;
             }
           }
@@ -1988,7 +2087,9 @@ function selectType(id) {
     b.classList.toggle('active', parseInt(b.dataset.id) === id);
   });
   const sp = id < 0 ? DISASTERS[id] : SPECIES[id];
-  document.getElementById('info-text').textContent = sp.desc || '';
+  let desc = sp.desc || '';
+  if (sp.layer >= 0 && sp.layer < LAYER_NAMES.length) desc = '[' + LAYER_NAMES[sp.layer] + '] ' + desc;
+  document.getElementById('info-text').textContent = desc;
 }
 
 // Play/Pause
@@ -2275,7 +2376,8 @@ canvas.addEventListener('mousemove', function(e) {
   }
 
   if (sp && sp.tier && sp.tier !== 'none' && sp.tier !== 'transient' && sp.tier !== 'environment') {
-    html += '<div class="tt-stat">Tier: ' + sp.tier + '</div>';
+    const layerName = sp.layer >= 0 && sp.layer < LAYER_NAMES.length ? LAYER_NAMES[sp.layer] : 'All';
+    html += '<div class="tt-stat">Tier: ' + sp.tier + ' | Layer: <span style="color:' + (LAYER_COLORS[sp.layer] || '#7EE8FA') + '">' + layerName + '</span></div>';
     if (sp.hungerMax) {
       const es = evo(sid);
       html += '<div class="tt-stat">Hunger: ' + hunger[idx] + '/' + es.hungerMax + '</div>';
