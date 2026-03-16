@@ -85,7 +85,8 @@ canvas { cursor: crosshair; display: block; }
 #stats-list { flex: 1; overflow-y: auto; padding: 0 8px; }
 #stats-list::-webkit-scrollbar { width: 4px; }
 #stats-list::-webkit-scrollbar-thumb { background: #0C2D40; border-radius: 2px; }
-.stat-row { display: flex; justify-content: space-between; padding: 2px 0; font-size: 0.6rem; }
+.stat-row { display: flex; justify-content: space-between; padding: 2px 0; font-size: 0.6rem; cursor: pointer; border-radius: 2px; padding: 2px 4px; }
+.stat-row:hover { background: rgba(0,229,255,0.08); }
 .stat-name { opacity: 0.85; }
 .stat-count { color: #00E5FF; }
 #grid-config { padding: 8px; border-top: 1px solid #0C2D40; }
@@ -1399,6 +1400,7 @@ function wrapY(y) { return ((y % gridH) + gridH) % gridH; }
 const canvas = document.getElementById('grid-canvas');
 const ctx = canvas.getContext('2d');
 let imgData, imgPixels;
+let highlightSpecies = -1; // -1 = no highlight, otherwise species ID to highlight
 
 function initCanvas() {
   canvas.width = canvasW;
@@ -1435,6 +1437,13 @@ function render() {
         r = (r * f) | 0;
         g = (g * f) | 0;
         b = (b * f) | 0;
+      }
+
+      // Highlight mode: dim everything except the highlighted species
+      if (highlightSpecies >= 0 && sid !== highlightSpecies) {
+        r = (r * 0.15) | 0;
+        g = (g * 0.15) | 0;
+        b = (b * 0.15) | 0;
       }
 
       // Fill inner square, leaving gap on right and bottom edges
@@ -2102,7 +2111,7 @@ function updateStats() {
       if (id === 0) continue;
       const c = counts[id] || 0;
       if (c > 0 || (SPECIES[id].tier !== 'transient' && !SPECIES[id].parentId)) {
-        html += '<div class="stat-row"><span class="stat-name" style="color:' +
+        html += '<div class="stat-row" data-sid="' + id + '"><span class="stat-name" style="color:' +
           SPECIES[id].color + '">' + SPECIES[id].name +
           '</span><span class="stat-count">' + c + '</span></div>';
       }
@@ -2110,12 +2119,24 @@ function updateStats() {
   }
   // Show transient counts
   if (counts[3]) {
-    html += '<div class="stat-row"><span class="stat-name" style="color:#1C1410">Dead</span><span class="stat-count">' + counts[3] + '</span></div>';
+    html += '<div class="stat-row" data-sid="3"><span class="stat-name" style="color:#1C1410">Dead</span><span class="stat-count">' + counts[3] + '</span></div>';
   }
   if (counts[4]) {
-    html += '<div class="stat-row"><span class="stat-name" style="color:#2A1800">Oil</span><span class="stat-count">' + counts[4] + '</span></div>';
+    html += '<div class="stat-row" data-sid="4"><span class="stat-name" style="color:#2A1800">Oil</span><span class="stat-count">' + counts[4] + '</span></div>';
   }
   statsEl.innerHTML = html;
+
+  // Re-attach highlight listeners on stat rows
+  statsEl.querySelectorAll('.stat-row[data-sid]').forEach(row => {
+    row.addEventListener('mouseenter', function() {
+      highlightSpecies = parseInt(this.dataset.sid);
+      render();
+    });
+    row.addEventListener('mouseleave', function() {
+      highlightSpecies = -1;
+      render();
+    });
+  });
 
   // Update evolution log
   const evoEl = document.getElementById('evo-entries');
