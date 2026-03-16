@@ -333,6 +333,15 @@ const MAX_TRAITS_PER_SPECIES = 2;
 const TRAIT_DEGRADE_GENS = 8;     // evo cycles of non-use before trait degrades
 const TRAIT_LOCAL_RADIUS = 8;     // trait acquisition only converts cells within this radius
 
+// Niche shifting: animals can change ecological tier under sustained pressure
+const NICHE_SHIFT_MIN_DEPTH   = 2;    // must be at least this many speciations deep
+const NICHE_SHIFT_MIN_DRIFT   = 0.45; // stats must have drifted 45%+ from baseline
+const NICHE_SHIFT_CHANCE      = 0.12; // chance per eligible species per evo cycle
+// Tier promotion map: which tier can shift into which (only upward pressure shifts)
+const TIER_PROMOTE = { herbivore: 'consumer', consumer: 'apex', decomposer: 'herbivore' };
+// Self-predation: evolved variants can prey on siblings/parent in same lineage
+const SELF_PREDATION_CHANCE = 0.18;   // chance per evo cycle per eligible variant
+
 // Living species IDs (everything that evolves)
 const LIVING_IDS = [];
 for (const id in SPECIES) {
@@ -610,6 +619,55 @@ function evolve() {
       evoStats[winner].eats.push(id);
       addEvoEvent(SPECIES[winner].name + ' adapted to eat ' + sp.name + '!');
     }
+  }
+
+  // --- SELF-PREDATION: evolved variants can prey on siblings/parent in same lineage ---
+  for (const id of LIVING_IDS) {
+    const sp = SPECIES[id];
+    const es = evoStats[id];
+    if (!sp.hungerMax || !sp.parentId) continue; // must be an animal & an evolved variant
+    const popNow = now[id] || 0;
+    if (popNow < 10) continue;
+
+    if (Math.random() > SELF_PREDATION_CHANCE) continue;
+
+    // Find lineage relatives (same root ancestor) that this species doesn't already eat
+    const rootId = sp.rootAncestor || id;
+    const relatives = LIVING_IDS.filter(rid => {
+      if (rid === id) return false;
+      const rsp = SPECIES[rid];
+      if (!rsp) return false;
+      const rRoot = rsp.rootAncestor || rid;
+      return (rRoot === rootId || rid === rootId) && es.eats.indexOf(rid) === -1;
+    });
+    if (relatives.length === 0) continue;
+
+    // Prefer preying on relatives that are overpopulated or weaker (lower tier rank)
+    const tierRank = { producer: 0, herbivore: 1, consumer: 2, apex: 3, decomposer: 1 };
+    const myRank = tierRank[sp.tier] ?? 1;
+    const scored = relatives.map(rid => {
+      const rsp = SPECIES[rid];
+      const rRank = tierRank[rsp.tier] ?? 1;
+      const rPop = now[rid] || 0;
+      // Higher score = more likely target: prefer lower tier and higher population
+      let score = 1;
+      if (rRank < myRank) score += 2;       // prey on lower tier relatives
+      if (rRank === myRank) score += 0.5;    // same tier: competition
+      if (rPop > avgPop) score += 1.5;       // target abundant relatives
+      return { id: rid, score };
+    });
+
+    // Weighted random pick
+    const totalS = scored.reduce((a, s) => a + s.score, 0);
+    let r = Math.random() * totalS;
+    let target = scored[scored.length - 1].id;
+    for (const s of scored) {
+      r -= s.score;
+      if (r <= 0) { target = s.id; break; }
+    }
+
+    es.eats.push(target);
+    addEvoEvent(sp.name + ' now preys on ' + SPECIES[target].name + ' (lineage rivalry)!');
   }
 
   // --- PRESSURE-DRIVEN TRAIT ACQUISITION ---
@@ -914,6 +972,178 @@ function speciate() {
     }
 
     addEvoEvent(newName + ' split from ' + sp.name + '!');
+  }
+}
+
+// --- NICHE SHIFT: under sustained pressure, animals can jump ecological tier ---
+function nicheShift() {
+  if (dynamicSpeciesIds.length >= MAX_DYNAMIC_SPECIES || nextSpeciesId > 254) return;
+  if (popHistory.length < 3) return;
+
+  const now = popHistory[popHistory.length - 1];
+  const prev = popHistory[popHistory.length - 3];
+  const { predators, preyOf } = buildFoodWeb();
+
+  for (const id of LIVING_IDS) {
+    if (dynamicSpeciesIds.length >= MAX_DYNAMIC_SPECIES || nextSpeciesId > 254) break;
+    const sp = SPECIES[id];
+    if (!sp.hungerMax) continue; // must be an animal (not producer)
+    if (sp.tier === 'producer' || sp.tier === 'apex') continue; // producers can't shift, apex already at top
+
+    const depth = sp.lineageDepth || 0;
+    if (depth < NICHE_SHIFT_MIN_DEPTH) continue; // need evolutionary history
+
+    const es = evoStats[id];
+    const popNow = now[id] || 0;
+    if (popNow < 30) continue;
+
+    // Measure drift from baseline
+    let drift = 0, driftCount = 0;
+    if (sp.breedRate) { drift += Math.abs(es.breedRate - sp.breedRate) / sp.breedRate; driftCount++; }
+    if (sp.moveRate) { drift += Math.abs(es.moveRate - sp.moveRate) / sp.moveRate; driftCount++; }
+    if (sp.hungerMax) { drift += Math.abs(es.hungerMax - sp.hungerMax) / sp.hungerMax; driftCount++; }
+    const origEatsLen = sp.eats ? sp.eats.length : 0;
+    if (es.eats.length > origEatsLen) { drift += (es.eats.length - origEatsLen) * 0.3; driftCount++; }
+    if (driftCount === 0) continue;
+    drift /= driftCount;
+
+    if (drift < NICHE_SHIFT_MIN_DRIFT) continue;
+    if (Math.random() > NICHE_SHIFT_CHANCE) continue;
+
+    // Check if there's pressure driving the shift — food scarcity or heavy predation
+    let underPressure = false;
+    if (predators[id]) {
+      let predPop = 0;
+      for (const pid of predators[id]) predPop += (now[pid] || 0);
+      if (popNow > 0 && predPop / popNow > PRESSURE_HIGH * 0.7) underPressure = true;
+    }
+    if (preyOf[id] && preyOf[id].length > 0) {
+      let preyPop = 0;
+      for (const prey of preyOf[id]) preyPop += (now[prey] || 0);
+      if (popNow > 0 && preyPop < popNow * 0.8) underPressure = true;
+    }
+    const popPrev = prev[id] || 0;
+    const trend = popPrev > 0 ? (popNow - popPrev) / popPrev : 0;
+    if (trend < -0.15) underPressure = true;
+
+    if (!underPressure) continue;
+
+    // Shift tier!
+    const newTier = TIER_PROMOTE[sp.tier];
+    if (!newTier) continue;
+
+    // Create a new niche-shifted species
+    const newId = nextSpeciesId++;
+    const rootId = sp.rootAncestor || id;
+    const rootName = SPECIES[rootId] ? SPECIES[rootId].name : sp.name;
+    const lc = dynamicSpeciesIds.filter(d => {
+      const dsp = SPECIES[d];
+      return dsp && (dsp.rootAncestor === rootId || dsp.parentId === rootId || d === rootId);
+    }).length;
+    const newName = rootName + ' ' + toRoman(lc + 2);
+
+    // Color shift — larger shift to signal niche change
+    const baseRGB = COLOR_RGB[id];
+    const shift = () => Math.round((Math.random() - 0.5) * 100);
+    const nr = clamp(baseRGB[0] + shift(), 20, 255);
+    const ng = clamp(baseRGB[1] + shift(), 20, 255);
+    const nb = clamp(baseRGB[2] + shift(), 20, 255);
+    const newHex = '#' + ((1 << 24) + (nr << 16) + (ng << 8) + nb).toString(16).slice(1).toUpperCase();
+
+    // Adapt stats to new niche
+    let newBR = es.breedRate;
+    let newMR = es.moveRate;
+    let newHM = es.hungerMax;
+    let newEats = es.eats.slice();
+
+    if (newTier === 'consumer') {
+      // Herbivore→Consumer: faster, hunts other herbivores instead of plants
+      newMR = clamp(newMR * 1.3, 0.3, 0.95);
+      newBR = clamp(newBR * 0.7, 0.01, 0.1);
+      newHM = clamp(Math.round(newHM * 1.2), 12, 48);
+      // Diet: drop plants, gain herbivores it used to compete with
+      const herbivores = LIVING_IDS.filter(hid => {
+        const hsp = SPECIES[hid];
+        return hsp && hsp.tier === 'herbivore' && hid !== id;
+      });
+      newEats = [];
+      // Pick 1-3 herbivore prey
+      const shuffled = herbivores.slice();
+      for (let i = shuffled.length - 1; i > 0; i--) {
+        const j = (Math.random() * (i + 1)) | 0;
+        const tmp = shuffled[i]; shuffled[i] = shuffled[j]; shuffled[j] = tmp;
+      }
+      const preyCount = Math.min(shuffled.length, 1 + ((Math.random() * 2) | 0));
+      for (let i = 0; i < preyCount; i++) newEats.push(shuffled[i]);
+    } else if (newTier === 'apex') {
+      // Consumer→Apex: even faster, hunts consumers
+      newMR = clamp(newMR * 1.2, 0.5, 0.98);
+      newBR = clamp(newBR * 0.5, 0.005, 0.05);
+      newHM = clamp(Math.round(newHM * 1.3), 16, 64);
+      const consumers = LIVING_IDS.filter(cid => {
+        const csp = SPECIES[cid];
+        return csp && csp.tier === 'consumer' && cid !== id;
+      });
+      newEats = [];
+      const shuffled = consumers.slice();
+      for (let i = shuffled.length - 1; i > 0; i--) {
+        const j = (Math.random() * (i + 1)) | 0;
+        const tmp = shuffled[i]; shuffled[i] = shuffled[j]; shuffled[j] = tmp;
+      }
+      const preyCount = Math.min(shuffled.length, 1 + ((Math.random() * 3) | 0));
+      for (let i = 0; i < preyCount; i++) newEats.push(shuffled[i]);
+    } else if (newTier === 'herbivore') {
+      // Decomposer→Herbivore: start eating plants instead of dead
+      newMR = clamp(newMR * 1.1, 0.15, 0.7);
+      const producers = LIVING_IDS.filter(pid => {
+        const psp = SPECIES[pid];
+        return psp && psp.tier === 'producer';
+      });
+      newEats = [];
+      const shuffled = producers.slice();
+      for (let i = shuffled.length - 1; i > 0; i--) {
+        const j = (Math.random() * (i + 1)) | 0;
+        const tmp = shuffled[i]; shuffled[i] = shuffled[j]; shuffled[j] = tmp;
+      }
+      const preyCount = Math.min(shuffled.length, 1 + ((Math.random() * 2) | 0));
+      for (let i = 0; i < preyCount; i++) newEats.push(shuffled[i]);
+    }
+
+    SPECIES[newId] = {
+      name: newName, color: newHex, tier: newTier,
+      breedRate: newBR, moveRate: newMR || undefined,
+      hungerMax: newHM || undefined, eats: newEats.length ? newEats : undefined,
+      desc: sp.name + ' shifted to ' + newTier + ' niche (gen ' + generation + ')',
+      parentId: id, rootAncestor: rootId,
+      lineageDepth: (sp.lineageDepth || 0) + 1,
+    };
+    COLOR_RGB[newId] = [nr, ng, nb];
+    LIVING_IDS.push(newId);
+    dynamicSpeciesIds.push(newId);
+    evoStats[newId] = {
+      breedRate: newBR, moveRate: newMR, hungerMax: newHM,
+      eats: newEats.slice(), traits: es.traits ? es.traits.slice() : [], traitAge: {},
+    };
+    let evoTier = TIER_ORDER.find(t => t.label === 'EVOLVED');
+    if (!evoTier) { evoTier = { label: 'EVOLVED', ids: [] }; TIER_ORDER.push(evoTier); }
+    evoTier.ids.push(newId);
+
+    // Convert a portion of parent cells
+    const total = gridW * gridH;
+    const convertTarget = (popNow * 0.25) | 0;
+    const parentCells = [];
+    for (let i = 0; i < total; i++) { if (species[i] === id) parentCells.push(i); }
+    for (let i = parentCells.length - 1; i > 0; i--) {
+      const j = (Math.random() * (i + 1)) | 0;
+      const tmp = parentCells[i]; parentCells[i] = parentCells[j]; parentCells[j] = tmp;
+    }
+    let converted = 0;
+    for (let i = 0; i < parentCells.length && converted < convertTarget; i++) {
+      species[parentCells[i]] = newId;
+      converted++;
+    }
+
+    addEvoEvent(newName + ' shifted niche: ' + sp.tier + ' → ' + newTier + '!');
   }
 }
 
@@ -1390,6 +1620,7 @@ function step() {
     } else if (popHistory.length >= 3 && Math.random() < EVO_CHANCE_PER_GEN) {
       evolve();
       speciate();
+      nicheShift();
       lastEvoGen = generation;
       // Randomized cooldown before next evo event
       evoCooldown = EVO_COOLDOWN_MIN + ((Math.random() * (EVO_COOLDOWN_MAX - EVO_COOLDOWN_MIN)) | 0);
