@@ -102,7 +102,7 @@ canvas { cursor: crosshair; display: block; }
 #btn-evo { color: #DDBB44 !important; border-color: #DDBB44 !important; }
 #btn-evo:hover { background: rgba(221,187,68,0.12) !important; }
 #btn-evo.evo-active { border-color: #00FF88 !important; color: #00FF88 !important; background: rgba(0,255,136,0.12) !important; }
-#evo-log { padding: 0 8px 8px; border-top: 1px solid #0C2D40; max-height: 160px; overflow-y: auto; }
+#evo-log { padding: 0 8px 8px; overflow-y: auto; min-height: 40px; height: 140px; flex-shrink: 0; }
 #evo-log::-webkit-scrollbar { width: 4px; }
 #evo-log::-webkit-scrollbar-thumb { background: #0C2D40; border-radius: 2px; }
 #evo-log h2 {
@@ -110,6 +110,20 @@ canvas { cursor: crosshair; display: block; }
   text-align: center; padding: 6px 0 4px; color: #DDBB44; letter-spacing: 1px;
 }
 .evo-entry { font-size: 0.5rem; color: #DDBB44; padding: 1px 0; opacity: 0.85; line-height: 1.3; }
+#evo-resize {
+  height: 5px; cursor: ns-resize; background: transparent; border-top: 1px solid #0C2D40;
+  flex-shrink: 0; transition: background 0.15s;
+}
+#evo-resize:hover { background: rgba(0,229,255,0.15); }
+#cell-tooltip {
+  position: fixed; pointer-events: none; z-index: 999;
+  background: rgba(4,9,15,0.94); border: 1px solid #0C2D40; border-radius: 4px;
+  padding: 6px 8px; font-size: 0.6rem; color: #7EE8FA; display: none;
+  max-width: 200px; line-height: 1.4; backdrop-filter: blur(4px);
+}
+#cell-tooltip .tt-name { font-weight: bold; color: #00E5FF; font-size: 0.65rem; }
+#cell-tooltip .tt-stat { color: #4A7A8A; }
+#cell-tooltip .tt-trait { color: #DDBB44; font-style: italic; }
 .sp-btn.disaster { color: #FF6B6B; }
 .sp-btn.disaster:hover { border-color: #FF6B6B; }
 .sp-btn.disaster.active { border-color: #FF4400; background: rgba(255,68,0,0.1); }
@@ -156,6 +170,7 @@ canvas { cursor: crosshair; display: block; }
   <div id="right-panel">
     <h2>POPULATION</h2>
     <div id="stats-list"></div>
+    <div id="evo-resize"></div>
     <div id="evo-log">
       <h2>EVOLUTION</h2>
       <div id="evo-entries"></div>
@@ -171,6 +186,7 @@ canvas { cursor: crosshair; display: block; }
     </div>
   </div>
 </div>
+<div id="cell-tooltip"></div>
 
 <script>
 // ============================================================
@@ -260,6 +276,21 @@ const MAX_DYNAMIC_SPECIES  = 10;   // cap on total new species
 let nextSpeciesId = 100;           // dynamic IDs start at 100 (Uint8Array max = 255)
 let dynamicSpeciesIds = [];        // track which IDs are dynamically created
 
+// Novel trait definitions — species can evolve these adaptations
+const TRAITS = {
+  camouflage:  { name: 'Camouflage',   icon: '~', desc: 'Predators have 40% miss chance',           eligible: t => t !== 'producer' && t !== 'apex' },
+  toxic:       { name: 'Toxic',         icon: '!', desc: 'Predator takes hunger damage when eating', eligible: t => t === 'producer' || t === 'herbivore' || t === 'decomposer' },
+  schooling:   { name: 'Schooling',     icon: '#', desc: '+50% breed rate near 3+ same species',     eligible: t => t !== 'producer' && t !== 'apex' },
+  shell:       { name: 'Shell',         icon: '@', desc: '+40% hunger tolerance, -30% move speed',   eligible: t => t === 'herbivore' || t === 'consumer' },
+  ambush:      { name: 'Ambush',        icon: '^', desc: '2-tile attack range on cardinal axes',     eligible: t => t === 'consumer' || t === 'apex' },
+  symbiosis:   { name: 'Symbiosis',     icon: '+', desc: 'Heals hunger near producers',              eligible: t => t === 'herbivore' || t === 'decomposer' },
+  bioluminesc: { name: 'Bioluminescent',icon: '*', desc: 'Attracts prey within 3 tiles',             eligible: t => t === 'consumer' || t === 'apex' },
+  spore:       { name: 'Spore Burst',   icon: '%', desc: 'Can spread 2 tiles away',                  eligible: t => t === 'producer' },
+};
+const TRAIT_KEYS = Object.keys(TRAITS);
+const TRAIT_ACQUIRE_CHANCE = 0.12; // chance per evo cycle per eligible species
+const MAX_TRAITS_PER_SPECIES = 2;
+
 // Living species IDs (everything that evolves)
 const LIVING_IDS = [];
 for (const id in SPECIES) {
@@ -306,6 +337,7 @@ function initEvoStats() {
       moveRate:  sp.moveRate || 0,
       hungerMax: sp.hungerMax || 0,
       eats:      sp.eats ? sp.eats.slice() : [],
+      traits:    [],
     };
   }
   popHistory = [];
@@ -458,6 +490,36 @@ function evolve() {
       addEvoEvent(SPECIES[winner].name + ' adapted to eat ' + sp.name + '!');
     }
   }
+
+  // --- NOVEL TRAIT ACQUISITION ---
+  for (const id of LIVING_IDS) {
+    const sp = SPECIES[id];
+    const es = evoStats[id];
+    if (!es.traits) es.traits = [];
+    if (es.traits.length >= MAX_TRAITS_PER_SPECIES) continue;
+    const popNow = now[id] || 0;
+    if (popNow < 15) continue; // need viable population
+
+    if (Math.random() > TRAIT_ACQUIRE_CHANCE) continue;
+
+    // Pick a random eligible trait this species doesn't already have
+    const available = TRAIT_KEYS.filter(k =>
+      TRAITS[k].eligible(sp.tier) && es.traits.indexOf(k) === -1
+    );
+    if (available.length === 0) continue;
+    const trait = available[(Math.random() * available.length) | 0];
+    es.traits.push(trait);
+
+    // Apply stat modifications for shell trait immediately
+    if (trait === 'shell') {
+      const baseMR = sp.moveRate || 0;
+      const baseHM = sp.hungerMax || 0;
+      if (baseMR > 0) es.moveRate = clamp(es.moveRate * 0.7, 0.05, 0.98);
+      if (baseHM > 0) es.hungerMax = clamp(Math.round(es.hungerMax * 1.4), 8, 64);
+    }
+
+    addEvoEvent(sp.name + ' evolved ' + TRAITS[trait].name + '!');
+  }
 }
 
 // --- SPECIATION: fork a thriving, highly-drifted species into a new variant ---
@@ -546,12 +608,13 @@ function speciate() {
     LIVING_IDS.push(newId);
     dynamicSpeciesIds.push(newId);
 
-    // Add evoStats entry (starts at its own baseline)
+    // Add evoStats entry (starts at its own baseline, inherits traits)
     evoStats[newId] = {
       breedRate: newBreedRate,
       moveRate: newMoveRate,
       hungerMax: newHungerMax,
       eats: newEats.slice(),
+      traits: es.traits ? es.traits.slice() : [],
     };
 
     // Add to TIER_ORDER so it appears in stats
@@ -841,17 +904,24 @@ function step() {
 
     // Producer behaviour
     if (sp.tier === 'producer') {
-      if (Math.random() < evo(sid).breedRate) {
+      const pes = evo(sid);
+      if (Math.random() < pes.breedRate) {
+        // Spore Burst: can spread 2 tiles away
+        const maxDist = (pes.traits && pes.traits.indexOf('spore') !== -1) ? 2 : 1;
         const dirs = shuffleSmall([0,1,2,3]);
-        for (let d = 0; d < 4; d++) {
-          const dir = CARDINAL[dirs[d]];
-          const nx = wrapX(cx + dir[0]);
-          const ny = wrapY(cy + dir[1]);
-          const ni = ny * cw + nx;
-          if (species[ni] === 0) {
-            species[ni] = sid; hunger[ni] = 0; age[ni] = 0;
-            processed[ni] = 1;
-            break;
+        let bred = false;
+        for (let dist = 1; dist <= maxDist && !bred; dist++) {
+          for (let d = 0; d < 4; d++) {
+            const dir = CARDINAL[dirs[d]];
+            const nx = wrapX(cx + dir[0] * dist);
+            const ny = wrapY(cy + dir[1] * dist);
+            const ni = ny * cw + nx;
+            if (species[ni] === 0) {
+              species[ni] = sid; hunger[ni] = 0; age[ni] = 0;
+              processed[ni] = 1;
+              bred = true;
+              break;
+            }
           }
         }
       }
@@ -861,9 +931,26 @@ function step() {
     // Animal behaviour (herbivore, consumer, apex, decomposer)
     if (!sp.hungerMax) continue;
     const es = evo(sid);
+    const traits = es.traits || [];
+    const hasTrait = (t) => traits.indexOf(t) !== -1;
 
     // 1. Increment hunger
     hunger[idx]++;
+
+    // Symbiosis: heal hunger if adjacent to a producer
+    if (hasTrait('symbiosis') && hunger[idx] > 2) {
+      for (let n = 0; n < 4; n++) {
+        const dir = CARDINAL[n];
+        const nx = wrapX(cx + dir[0]);
+        const ny = wrapY(cy + dir[1]);
+        const ns = species[ny * cw + nx];
+        const nsp = SPECIES[ns];
+        if (nsp && nsp.tier === 'producer') {
+          hunger[idx] = Math.max(0, hunger[idx] - 2);
+          break;
+        }
+      }
+    }
 
     // 2. Starvation check
     if (hunger[idx] >= es.hungerMax) {
@@ -873,6 +960,7 @@ function step() {
 
     // 3. Eat: scan 8 neighbours for food
     const eats = es.eats;
+    let ate = false;
     if (eats && eats.length) {
       const nbrs = shuffleSmall([0,1,2,3,4,5,6,7]);
       for (let n = 0; n < 8; n++) {
@@ -882,10 +970,66 @@ function step() {
         const ni = ny * cw + nx;
         const foodId = species[ni];
         if (eats.indexOf(foodId) !== -1) {
+          // Camouflage: prey has 40% chance to evade
+          const preyEs = evo(foodId);
+          if (preyEs.traits && preyEs.traits.indexOf('camouflage') !== -1 && Math.random() < 0.4) continue;
+          // Toxic: predator takes hunger damage
+          if (preyEs.traits && preyEs.traits.indexOf('toxic') !== -1) {
+            hunger[idx] += 4;
+          }
           species[ni] = 0; hunger[ni] = 0; age[ni] = 0;
           hunger[idx] = Math.max(0, hunger[idx] - ((es.hungerMax * HUNGER_RESTORE_FRACTION) | 0));
           processed[ni] = 1;
+          ate = true;
           break;
+        }
+      }
+    }
+
+    // Ambush: if didn't eat normally, check 2-tile range on cardinal axes
+    if (!ate && hasTrait('ambush') && eats && eats.length) {
+      for (let d = 0; d < 4; d++) {
+        const dir = CARDINAL[d];
+        const nx = wrapX(cx + dir[0] * 2);
+        const ny = wrapY(cy + dir[1] * 2);
+        const ni = ny * cw + nx;
+        const foodId = species[ni];
+        if (eats.indexOf(foodId) !== -1) {
+          const preyEs = evo(foodId);
+          if (preyEs.traits && preyEs.traits.indexOf('camouflage') !== -1 && Math.random() < 0.4) continue;
+          if (preyEs.traits && preyEs.traits.indexOf('toxic') !== -1) hunger[idx] += 4;
+          species[ni] = 0; hunger[ni] = 0; age[ni] = 0;
+          hunger[idx] = Math.max(0, hunger[idx] - ((es.hungerMax * HUNGER_RESTORE_FRACTION) | 0));
+          processed[ni] = 1;
+          ate = true;
+          break;
+        }
+      }
+    }
+
+    // Bioluminescent: attract prey within 3 tiles toward self
+    if (hasTrait('bioluminesc') && eats && eats.length && Math.random() < 0.3) {
+      for (let dy = -3; dy <= 3; dy++) {
+        for (let dx = -3; dx <= 3; dx++) {
+          if (dx === 0 && dy === 0) continue;
+          if (dx * dx + dy * dy > 9) continue;
+          const px = wrapX(cx + dx);
+          const py = wrapY(cy + dy);
+          const pi = py * cw + px;
+          if (eats.indexOf(species[pi]) !== -1 && !processed[pi]) {
+            // Move prey one step closer to this predator
+            const stepX = dx > 0 ? -1 : dx < 0 ? 1 : 0;
+            const stepY = dy > 0 ? -1 : dy < 0 ? 1 : 0;
+            const tnx = wrapX(px + stepX);
+            const tny = wrapY(py + stepY);
+            const tni = tny * cw + tnx;
+            if (species[tni] === 0) {
+              species[tni] = species[pi]; hunger[tni] = hunger[pi]; age[tni] = age[pi];
+              species[pi] = 0; hunger[pi] = 0; age[pi] = 0;
+              processed[tni] = 1;
+            }
+            break;
+          }
         }
       }
     }
@@ -926,7 +1070,18 @@ function step() {
     }
 
     // 6. Breed
-    if (Math.random() < es.breedRate) {
+    // Schooling: boost breed rate if 3+ same species adjacent
+    let breedRate = es.breedRate;
+    if (hasTrait('schooling')) {
+      let sameCount = 0;
+      for (let n = 0; n < 8; n++) {
+        const dir = NEIGHBOURS_8[n];
+        const ni = wrapY(cy + dir[1]) * cw + wrapX(cx + dir[0]);
+        if (species[ni] === sid) sameCount++;
+      }
+      if (sameCount >= 3) breedRate *= 1.5;
+    }
+    if (Math.random() < breedRate) {
       const nbrs = shuffleSmall([0,1,2,3,4,5,6,7]);
       for (let n = 0; n < 8; n++) {
         const dir = NEIGHBOURS_8[nbrs[n]];
@@ -1310,6 +1465,113 @@ canvas.addEventListener('touchmove', function(e) {
   paintAt(x, y);
 }, { passive: false });
 canvas.addEventListener('touchend', function() { painting = false; });
+
+// ============================================================
+// 7b. CELL TOOLTIP — mouseover species info
+// ============================================================
+const tooltip = document.getElementById('cell-tooltip');
+let tooltipVisible = false;
+
+canvas.addEventListener('mousemove', function(e) {
+  if (painting) {
+    if (tooltipVisible) { tooltip.style.display = 'none'; tooltipVisible = false; }
+    return;
+  }
+  const [px, py] = getCanvasCoords(e);
+  const cellX = (px / CELL_SIZE) | 0;
+  const cellY = (py / CELL_SIZE) | 0;
+  if (cellX < 0 || cellX >= gridW || cellY < 0 || cellY >= gridH) {
+    tooltip.style.display = 'none'; tooltipVisible = false;
+    return;
+  }
+  const idx = cellY * gridW + cellX;
+  const sid = species[idx];
+  const curDir = currents[idx];
+
+  if (sid === 0 && !curDir) {
+    tooltip.style.display = 'none'; tooltipVisible = false;
+    return;
+  }
+
+  const sp = SPECIES[sid];
+  let html = '<div class="tt-name" style="color:' + (sp ? sp.color : '#7EE8FA') + '">' + (sp ? sp.name : 'Empty') + '</div>';
+
+  if (curDir) {
+    const dirNames = ['', 'North', 'East', 'South', 'West'];
+    html += '<div class="tt-stat">Current: ' + dirNames[curDir] + '</div>';
+  }
+
+  if (sp && sp.tier && sp.tier !== 'none' && sp.tier !== 'transient' && sp.tier !== 'environment') {
+    html += '<div class="tt-stat">Tier: ' + sp.tier + '</div>';
+    if (sp.hungerMax) {
+      const es = evo(sid);
+      html += '<div class="tt-stat">Hunger: ' + hunger[idx] + '/' + es.hungerMax + '</div>';
+      html += '<div class="tt-stat">Speed: ' + (es.moveRate * 100).toFixed(0) + '% | Breed: ' + (es.breedRate * 100).toFixed(1) + '%</div>';
+      if (es.eats && es.eats.length) {
+        const foodNames = es.eats.map(fid => SPECIES[fid] ? SPECIES[fid].name : '?').join(', ');
+        html += '<div class="tt-stat">Eats: ' + foodNames + '</div>';
+      }
+      // Show traits
+      if (es.traits && es.traits.length > 0) {
+        const traitStr = es.traits.map(t => TRAITS[t] ? TRAITS[t].icon + ' ' + TRAITS[t].name : t).join(', ');
+        html += '<div class="tt-trait">Traits: ' + traitStr + '</div>';
+      }
+    } else if (sp.breedRate) {
+      const es = evo(sid);
+      html += '<div class="tt-stat">Breed: ' + (es.breedRate * 100).toFixed(1) + '%</div>';
+      if (es.traits && es.traits.length > 0) {
+        const traitStr = es.traits.map(t => TRAITS[t] ? TRAITS[t].icon + ' ' + TRAITS[t].name : t).join(', ');
+        html += '<div class="tt-trait">Traits: ' + traitStr + '</div>';
+      }
+    }
+    if (sp.parentId !== undefined) {
+      html += '<div class="tt-stat" style="color:#DDBB44;">Evolved from ' + SPECIES[sp.parentId].name + '</div>';
+    }
+  }
+  if (sp && sp.desc) {
+    html += '<div class="tt-stat" style="opacity:0.6;margin-top:2px;">' + sp.desc + '</div>';
+  }
+
+  tooltip.innerHTML = html;
+  tooltip.style.display = 'block';
+  tooltipVisible = true;
+  // Position near mouse
+  const tx = e.clientX + 12;
+  const ty = e.clientY + 12;
+  tooltip.style.left = Math.min(tx, window.innerWidth - 210) + 'px';
+  tooltip.style.top = Math.min(ty, window.innerHeight - 120) + 'px';
+});
+
+canvas.addEventListener('mouseleave', function() {
+  tooltip.style.display = 'none';
+  tooltipVisible = false;
+});
+
+// ============================================================
+// 7c. EVOLUTION LOG RESIZE
+// ============================================================
+(function() {
+  const resizeBar = document.getElementById('evo-resize');
+  const evoLogEl = document.getElementById('evo-log');
+  let resizing = false;
+  let startY = 0;
+  let startH = 0;
+
+  resizeBar.addEventListener('mousedown', function(e) {
+    resizing = true;
+    startY = e.clientY;
+    startH = evoLogEl.offsetHeight;
+    e.preventDefault();
+  });
+  window.addEventListener('mousemove', function(e) {
+    if (!resizing) return;
+    // Dragging up = increase height (startY - clientY)
+    const delta = startY - e.clientY;
+    const newH = Math.max(40, Math.min(400, startH + delta));
+    evoLogEl.style.height = newH + 'px';
+  });
+  window.addEventListener('mouseup', function() { resizing = false; });
+})();
 
 // ============================================================
 // 8. SEED
