@@ -299,6 +299,9 @@ const DEAD_DECAY_AGE = 14;
 const DEAD_FOSSILIZE_AGE = 120; // dead cells become rock after this many ticks if uneaten
 const OIL_SPREAD_RATE = 0.06;
 const OIL_DECAY_AGE = 40;
+const ICE_THAW_AGE = 60;        // ice melts after this many ticks
+const TOXIC_BLOOM_SPREAD = 0.08; // spread chance per tick
+const TOXIC_BLOOM_DECAY = 50;   // ticks before toxic bloom fades
 const HUNGER_RESTORE_FRACTION = 0.65;
 // Metabolic scaling: chance of hunger incrementing per tick (lower = slower metabolism)
 const METABOLISM = { herbivore: 1.0, consumer: 0.8, apex: 0.5, megafauna: 0.35, decomposer: 0.9 };
@@ -313,6 +316,8 @@ const SPECIES = {
   2:  { name: 'Current',        color: '#003D88', tier: 'environment', layer: -1, desc: 'Drag to paint — sweeps creatures in drag direction' },
   3:  { name: 'Dead',           color: '#1C1410', tier: 'transient',   layer: -1, desc: 'Decays to empty after 14 ticks' },
   4:  { name: 'Oil',            color: '#2A1800', tier: 'transient',   layer: 3, desc: 'Toxic sludge — spreads, kills life, then decays' },
+  5:  { name: 'Ice',            color: '#AADDFF', tier: 'transient',   layer: -1, desc: 'Frozen water — blocks movement, thaws over time' },
+  6:  { name: 'Toxic Bloom',    color: '#99FF00', tier: 'transient',   layer: 1, desc: 'Poisonous algae — damages non-toxic species, spreads' },
   10: { name: 'Phytoplankton',  color: '#00FF88', tier: 'producer',    layer: 1, breedRate: 0.13, desc: 'Fast-spreading base producer' },
   11: { name: 'Seaweed',        color: '#00CC44', tier: 'producer',    layer: 0, breedRate: 0.04, desc: 'Slow-growing plant, food for snails' },
   12: { name: 'Coral',          color: '#FF6EC7', tier: 'producer',    layer: 0, breedRate: 0.02, desc: 'Rare reef-builder, very slow growth' },
@@ -442,6 +447,9 @@ const DISASTERS = {
   '-2': { name: 'Oil Spill', color: '#2A1800', desc: 'Toxic sludge that spreads, kills, and slowly decays' },
   '-3': { name: 'Heatwave',  color: '#FF8800', desc: 'Kills all animals in radius — plants survive' },
   '-4': { name: 'Red Tide',  color: '#CC0033', desc: 'Algal bloom floods area — suffocates all animals' },
+  '-5': { name: 'Whirlpool', color: '#0088CC', desc: 'Vortex pulls creatures inward — Shell/Armored/DeepRoot resist' },
+  '-6': { name: 'Ice Age',   color: '#AADDFF', desc: 'Freezing wave — Cold Adapted survive, ice thaws over time' },
+  '-7': { name: 'Toxic Bloom',color:'#99FF00', desc: 'Poison algae — Toxic species immune & thrive, spreads and decays' },
 };
 
 // ============================================================
@@ -1868,6 +1876,55 @@ function step() {
       continue;
     }
 
+    // Ice: thaw over time
+    if (sid === 5) {
+      age[idx]++;
+      if (age[idx] >= ICE_THAW_AGE) {
+        species[idx] = 0; hunger[idx] = 0; age[idx] = 0;
+      }
+      continue;
+    }
+
+    // Toxic Bloom: spread, damage neighbours, decay
+    if (sid === 6) {
+      age[idx]++;
+      if (age[idx] >= TOXIC_BLOOM_DECAY) {
+        species[idx] = 0; hunger[idx] = 0; age[idx] = 0;
+        continue;
+      }
+      const tdirs = shuffleSmall([0,1,2,3]);
+      for (let d = 0; d < 4; d++) {
+        const dir = CARDINAL[tdirs[d]];
+        const nx = wrapX(cx + dir[0]);
+        const ny = wrapY(cy + dir[1]);
+        const ni = ny * cw + nx;
+        const nSid = species[ni];
+        if (nSid === 0 || nSid === 1 || nSid === 5 || nSid === 6) continue;
+        const nSp = SPECIES[nSid];
+        if (!nSp) continue;
+        // Toxic trait species are immune
+        const nTraits = evoStats[nSid] ? evoStats[nSid].traits || [] : [];
+        if (nTraits.indexOf('toxic') !== -1) continue;
+        // Biofilm clusters resist
+        if (nTraits.indexOf('biofilm') !== -1 && Math.random() < 0.35) continue;
+        if (Math.random() < TOXIC_BLOOM_SPREAD) {
+          if (nSp.hungerMax) {
+            // Animals: take hunger damage, die if starving
+            hunger[ni] += 8;
+            if (hunger[ni] >= (evoStats[nSid] ? evoStats[nSid].hungerMax : nSp.hungerMax)) {
+              species[ni] = 3; hunger[ni] = 0; age[ni] = 0;
+            }
+          } else {
+            // Plants: replaced by toxic bloom
+            species[ni] = 6; hunger[ni] = 0; age[ni] = 0;
+            processed[ni] = 1;
+          }
+          break;
+        }
+      }
+      continue;
+    }
+
     // Producer behaviour
     if (sp.tier === 'producer') {
       const pes = evo(sid);
@@ -2659,6 +2716,12 @@ function updateStats() {
   if (counts[4]) {
     html += '<div class="stat-row" data-sid="4"><span class="stat-name" style="color:#2A1800">Oil</span><span class="stat-count">' + counts[4] + '</span></div>';
   }
+  if (counts[5]) {
+    html += '<div class="stat-row" data-sid="5"><span class="stat-name" style="color:#AADDFF">Ice</span><span class="stat-count">' + counts[5] + '</span></div>';
+  }
+  if (counts[6]) {
+    html += '<div class="stat-row" data-sid="6"><span class="stat-name" style="color:#99FF00">Toxic Bloom</span><span class="stat-count">' + counts[6] + '</span></div>';
+  }
   statsEl.innerHTML = html;
 
   // Re-attach highlight listeners on stat rows
@@ -2899,69 +2962,212 @@ let shockwaves = []; // active shockwave animations
 function startShockwave(cx, cy, maxRadius) {
   shockwaves.push({
     cx, cy, maxRadius: maxRadius * 1.3,
-    radius: 0, startTime: performance.now(), duration: 600
+    startTime: performance.now(), duration: 600
   });
-  if (shockwaves.length === 1) requestAnimationFrame(drawShockwaves);
+  if (shockwaves.length === 1 && whirlpools.length === 0 && iceWaves.length === 0 && toxicPulses.length === 0) {
+    requestAnimationFrame(drawAllEffects);
+  }
 }
 
-function drawShockwaves(now) {
-  if (shockwaves.length === 0) return;
-  render(); // redraw base grid
-
-  for (let i = shockwaves.length - 1; i >= 0; i--) {
-    const sw = shockwaves[i];
-    const elapsed = now - sw.startTime;
-    const t = Math.min(1, elapsed / sw.duration);
-
-    // Eased expansion (starts fast, decelerates)
-    const eased = 1 - (1 - t) * (1 - t);
-    const radius = eased * sw.maxRadius;
-
-    // Fade out over time
-    const alpha = 1 - t;
-
-    // Outer shockwave ring (bright white-orange)
-    const ringWidth = Math.max(2, (1 - t) * 8);
-    ctx.beginPath();
-    ctx.arc(sw.cx, sw.cy, radius, 0, Math.PI * 2);
-    ctx.strokeStyle = `rgba(255, 200, 80, ${alpha * 0.9})`;
-    ctx.lineWidth = ringWidth;
-    ctx.stroke();
-
-    // Inner glow ring
-    ctx.beginPath();
-    ctx.arc(sw.cx, sw.cy, radius * 0.85, 0, Math.PI * 2);
-    ctx.strokeStyle = `rgba(255, 100, 20, ${alpha * 0.6})`;
-    ctx.lineWidth = ringWidth * 0.6;
-    ctx.stroke();
-
-    // Flash fill at the center (fades quickly)
-    if (t < 0.3) {
-      const flashAlpha = (1 - t / 0.3) * 0.5;
-      const grad = ctx.createRadialGradient(sw.cx, sw.cy, 0, sw.cx, sw.cy, radius * 0.6);
-      grad.addColorStop(0, `rgba(255, 255, 200, ${flashAlpha})`);
-      grad.addColorStop(0.5, `rgba(255, 120, 20, ${flashAlpha * 0.5})`);
-      grad.addColorStop(1, `rgba(255, 68, 0, 0)`);
-      ctx.fillStyle = grad;
+// Whirlpool animation
+let whirlpools = [];
+function startWhirlpool(cx, cy, maxRadius) {
+  whirlpools.push({ cx, cy, maxRadius, startTime: performance.now(), duration: 900 });
+  if (whirlpools.length === 1 && shockwaves.length === 0) requestAnimationFrame(drawAllEffects);
+}
+function drawWhirlpools(now) {
+  for (let i = whirlpools.length - 1; i >= 0; i--) {
+    const wp = whirlpools[i];
+    const t = Math.min(1, (now - wp.startTime) / wp.duration);
+    const alpha = (1 - t) * 0.8;
+    const rotation = t * Math.PI * 6; // 3 full spins
+    // Draw spiral arms
+    for (let arm = 0; arm < 3; arm++) {
+      const armOffset = (arm / 3) * Math.PI * 2;
       ctx.beginPath();
-      ctx.arc(sw.cx, sw.cy, radius * 0.6, 0, Math.PI * 2);
-      ctx.fill();
-    }
-
-    // Outer haze
-    if (t > 0.2 && t < 0.9) {
-      const hazeAlpha = Math.sin((t - 0.2) / 0.7 * Math.PI) * 0.15;
-      ctx.beginPath();
-      ctx.arc(sw.cx, sw.cy, radius * 1.1, 0, Math.PI * 2);
-      ctx.strokeStyle = `rgba(255, 150, 50, ${hazeAlpha})`;
-      ctx.lineWidth = 2;
+      for (let s = 0; s < 40; s++) {
+        const frac = s / 40;
+        const r = frac * wp.maxRadius * (1 - t * 0.5);
+        const angle = rotation + armOffset + frac * Math.PI * 3;
+        const px = wp.cx + Math.cos(angle) * r;
+        const py = wp.cy + Math.sin(angle) * r;
+        if (s === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+      }
+      ctx.strokeStyle = `rgba(0, 180, 255, ${alpha * (1 - t * 0.3)})`;
+      ctx.lineWidth = Math.max(1, (1 - t) * 4);
       ctx.stroke();
     }
-
-    if (t >= 1) shockwaves.splice(i, 1);
+    // Center vortex glow
+    if (t < 0.7) {
+      const grad = ctx.createRadialGradient(wp.cx, wp.cy, 0, wp.cx, wp.cy, wp.maxRadius * 0.3);
+      grad.addColorStop(0, `rgba(0, 200, 255, ${(1 - t / 0.7) * 0.4})`);
+      grad.addColorStop(1, 'rgba(0, 100, 200, 0)');
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.arc(wp.cx, wp.cy, wp.maxRadius * 0.3, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    if (t >= 1) whirlpools.splice(i, 1);
   }
+}
 
-  if (shockwaves.length > 0) requestAnimationFrame(drawShockwaves);
+// Ice wave animation
+let iceWaves = [];
+function startIceWave(cx, cy, maxRadius) {
+  iceWaves.push({ cx, cy, maxRadius: maxRadius * 1.2, startTime: performance.now(), duration: 800 });
+  if (iceWaves.length === 1 && shockwaves.length === 0 && whirlpools.length === 0) requestAnimationFrame(drawAllEffects);
+}
+function drawIceWaves(now) {
+  for (let i = iceWaves.length - 1; i >= 0; i--) {
+    const iw = iceWaves[i];
+    const t = Math.min(1, (now - iw.startTime) / iw.duration);
+    const eased = 1 - (1 - t) * (1 - t);
+    const radius = eased * iw.maxRadius;
+    const alpha = 1 - t;
+    // Expanding frost ring
+    ctx.beginPath();
+    ctx.arc(iw.cx, iw.cy, radius, 0, Math.PI * 2);
+    ctx.strokeStyle = `rgba(170, 220, 255, ${alpha * 0.9})`;
+    ctx.lineWidth = Math.max(2, (1 - t) * 10);
+    ctx.stroke();
+    // Inner crystalline ring
+    ctx.beginPath();
+    ctx.arc(iw.cx, iw.cy, radius * 0.7, 0, Math.PI * 2);
+    ctx.strokeStyle = `rgba(200, 240, 255, ${alpha * 0.5})`;
+    ctx.lineWidth = Math.max(1, (1 - t) * 5);
+    ctx.stroke();
+    // Central flash
+    if (t < 0.25) {
+      const flashAlpha = (1 - t / 0.25) * 0.6;
+      const grad = ctx.createRadialGradient(iw.cx, iw.cy, 0, iw.cx, iw.cy, radius * 0.5);
+      grad.addColorStop(0, `rgba(220, 240, 255, ${flashAlpha})`);
+      grad.addColorStop(0.6, `rgba(150, 200, 255, ${flashAlpha * 0.4})`);
+      grad.addColorStop(1, 'rgba(100, 180, 255, 0)');
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.arc(iw.cx, iw.cy, radius * 0.5, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    // Frost particle sparkles
+    if (t < 0.8) {
+      for (let p = 0; p < 12; p++) {
+        const angle = (p / 12) * Math.PI * 2 + t * 2;
+        const pr = radius * (0.8 + Math.sin(p * 3 + t * 10) * 0.2);
+        const px = iw.cx + Math.cos(angle) * pr;
+        const py = iw.cy + Math.sin(angle) * pr;
+        ctx.fillStyle = `rgba(255, 255, 255, ${alpha * 0.7})`;
+        ctx.fillRect(px - 1, py - 1, 2, 2);
+      }
+    }
+    if (t >= 1) iceWaves.splice(i, 1);
+  }
+}
+
+// Toxic pulse animation
+let toxicPulses = [];
+function startToxicPulse(cx, cy, maxRadius) {
+  toxicPulses.push({ cx, cy, maxRadius: maxRadius * 1.2, startTime: performance.now(), duration: 700 });
+  if (toxicPulses.length === 1 && shockwaves.length === 0 && whirlpools.length === 0 && iceWaves.length === 0) requestAnimationFrame(drawAllEffects);
+}
+function drawToxicPulses(now) {
+  for (let i = toxicPulses.length - 1; i >= 0; i--) {
+    const tp = toxicPulses[i];
+    const t = Math.min(1, (now - tp.startTime) / tp.duration);
+    const eased = 1 - (1 - t) * (1 - t);
+    const radius = eased * tp.maxRadius;
+    const alpha = 1 - t;
+    // Expanding toxic ring
+    ctx.beginPath();
+    ctx.arc(tp.cx, tp.cy, radius, 0, Math.PI * 2);
+    ctx.strokeStyle = `rgba(150, 255, 0, ${alpha * 0.8})`;
+    ctx.lineWidth = Math.max(2, (1 - t) * 8);
+    ctx.stroke();
+    // Inner sickly glow
+    ctx.beginPath();
+    ctx.arc(tp.cx, tp.cy, radius * 0.6, 0, Math.PI * 2);
+    ctx.strokeStyle = `rgba(200, 255, 50, ${alpha * 0.4})`;
+    ctx.lineWidth = Math.max(1, (1 - t) * 4);
+    ctx.stroke();
+    // Center toxic cloud
+    if (t < 0.4) {
+      const grad = ctx.createRadialGradient(tp.cx, tp.cy, 0, tp.cx, tp.cy, radius * 0.5);
+      grad.addColorStop(0, `rgba(150, 255, 0, ${(1 - t / 0.4) * 0.4})`);
+      grad.addColorStop(0.7, `rgba(100, 200, 0, ${(1 - t / 0.4) * 0.2})`);
+      grad.addColorStop(1, 'rgba(50, 150, 0, 0)');
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.arc(tp.cx, tp.cy, radius * 0.5, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    // Floating toxic particles
+    if (t < 0.8) {
+      for (let p = 0; p < 8; p++) {
+        const angle = (p / 8) * Math.PI * 2 + t * 4;
+        const pr = radius * (0.5 + Math.sin(p * 5 + t * 8) * 0.4);
+        const px = tp.cx + Math.cos(angle) * pr;
+        const py = tp.cy + Math.sin(angle) * pr;
+        ctx.fillStyle = `rgba(180, 255, 0, ${alpha * 0.6})`;
+        ctx.beginPath();
+        ctx.arc(px, py, 2, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+    if (t >= 1) toxicPulses.splice(i, 1);
+  }
+}
+
+// Unified animation loop for all effects
+function drawAllEffects(now) {
+  const anyActive = shockwaves.length || whirlpools.length || iceWaves.length || toxicPulses.length;
+  if (!anyActive) return;
+  render();
+  if (shockwaves.length) {
+    for (let i = shockwaves.length - 1; i >= 0; i--) {
+      const sw = shockwaves[i];
+      const elapsed = now - sw.startTime;
+      const t = Math.min(1, elapsed / sw.duration);
+      const eased = 1 - (1 - t) * (1 - t);
+      const radius = eased * sw.maxRadius;
+      const alpha = 1 - t;
+      const ringWidth = Math.max(2, (1 - t) * 8);
+      ctx.beginPath();
+      ctx.arc(sw.cx, sw.cy, radius, 0, Math.PI * 2);
+      ctx.strokeStyle = `rgba(255, 200, 80, ${alpha * 0.9})`;
+      ctx.lineWidth = ringWidth;
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(sw.cx, sw.cy, radius * 0.85, 0, Math.PI * 2);
+      ctx.strokeStyle = `rgba(255, 100, 20, ${alpha * 0.6})`;
+      ctx.lineWidth = ringWidth * 0.6;
+      ctx.stroke();
+      if (t < 0.3) {
+        const flashAlpha = (1 - t / 0.3) * 0.5;
+        const grad = ctx.createRadialGradient(sw.cx, sw.cy, 0, sw.cx, sw.cy, radius * 0.6);
+        grad.addColorStop(0, `rgba(255, 255, 200, ${flashAlpha})`);
+        grad.addColorStop(0.5, `rgba(255, 120, 20, ${flashAlpha * 0.5})`);
+        grad.addColorStop(1, `rgba(255, 68, 0, 0)`);
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.arc(sw.cx, sw.cy, radius * 0.6, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      if (t > 0.2 && t < 0.9) {
+        const hazeAlpha = Math.sin((t - 0.2) / 0.7 * Math.PI) * 0.15;
+        ctx.beginPath();
+        ctx.arc(sw.cx, sw.cy, radius * 1.1, 0, Math.PI * 2);
+        ctx.strokeStyle = `rgba(255, 150, 50, ${hazeAlpha})`;
+        ctx.lineWidth = 2;
+        ctx.stroke();
+      }
+      if (t >= 1) shockwaves.splice(i, 1);
+    }
+  }
+  drawWhirlpools(now);
+  drawIceWaves(now);
+  drawToxicPulses(now);
+  if (shockwaves.length || whirlpools.length || iceWaves.length || toxicPulses.length) {
+    requestAnimationFrame(drawAllEffects);
+  }
 }
 
 function triggerDisaster(canvasX, canvasY) {
@@ -3002,6 +3208,7 @@ function triggerDisaster(canvasX, canvasY) {
     }
   } else if (selectedType === -3) {
     // HEATWAVE — kill all animals, leave plants and environment
+    // Warm Adapted species survive; Cold Adapted extra vulnerable; Shell/Armored get a chance
     for (let dy = -r; dy <= r; dy++) {
       for (let dx = -r; dx <= r; dx++) {
         if (dx * dx + dy * dy > r2) continue;
@@ -3011,13 +3218,18 @@ function triggerDisaster(canvasX, canvasY) {
         const sid = species[idx];
         const sp = SPECIES[sid];
         if (sp && sp.hungerMax) {
-          // It's an animal — kill it
+          const traits = evoStats[sid] ? evoStats[sid].traits || [] : [];
+          if (traits.indexOf('warmadapt') !== -1) continue; // heat-loving — immune
+          if (traits.indexOf('shell') !== -1 && Math.random() < 0.5) continue;
+          if (traits.indexOf('armored') !== -1 && Math.random() < 0.4) continue;
           species[idx] = 3; hunger[idx] = 0; age[idx] = 0;
         }
       }
     }
+    startShockwave(cellX * CELL_SIZE + CELL_SIZE / 2, cellY * CELL_SIZE + CELL_SIZE / 2, r * CELL_SIZE);
   } else if (selectedType === -4) {
     // RED TIDE — flood with phytoplankton, suffocate animals
+    // Toxic species immune; Biofilm clusters resist
     for (let dy = -r; dy <= r; dy++) {
       for (let dx = -r; dx <= r; dx++) {
         if (dx * dx + dy * dy > r2) continue;
@@ -3025,17 +3237,151 @@ function triggerDisaster(canvasX, canvasY) {
         const y = wrapY(cellY + dy);
         const idx = y * gridW + x;
         const sid = species[idx];
-        if (sid === 1) continue; // don't overwrite rock
+        if (sid === 1) continue;
         const sp = SPECIES[sid];
         if (sp && sp.hungerMax) {
-          // Animal — suffocate: becomes dead
+          const traits = evoStats[sid] ? evoStats[sid].traits || [] : [];
+          if (traits.indexOf('toxic') !== -1) continue;
+          if (traits.indexOf('biofilm') !== -1 && Math.random() < 0.35) continue;
           species[idx] = 3; hunger[idx] = 0; age[idx] = 0;
         } else if (sid === 0 || sid === 3) {
-          // Empty or dead — fill with phytoplankton
           species[idx] = 10; hunger[idx] = 0; age[idx] = 0;
         }
       }
     }
+  } else if (selectedType === -5) {
+    // WHIRLPOOL — vortex pulls creatures toward center, scrambles positions
+    const whirlR = Math.max(8, brushSize * 3) - 1;
+    const whirlR2 = whirlR * whirlR + whirlR;
+    // Collect all movable creatures, sort by distance (outermost first)
+    const movables = [];
+    for (let dy = -whirlR; dy <= whirlR; dy++) {
+      for (let dx = -whirlR; dx <= whirlR; dx++) {
+        const dist2 = dx * dx + dy * dy;
+        if (dist2 > whirlR2 || dist2 === 0) continue;
+        const x = wrapX(cellX + dx);
+        const y = wrapY(cellY + dy);
+        const idx = y * gridW + x;
+        const sid = species[idx];
+        if (sid <= 1 || sid === 5) continue; // skip empty, rock, ice
+        const sp = SPECIES[sid];
+        if (!sp) continue;
+        const traits = evoStats[sid] ? evoStats[sid].traits || [] : [];
+        // Resistance checks
+        if (traits.indexOf('shell') !== -1 && Math.random() < 0.6) continue;
+        if (traits.indexOf('armored') !== -1 && Math.random() < 0.5) continue;
+        if (traits.indexOf('deeproot') !== -1) continue; // anchored
+        if (sp.tier === 'producer' && traits.indexOf('biofilm') !== -1 && Math.random() < 0.5) continue;
+        movables.push({ x, y, idx, dx, dy, dist2, sid, h: hunger[idx], a: age[idx], c: currents[idx] });
+      }
+    }
+    // Sort outermost first, pull each toward center
+    movables.sort((a, b) => b.dist2 - a.dist2);
+    for (const m of movables) {
+      // Calculate direction toward center
+      const stepX = m.dx > 0 ? -1 : m.dx < 0 ? 1 : 0;
+      const stepY = m.dy > 0 ? -1 : m.dy < 0 ? 1 : 0;
+      const pullDist = Math.max(1, Math.round(Math.sqrt(m.dist2) * 0.4));
+      let nx = m.x, ny = m.y;
+      for (let s = 0; s < pullDist; s++) {
+        const tx = wrapX(nx + stepX);
+        const ty = wrapY(ny + stepY);
+        const ti = ty * gridW + tx;
+        if (species[ti] === 0 || species[ti] === 3) {
+          // Clear old position
+          species[ny * gridW + nx] = 0; hunger[ny * gridW + nx] = 0; age[ny * gridW + nx] = 0;
+          nx = tx; ny = ty;
+        } else break;
+      }
+      // Place at new position
+      const ni = ny * gridW + nx;
+      species[ni] = m.sid; hunger[ni] = m.h; age[ni] = m.a; currents[ni] = m.c;
+    }
+    // Creatures at the very center take damage
+    for (let dy = -2; dy <= 2; dy++) {
+      for (let dx = -2; dx <= 2; dx++) {
+        const x = wrapX(cellX + dx);
+        const y = wrapY(cellY + dy);
+        const idx = y * gridW + x;
+        const sid = species[idx];
+        const sp = SPECIES[sid];
+        if (sp && sp.hungerMax) {
+          hunger[idx] += 10;
+          if (hunger[idx] >= (evoStats[sid] ? evoStats[sid].hungerMax : sp.hungerMax)) {
+            species[idx] = 3; hunger[idx] = 0; age[idx] = 0;
+          }
+        }
+      }
+    }
+    startWhirlpool(cellX * CELL_SIZE + CELL_SIZE / 2, cellY * CELL_SIZE + CELL_SIZE / 2, whirlR * CELL_SIZE);
+  } else if (selectedType === -6) {
+    // ICE AGE — freezing wave, turns water to ice, freezes animals
+    // Cold Adapted survive; Warm Adapted extra vulnerable; Deep Root plants survive
+    const iceR = Math.max(8, brushSize * 3) - 1;
+    const iceR2 = iceR * iceR + iceR;
+    for (let dy = -iceR; dy <= iceR; dy++) {
+      for (let dx = -iceR; dx <= iceR; dx++) {
+        if (dx * dx + dy * dy > iceR2) continue;
+        const x = wrapX(cellX + dx);
+        const y = wrapY(cellY + dy);
+        const idx = y * gridW + x;
+        const sid = species[idx];
+        if (sid === 1 || sid === 5) continue; // skip rock and existing ice
+        const sp = SPECIES[sid];
+        const traits = evoStats[sid] ? evoStats[sid].traits || [] : [];
+        if (traits.indexOf('coldadapt') !== -1) continue; // cold-loving — immune
+        if (sp && sp.hungerMax) {
+          // Animals: freeze (become ice or dead based on distance)
+          if (traits.indexOf('shell') !== -1 && Math.random() < 0.4) continue;
+          if (traits.indexOf('armored') !== -1 && Math.random() < 0.3) continue;
+          if (traits.indexOf('warmadapt') !== -1) {
+            // Extra vulnerable — instant death
+            species[idx] = 5; hunger[idx] = 0; age[idx] = 0;
+          } else {
+            species[idx] = 5; hunger[idx] = 0; age[idx] = 0;
+          }
+        } else if (sp && sp.breedRate !== undefined) {
+          // Producer: deep root survives, others frozen
+          if (traits.indexOf('deeproot') !== -1) continue;
+          species[idx] = 5; hunger[idx] = 0; age[idx] = 0;
+        } else if (sid === 0 || sid === 3 || sid === 4) {
+          // Empty/dead/oil — freeze
+          species[idx] = 5; hunger[idx] = 0; age[idx] = 0;
+        }
+      }
+    }
+    startIceWave(cellX * CELL_SIZE + CELL_SIZE / 2, cellY * CELL_SIZE + CELL_SIZE / 2, iceR * CELL_SIZE);
+  } else if (selectedType === -7) {
+    // TOXIC BLOOM — seed toxic algae that spreads and damages non-toxic species
+    // Toxic trait species are immune and get breed boost; Biofilm resists
+    for (let dy = -r; dy <= r; dy++) {
+      for (let dx = -r; dx <= r; dx++) {
+        if (dx * dx + dy * dy > r2) continue;
+        const x = wrapX(cellX + dx);
+        const y = wrapY(cellY + dy);
+        const idx = y * gridW + x;
+        const sid = species[idx];
+        if (sid === 1) continue;
+        const sp = SPECIES[sid];
+        const traits = evoStats[sid] ? evoStats[sid].traits || [] : [];
+        if (traits.indexOf('toxic') !== -1) {
+          // Toxic species thrive — restore hunger
+          if (sp && sp.hungerMax) hunger[idx] = Math.max(0, hunger[idx] - 10);
+          continue;
+        }
+        if (sp && sp.hungerMax) {
+          // Animals take heavy damage
+          hunger[idx] += 12;
+          if (hunger[idx] >= (evoStats[sid] ? evoStats[sid].hungerMax : sp.hungerMax)) {
+            species[idx] = 6; hunger[idx] = 0; age[idx] = 0;
+          }
+        } else if (sid !== 5 && sid !== 6) {
+          // Non-animals (plants, empty, dead) become toxic bloom
+          species[idx] = 6; hunger[idx] = 0; age[idx] = 0;
+        }
+      }
+    }
+    startToxicPulse(cellX * CELL_SIZE + CELL_SIZE / 2, cellY * CELL_SIZE + CELL_SIZE / 2, r * CELL_SIZE);
   }
   render();
   updateStats();
