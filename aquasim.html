@@ -160,6 +160,39 @@ canvas { cursor: crosshair; display: block; }
 }
 #evo-tree-popup .etp-traits { font-size: 0.55rem; color: #DDBB44; font-style: italic; margin-left: 18px; }
 #evo-tree-popup .etp-stats { font-size: 0.55rem; color: #4A7A8A; margin-left: 18px; }
+
+/* Settings Panel */
+#btn-settings { color: #AABBCC !important; border-color: #AABBCC !important; }
+#btn-settings:hover { background: rgba(170,187,204,0.12) !important; }
+#settings-panel {
+  display: none; position: fixed; z-index: 1001;
+  bottom: 60px; right: 210px;
+  background: rgba(4,9,15,0.97); border: 1px solid #0C2D40; border-radius: 6px;
+  padding: 14px 16px; min-width: 240px;
+  backdrop-filter: blur(6px); box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+}
+#settings-panel.visible { display: block; }
+#settings-panel h3 {
+  font-family: 'Orbitron', monospace; font-weight: 600; font-size: 0.65rem;
+  color: #00E5FF; letter-spacing: 1px; margin-bottom: 10px; text-align: center;
+}
+.settings-row {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 8px; font-size: 0.65rem; color: #7EE8FA;
+}
+.settings-row label { flex: 1; }
+.settings-row input[type="range"] {
+  width: 100px; accent-color: #00E5FF;
+}
+.settings-row .settings-val {
+  width: 32px; text-align: right; color: #00E5FF; font-size: 0.65rem;
+}
+.settings-close {
+  position: absolute; top: 4px; right: 8px; cursor: pointer;
+  color: #FF6B6B; font-size: 0.75rem; background: none; border: none;
+  font-family: 'Share Tech Mono', monospace;
+}
+.settings-close:hover { color: #FF4400; }
 </style>
 </head>
 <body>
@@ -198,6 +231,34 @@ canvas { cursor: crosshair; display: block; }
       <span id="season-display" style="font-size:0.65rem;color:#88FF88;white-space:nowrap;">Spring</span>
       <span id="gen-counter">GEN 0</span>
       <span id="info-text"></span>
+      <div class="divider"></div>
+      <button id="btn-settings">⚙ UI</button>
+    </div>
+  </div>
+
+  <!-- Settings Panel -->
+  <div id="settings-panel">
+    <button class="settings-close" id="settings-close-btn">✕</button>
+    <h3>DISPLAY SETTINGS</h3>
+    <div class="settings-row">
+      <label>UI Scale</label>
+      <input type="range" id="ui-scale-slider" min="80" max="180" step="10" value="100">
+      <span class="settings-val" id="ui-scale-val">100%</span>
+    </div>
+    <div class="settings-row">
+      <label>Panel Width</label>
+      <input type="range" id="panel-width-slider" min="160" max="360" step="20" value="200">
+      <span class="settings-val" id="panel-width-val">200</span>
+    </div>
+    <div class="settings-row">
+      <label>Left Panel</label>
+      <input type="range" id="left-panel-slider" min="140" max="280" step="20" value="168">
+      <span class="settings-val" id="left-panel-val">168</span>
+    </div>
+    <div class="settings-row">
+      <label>Bar Height</label>
+      <input type="range" id="bar-height-slider" min="40" max="80" step="5" value="50">
+      <span class="settings-val" id="bar-height-val">50</span>
     </div>
   </div>
 
@@ -259,7 +320,7 @@ const SPECIES = {
   21: { name: 'Snail',          color: '#CC88FF', tier: 'herbivore',   layer: 0, breedRate: 0.04, moveRate: 0.22, hungerMax: 28, eats: [11,3],    desc: 'Slow-moving seaweed consumer, scavenges dead' },
   22: { name: 'Crab',           color: '#FF5533', tier: 'herbivore',   layer: 0, breedRate: 0.04, moveRate: 0.42, hungerMax: 24, eats: [10,11,3], desc: 'Omnivore — eats plants and dead matter' },
   23: { name: 'Sea Urchin',     color: '#BB4466', tier: 'herbivore',   layer: 0, breedRate: 0.02, moveRate: 0.18, hungerMax: 32, eats: [12],      desc: 'Slow grazer — the only coral predator' },
-  30: { name: 'Small Fish',     color: '#44CCFF', tier: 'consumer',    layer: 2, breedRate: 0.05, moveRate: 0.85, hungerMax: 24, eats: [20],      desc: 'Fast swimmer, hunts shrimp', layerReach: 2 },
+  30: { name: 'Small Fish',     color: '#44CCFF', tier: 'consumer',    layer: 2, breedRate: 0.06, moveRate: 0.85, hungerMax: 30, eats: [20,10,3], desc: 'Fast schooling fish — eats shrimp, plankton, scavenges', layerReach: 2 },
   31: { name: 'Squid',          color: '#AA44FF', tier: 'consumer',    layer: 2, breedRate: 0.04, moveRate: 0.62, hungerMax: 28, eats: [20,21],   desc: 'Agile predator — dives deep for prey', layerReach: 2 },
   32: { name: 'Pufferfish',     color: '#FFEE22', tier: 'consumer',    layer: 1, breedRate: 0.035,moveRate: 0.38, hungerMax: 32, eats: [22,21,23],desc: 'Tough consumer of crabs, snails, urchins' },
   40: { name: 'Shark',          color: '#8899CC', tier: 'apex',        layer: 3, breedRate: 0.02, moveRate: 0.90, hungerMax: 50, eats: [30,31,32,20,3],desc: 'Top predator — hunts consumers, scavenges', layerReach: 3 },
@@ -2751,6 +2812,58 @@ document.getElementById('btn-apply').addEventListener('click', function() {
   running = wasRunning;
   if (running) startLoop();
 });
+
+// Settings panel
+(function setupSettings() {
+  const panel = document.getElementById('settings-panel');
+  const btn = document.getElementById('btn-settings');
+  btn.addEventListener('click', () => panel.classList.toggle('visible'));
+  document.getElementById('settings-close-btn').addEventListener('click', () => panel.classList.remove('visible'));
+
+  // UI Scale: scales all text via CSS font-size on root
+  const scaleSlider = document.getElementById('ui-scale-slider');
+  const scaleVal = document.getElementById('ui-scale-val');
+  scaleSlider.addEventListener('input', function() {
+    const pct = parseInt(this.value);
+    scaleVal.textContent = pct + '%';
+    document.documentElement.style.fontSize = (13 * pct / 100) + 'px';
+  });
+
+  // Right panel width
+  const rpSlider = document.getElementById('panel-width-slider');
+  const rpVal = document.getElementById('panel-width-val');
+  rpSlider.addEventListener('input', function() {
+    const w = parseInt(this.value);
+    rpVal.textContent = w;
+    const rp = document.getElementById('right-panel');
+    rp.style.width = w + 'px';
+    rp.style.minWidth = w + 'px';
+    rp.style.maxWidth = w + 'px';
+  });
+
+  // Left panel width
+  const lpSlider = document.getElementById('left-panel-slider');
+  const lpVal = document.getElementById('left-panel-val');
+  lpSlider.addEventListener('input', function() {
+    const w = parseInt(this.value);
+    lpVal.textContent = w;
+    const lp = document.getElementById('left-panel');
+    lp.style.width = w + 'px';
+    lp.style.minWidth = w + 'px';
+    lp.style.maxWidth = w + 'px';
+  });
+
+  // Bottom bar height
+  const bhSlider = document.getElementById('bar-height-slider');
+  const bhVal = document.getElementById('bar-height-val');
+  bhSlider.addEventListener('input', function() {
+    const h = parseInt(this.value);
+    bhVal.textContent = h;
+    const bar = document.getElementById('bottom-bar');
+    bar.style.height = h + 'px';
+    bar.style.minHeight = h + 'px';
+  });
+})();
 
 // Brush slider
 const brushSlider = document.getElementById('brush-slider');
