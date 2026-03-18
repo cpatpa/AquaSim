@@ -242,8 +242,8 @@ canvas { cursor: crosshair; display: block; }
     <h3>DISPLAY SETTINGS</h3>
     <div class="settings-row">
       <label>UI Scale</label>
-      <input type="range" id="ui-scale-slider" min="80" max="180" step="10" value="100">
-      <span class="settings-val" id="ui-scale-val">100%</span>
+      <input type="range" id="ui-scale-slider" min="80" max="180" step="10" value="180">
+      <span class="settings-val" id="ui-scale-val">180%</span>
     </div>
     <div class="settings-row">
       <label>Panel Width</label>
@@ -2645,7 +2645,7 @@ function updateStats() {
     for (const id of tier.ids) {
       if (id === 0) continue;
       const c = counts[id] || 0;
-      if (c > 0 || (SPECIES[id].tier !== 'transient' && !SPECIES[id].parentId)) {
+      if (c > 0) {
         html += '<div class="stat-row" data-sid="' + id + '"><span class="stat-name" style="color:' +
           SPECIES[id].color + '">' + SPECIES[id].name +
           '</span><span class="stat-count">' + c + '</span></div>';
@@ -2828,6 +2828,8 @@ document.getElementById('btn-apply').addEventListener('click', function() {
     scaleVal.textContent = pct + '%';
     document.documentElement.style.fontSize = (13 * pct / 100) + 'px';
   });
+  // Apply default 180% scale on load
+  document.documentElement.style.fontSize = (13 * 180 / 100) + 'px';
 
   // Right panel width
   const rpSlider = document.getElementById('panel-width-slider');
