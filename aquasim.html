@@ -302,6 +302,9 @@ const OIL_DECAY_AGE = 40;
 const ICE_THAW_AGE = 60;        // ice melts after this many ticks
 const TOXIC_BLOOM_SPREAD = 0.08; // spread chance per tick
 const TOXIC_BLOOM_DECAY = 50;   // ticks before toxic bloom fades
+const LAVA_COOL_AGE = 35;       // lava cools into rock after this many ticks
+const LAVA_SPREAD_RATE = 0.04;  // chance lava spreads to adjacent cell per tick
+const LAVA_KILL_RANGE = 1;      // kills adjacent creatures each tick
 const HUNGER_RESTORE_FRACTION = 0.65;
 // Metabolic scaling: chance of hunger incrementing per tick (lower = slower metabolism)
 const METABOLISM = { herbivore: 1.0, consumer: 0.8, apex: 0.5, megafauna: 0.35, decomposer: 0.9 };
@@ -318,6 +321,7 @@ const SPECIES = {
   4:  { name: 'Oil',            color: '#2A1800', tier: 'transient',   layer: 3, desc: 'Toxic sludge — spreads, kills life, then decays' },
   5:  { name: 'Ice',            color: '#AADDFF', tier: 'transient',   layer: -1, desc: 'Frozen water — blocks movement, thaws over time' },
   6:  { name: 'Toxic Bloom',    color: '#99FF00', tier: 'transient',   layer: 1, desc: 'Poisonous algae — damages non-toxic species, spreads' },
+  7:  { name: 'Lava',           color: '#FF4400', tier: 'transient',   layer: 0, desc: 'Molten rock — kills on contact, cools into permanent rock' },
   10: { name: 'Phytoplankton',  color: '#00FF88', tier: 'producer',    layer: 1, breedRate: 0.13, desc: 'Fast-spreading base producer' },
   11: { name: 'Seaweed',        color: '#00CC44', tier: 'producer',    layer: 0, breedRate: 0.04, desc: 'Slow-growing plant, food for snails' },
   12: { name: 'Coral',          color: '#FF6EC7', tier: 'producer',    layer: 0, breedRate: 0.02, desc: 'Rare reef-builder, very slow growth' },
@@ -450,6 +454,7 @@ const DISASTERS = {
   '-5': { name: 'Whirlpool', color: '#0088CC', desc: 'Vortex pulls creatures inward — Shell/Armored/DeepRoot resist' },
   '-6': { name: 'Ice Age',   color: '#AADDFF', desc: 'Freezing wave — Cold Adapted survive, ice thaws over time' },
   '-7': { name: 'Toxic Bloom',color:'#99FF00', desc: 'Poison algae — Toxic species immune & thrive, spreads and decays' },
+  '-8': { name: 'Volcano',    color: '#FF4400', desc: 'Subsea eruption — lava spreads, cools to rock, reshapes terrain' },
 };
 
 // ============================================================
@@ -1925,6 +1930,61 @@ function step() {
       continue;
     }
 
+    // Lava: kill adjacent life, spread, cool into rock
+    if (sid === 7) {
+      age[idx]++;
+      if (age[idx] >= LAVA_COOL_AGE) {
+        // Cool into permanent rock
+        species[idx] = 1; hunger[idx] = 0; age[idx] = 0;
+        continue;
+      }
+      // Kill adjacent creatures, optionally spread
+      const ldirs = shuffleSmall([0,1,2,3]);
+      let spread = false;
+      for (let d = 0; d < 4; d++) {
+        const dir = CARDINAL[ldirs[d]];
+        const nx = wrapX(cx + dir[0]);
+        const ny = wrapY(cy + dir[1]);
+        const ni = ny * cw + nx;
+        const nSid = species[ni];
+        if (nSid === 1 || nSid === 5 || nSid === 7) continue; // skip rock, ice, lava
+        const nSp = SPECIES[nSid];
+        if (!nSp) continue;
+        if (nSid === 0 || nSid === 3) {
+          // Empty/dead — chance to spread lava
+          if (!spread && Math.random() < LAVA_SPREAD_RATE) {
+            species[ni] = 7; hunger[ni] = 0; age[ni] = 0;
+            processed[ni] = 1;
+            spread = true;
+          }
+          continue;
+        }
+        // Living creature or transient — check resistance
+        const nTraits = evoStats[nSid] ? evoStats[nSid].traits || [] : [];
+        if (nTraits.indexOf('warmadapt') !== -1 && Math.random() < 0.6) continue;
+        if (nTraits.indexOf('shell') !== -1 && Math.random() < 0.3) continue;
+        if (nTraits.indexOf('armored') !== -1 && Math.random() < 0.25) continue;
+        // Kill and sometimes convert to lava
+        if (Math.random() < 0.3) {
+          species[ni] = 7; hunger[ni] = 0; age[ni] = 0;
+          processed[ni] = 1;
+        } else {
+          species[ni] = 3; hunger[ni] = 0; age[ni] = 0;
+        }
+      }
+      // Lava melts ice on contact
+      for (let d = 0; d < 4; d++) {
+        const dir = CARDINAL[ldirs[d]];
+        const nx = wrapX(cx + dir[0]);
+        const ny = wrapY(cy + dir[1]);
+        const ni = ny * cw + nx;
+        if (species[ni] === 5) {
+          species[ni] = 0; hunger[ni] = 0; age[ni] = 0;
+        }
+      }
+      continue;
+    }
+
     // Producer behaviour
     if (sp.tier === 'producer') {
       const pes = evo(sid);
@@ -2722,6 +2782,9 @@ function updateStats() {
   if (counts[6]) {
     html += '<div class="stat-row" data-sid="6"><span class="stat-name" style="color:#99FF00">Toxic Bloom</span><span class="stat-count">' + counts[6] + '</span></div>';
   }
+  if (counts[7]) {
+    html += '<div class="stat-row" data-sid="7"><span class="stat-name" style="color:#FF4400">Lava</span><span class="stat-count">' + counts[7] + '</span></div>';
+  }
   statsEl.innerHTML = html;
 
   // Re-attach highlight listeners on stat rows
@@ -2964,7 +3027,7 @@ function startShockwave(cx, cy, maxRadius) {
     cx, cy, maxRadius: maxRadius * 1.3,
     startTime: performance.now(), duration: 600
   });
-  if (shockwaves.length === 1 && whirlpools.length === 0 && iceWaves.length === 0 && toxicPulses.length === 0) {
+  if (shockwaves.length === 1 && whirlpools.length === 0 && iceWaves.length === 0 && toxicPulses.length === 0 && volcanoEffects.length === 0) {
     requestAnimationFrame(drawAllEffects);
   }
 }
@@ -2973,7 +3036,7 @@ function startShockwave(cx, cy, maxRadius) {
 let whirlpools = [];
 function startWhirlpool(cx, cy, maxRadius) {
   whirlpools.push({ cx, cy, maxRadius, startTime: performance.now(), duration: 900 });
-  if (whirlpools.length === 1 && shockwaves.length === 0) requestAnimationFrame(drawAllEffects);
+  if (whirlpools.length === 1 && !shockwaves.length && !iceWaves.length && !toxicPulses.length && !volcanoEffects.length) requestAnimationFrame(drawAllEffects);
 }
 function drawWhirlpools(now) {
   for (let i = whirlpools.length - 1; i >= 0; i--) {
@@ -3015,7 +3078,7 @@ function drawWhirlpools(now) {
 let iceWaves = [];
 function startIceWave(cx, cy, maxRadius) {
   iceWaves.push({ cx, cy, maxRadius: maxRadius * 1.2, startTime: performance.now(), duration: 800 });
-  if (iceWaves.length === 1 && shockwaves.length === 0 && whirlpools.length === 0) requestAnimationFrame(drawAllEffects);
+  if (iceWaves.length === 1 && !shockwaves.length && !whirlpools.length && !toxicPulses.length && !volcanoEffects.length) requestAnimationFrame(drawAllEffects);
 }
 function drawIceWaves(now) {
   for (let i = iceWaves.length - 1; i >= 0; i--) {
@@ -3067,7 +3130,7 @@ function drawIceWaves(now) {
 let toxicPulses = [];
 function startToxicPulse(cx, cy, maxRadius) {
   toxicPulses.push({ cx, cy, maxRadius: maxRadius * 1.2, startTime: performance.now(), duration: 700 });
-  if (toxicPulses.length === 1 && shockwaves.length === 0 && whirlpools.length === 0 && iceWaves.length === 0) requestAnimationFrame(drawAllEffects);
+  if (toxicPulses.length === 1 && !shockwaves.length && !whirlpools.length && !iceWaves.length && !volcanoEffects.length) requestAnimationFrame(drawAllEffects);
 }
 function drawToxicPulses(now) {
   for (let i = toxicPulses.length - 1; i >= 0; i--) {
@@ -3116,9 +3179,158 @@ function drawToxicPulses(now) {
   }
 }
 
+// Volcano eruption animation
+let volcanoEffects = [];
+function startVolcanoEruption(cx, cy, maxRadius) {
+  // Pre-generate ember particles for the eruption
+  const embers = [];
+  for (let i = 0; i < 60; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const speed = 0.3 + Math.random() * 1.2;
+    const maxDist = maxRadius * (0.5 + Math.random() * 0.8);
+    const size = 1 + Math.random() * 3;
+    const hue = Math.random() < 0.3 ? 0 : (20 + Math.random() * 30); // red or orange
+    const life = 0.4 + Math.random() * 0.6; // how long this ember lives (0-1)
+    embers.push({ angle, speed, maxDist, size, hue, life });
+  }
+  volcanoEffects.push({
+    cx, cy, maxRadius, embers,
+    startTime: performance.now(), duration: 1800
+  });
+  if (volcanoEffects.length === 1 && !shockwaves.length && !whirlpools.length && !iceWaves.length && !toxicPulses.length) requestAnimationFrame(drawAllEffects);
+}
+function drawVolcanoEffects(now) {
+  for (let i = volcanoEffects.length - 1; i >= 0; i--) {
+    const ve = volcanoEffects[i];
+    const t = Math.min(1, (now - ve.startTime) / ve.duration);
+
+    // Phase 1 (0-0.2): initial flash and magma plume rising
+    // Phase 2 (0.1-0.7): lava wave expanding, embers flying
+    // Phase 3 (0.4-1.0): cooling glow, embers fading
+
+    // Central magma glow — bright at start, dims over time
+    if (t < 0.6) {
+      const glowT = t / 0.6;
+      const glowRadius = ve.maxRadius * 0.3 * (1 + glowT * 0.5);
+      const grad = ctx.createRadialGradient(ve.cx, ve.cy, 0, ve.cx, ve.cy, glowRadius);
+      const intensity = (1 - glowT * glowT) * 0.8;
+      grad.addColorStop(0, `rgba(255, 255, 200, ${intensity})`);
+      grad.addColorStop(0.2, `rgba(255, 180, 50, ${intensity * 0.8})`);
+      grad.addColorStop(0.5, `rgba(255, 80, 0, ${intensity * 0.5})`);
+      grad.addColorStop(1, 'rgba(200, 30, 0, 0)');
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.arc(ve.cx, ve.cy, glowRadius, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // Initial flash (first 15%)
+    if (t < 0.15) {
+      const flashAlpha = (1 - t / 0.15) * 0.7;
+      const flashR = ve.maxRadius * 0.5 * (t / 0.15);
+      ctx.fillStyle = `rgba(255, 255, 220, ${flashAlpha})`;
+      ctx.beginPath();
+      ctx.arc(ve.cx, ve.cy, flashR, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // Expanding lava wave rings
+    if (t > 0.05 && t < 0.8) {
+      const waveT = (t - 0.05) / 0.75;
+      const waveAlpha = (1 - waveT) * 0.7;
+      // Outer lava ring
+      const ring1R = waveT * ve.maxRadius;
+      ctx.beginPath();
+      ctx.arc(ve.cx, ve.cy, ring1R, 0, Math.PI * 2);
+      ctx.strokeStyle = `rgba(255, 100, 0, ${waveAlpha})`;
+      ctx.lineWidth = Math.max(3, (1 - waveT) * 12);
+      ctx.stroke();
+      // Inner heat ring
+      const ring2R = waveT * ve.maxRadius * 0.7;
+      ctx.beginPath();
+      ctx.arc(ve.cx, ve.cy, ring2R, 0, Math.PI * 2);
+      ctx.strokeStyle = `rgba(255, 200, 50, ${waveAlpha * 0.6})`;
+      ctx.lineWidth = Math.max(2, (1 - waveT) * 6);
+      ctx.stroke();
+    }
+
+    // Ember particles — the star of the show
+    for (const ember of ve.embers) {
+      if (t > ember.life) continue; // this ember has burnt out
+      const et = t / ember.life; // normalized time for this ember
+      const dist = ember.speed * et * ember.maxDist;
+      // Embers arc upward slightly (negative Y bias) then fall
+      const arcY = -Math.sin(et * Math.PI) * ember.maxDist * 0.3;
+      const px = ve.cx + Math.cos(ember.angle) * dist;
+      const py = ve.cy + Math.sin(ember.angle) * dist + arcY;
+      const alpha = et < 0.3 ? et / 0.3 : (1 - (et - 0.3) / 0.7);
+      const size = ember.size * (1 - et * 0.5);
+      // Ember color shifts from white-yellow to orange to red as it cools
+      let r, g, b;
+      if (et < 0.2) {
+        r = 255; g = 255; b = 200 - et * 500; // white-hot
+      } else if (et < 0.5) {
+        const ct = (et - 0.2) / 0.3;
+        r = 255; g = 255 - ct * 155; b = Math.max(0, 100 - ct * 100); // yellow to orange
+      } else {
+        const ct = (et - 0.5) / 0.5;
+        r = 255 - ct * 55; g = 100 - ct * 80; b = 0; // orange to deep red
+      }
+      ctx.fillStyle = `rgba(${r|0}, ${g|0}, ${b|0}, ${alpha * 0.9})`;
+      ctx.beginPath();
+      ctx.arc(px, py, Math.max(0.5, size), 0, Math.PI * 2);
+      ctx.fill();
+      // Bright core for larger embers
+      if (size > 1.5 && alpha > 0.3) {
+        ctx.fillStyle = `rgba(255, 255, 200, ${alpha * 0.5})`;
+        ctx.beginPath();
+        ctx.arc(px, py, size * 0.4, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+
+    // Heat shimmer / distortion rings (late phase)
+    if (t > 0.3 && t < 0.95) {
+      const shimmerT = (t - 0.3) / 0.65;
+      for (let ring = 0; ring < 3; ring++) {
+        const ringT = (shimmerT + ring * 0.15) % 1;
+        const ringR = ringT * ve.maxRadius * 1.1;
+        const ringAlpha = Math.sin(ringT * Math.PI) * 0.12;
+        ctx.beginPath();
+        ctx.arc(ve.cx, ve.cy, ringR, 0, Math.PI * 2);
+        ctx.strokeStyle = `rgba(255, 120, 30, ${ringAlpha})`;
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+      }
+    }
+
+    // Smoke wisps rising from center (late phase)
+    if (t > 0.5) {
+      const smokeT = (t - 0.5) / 0.5;
+      for (let s = 0; s < 5; s++) {
+        const sAngle = (s / 5) * Math.PI * 2 + t * 2;
+        const sR = ve.maxRadius * 0.15 * (1 + smokeT);
+        const sx = ve.cx + Math.cos(sAngle) * sR;
+        const sy = ve.cy - smokeT * ve.maxRadius * 0.4 + Math.sin(sAngle * 2) * 5;
+        const sAlpha = (1 - smokeT) * 0.2;
+        const sSize = 3 + smokeT * 8;
+        const grad = ctx.createRadialGradient(sx, sy, 0, sx, sy, sSize);
+        grad.addColorStop(0, `rgba(80, 60, 50, ${sAlpha})`);
+        grad.addColorStop(1, 'rgba(40, 30, 25, 0)');
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.arc(sx, sy, sSize, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+
+    if (t >= 1) volcanoEffects.splice(i, 1);
+  }
+}
+
 // Unified animation loop for all effects
 function drawAllEffects(now) {
-  const anyActive = shockwaves.length || whirlpools.length || iceWaves.length || toxicPulses.length;
+  const anyActive = shockwaves.length || whirlpools.length || iceWaves.length || toxicPulses.length || volcanoEffects.length;
   if (!anyActive) return;
   render();
   if (shockwaves.length) {
@@ -3165,7 +3377,8 @@ function drawAllEffects(now) {
   drawWhirlpools(now);
   drawIceWaves(now);
   drawToxicPulses(now);
-  if (shockwaves.length || whirlpools.length || iceWaves.length || toxicPulses.length) {
+  drawVolcanoEffects(now);
+  if (shockwaves.length || whirlpools.length || iceWaves.length || toxicPulses.length || volcanoEffects.length) {
     requestAnimationFrame(drawAllEffects);
   }
 }
@@ -3382,6 +3595,52 @@ function triggerDisaster(canvasX, canvasY) {
       }
     }
     startToxicPulse(cellX * CELL_SIZE + CELL_SIZE / 2, cellY * CELL_SIZE + CELL_SIZE / 2, r * CELL_SIZE);
+  } else if (selectedType === -8) {
+    // VOLCANO — subsea eruption: rock core, lava radiating outward, kills with heat
+    // Warm Adapted get resistance; Cold Adapted extra vulnerable; Shell/Armored partial resist
+    const volcR = Math.max(10, brushSize * 3);
+    const volcR2 = volcR * volcR;
+    const coreR = Math.max(3, Math.floor(volcR * 0.25)); // solid rock core
+    const lavaR = Math.max(5, Math.floor(volcR * 0.55)); // lava zone
+    for (let dy = -volcR; dy <= volcR; dy++) {
+      for (let dx = -volcR; dx <= volcR; dx++) {
+        const dist2 = dx * dx + dy * dy;
+        if (dist2 > volcR2) continue;
+        const dist = Math.sqrt(dist2);
+        const x = wrapX(cellX + dx);
+        const y = wrapY(cellY + dy);
+        const idx = y * gridW + x;
+        const sid = species[idx];
+        if (dist <= coreR) {
+          // Inner core — becomes rock (volcanic vent)
+          species[idx] = 1; hunger[idx] = 0; age[idx] = 0;
+        } else if (dist <= lavaR) {
+          // Lava zone — becomes lava (will cool to rock over time)
+          if (sid === 1) continue; // don't overwrite existing rock
+          species[idx] = 7; hunger[idx] = 0; age[idx] = 0;
+        } else {
+          // Outer heat zone — damage/kill creatures
+          if (sid <= 1 || sid === 7) continue;
+          const sp = SPECIES[sid];
+          if (!sp) continue;
+          const traits = evoStats[sid] ? evoStats[sid].traits || [] : [];
+          if (traits.indexOf('warmadapt') !== -1 && Math.random() < 0.7) continue;
+          if (traits.indexOf('shell') !== -1 && Math.random() < 0.35) continue;
+          if (traits.indexOf('armored') !== -1 && Math.random() < 0.3) continue;
+          // Cold adapted species are extra vulnerable
+          const killChance = traits.indexOf('coldadapt') !== -1 ? 0.95 : (1 - dist / volcR) * 0.8 + 0.2;
+          if (Math.random() < killChance) {
+            if (sp.hungerMax) {
+              species[idx] = 3; hunger[idx] = 0; age[idx] = 0;
+            } else {
+              // Plants get scorched
+              species[idx] = 3; hunger[idx] = 0; age[idx] = 0;
+            }
+          }
+        }
+      }
+    }
+    startVolcanoEruption(cellX * CELL_SIZE + CELL_SIZE / 2, cellY * CELL_SIZE + CELL_SIZE / 2, volcR * CELL_SIZE);
   }
   render();
   updateStats();
