@@ -484,7 +484,7 @@ function getExclusiveConflict(traitKey, currentTraits) {
   }
   return null;
 }
-const TRAIT_DEGRADE_GENS = 8;     // evo cycles of non-use before trait degrades
+const TRAIT_DEGRADE_GENS = 4;     // evo cycles of non-use before trait degrades
 const TRAIT_LOCAL_RADIUS = 8;     // trait acquisition only converts cells within this radius
 
 // Seasonality constants
@@ -979,8 +979,9 @@ function evolve() {
             const varId = nextSpeciesId++;
             const rootId = sp.rootAncestor || id;
             const rootName = SPECIES[rootId] ? SPECIES[rootId].name : sp.name;
-            const lc = dynamicSpeciesIds.filter(d => { const dsp = SPECIES[d]; return dsp && (dsp.rootAncestor === rootId || dsp.parentId === rootId); }).length;
-            const varName = rootName + ' ' + toRoman(lc + 2);
+            // Divergent names use trait icon/short-name to clearly show the split
+            const traitShort = TRAITS[fTrait].name.split(' ')[0]; // e.g. "Cold", "Warm", "Dwarf"
+            const varName = sp.name + ' [' + traitShort + ']';
             const baseRGB = COLOR_RGB[id];
             const sft = () => Math.round((Math.random() - 0.5) * 50);
             const vr = clamp(baseRGB[0] + sft(), 20, 255), vg = clamp(baseRGB[1] + sft(), 20, 255), vb = clamp(baseRGB[2] + sft(), 20, 255);
@@ -993,6 +994,7 @@ function evolve() {
               hungerMax: es.hungerMax || undefined, eats: es.eats.length ? es.eats.slice() : undefined,
               desc: sp.name + ' diverged with ' + TRAITS[fTrait].name + ' (gen ' + generation + ')',
               parentId: id, rootAncestor: rootId, lineageDepth: (sp.lineageDepth || 0) + 1,
+              isDivergent: true,
             };
             COLOR_RGB[varId] = [vr, vg, vb];
             LIVING_IDS.push(varId);
@@ -1009,7 +1011,7 @@ function evolve() {
             for (let ci = parentCells.length - 1; ci > 0; ci--) { const cj = (Math.random() * (ci + 1)) | 0; const tmp = parentCells[ci]; parentCells[ci] = parentCells[cj]; parentCells[cj] = tmp; }
             const convertTarget = (parentCells.length * convertFrac) | 0;
             for (let ci = 0; ci < convertTarget; ci++) species[parentCells[ci]] = varId;
-            addEvoEvent(varName + ' diverged with ' + TRAITS[fTrait].name + '!');
+            addEvoEvent('DIVERGENCE: ' + sp.name + ' split → ' + varName);
             forked = true;
           }
           if (forked) break; // only one divergent split per species per cycle
