@@ -303,8 +303,8 @@ const ICE_THAW_AGE = 60;        // ice melts after this many ticks
 const TOXIC_BLOOM_SPREAD = 0.08; // spread chance per tick
 const TOXIC_BLOOM_DECAY = 50;   // ticks before toxic bloom fades
 const LAVA_COOL_AGE = 35;       // lava cools into rock after this many ticks
-const LAVA_SPREAD_RATE = 0.04;  // chance lava spreads to adjacent cell per tick
-const LAVA_KILL_RANGE = 1;      // kills adjacent creatures each tick
+const LAVA_SPREAD_RATE = 0.015; // chance lava spreads per tick (only when young)
+const LAVA_SPREAD_MAX_AGE = 12; // lava only spreads while younger than this
 const HUNGER_RESTORE_FRACTION = 0.65;
 // Metabolic scaling: chance of hunger incrementing per tick (lower = slower metabolism)
 const METABOLISM = { herbivore: 1.0, consumer: 0.8, apex: 0.5, megafauna: 0.35, decomposer: 0.9 };
@@ -1930,54 +1930,59 @@ function step() {
       continue;
     }
 
-    // Lava: kill adjacent life, spread, cool into rock
+    // Lava: kill adjacent life, spread organically, cool into rock
     if (sid === 7) {
       age[idx]++;
       if (age[idx] >= LAVA_COOL_AGE) {
-        // Cool into permanent rock
         species[idx] = 1; hunger[idx] = 0; age[idx] = 0;
         continue;
       }
-      // Kill adjacent creatures, optionally spread
       const ldirs = shuffleSmall([0,1,2,3]);
-      let spread = false;
+      // Kill adjacent living creatures (never convert them to more lava)
       for (let d = 0; d < 4; d++) {
         const dir = CARDINAL[ldirs[d]];
         const nx = wrapX(cx + dir[0]);
         const ny = wrapY(cy + dir[1]);
         const ni = ny * cw + nx;
         const nSid = species[ni];
-        if (nSid === 1 || nSid === 5 || nSid === 7) continue; // skip rock, ice, lava
+        if (nSid <= 1 || nSid === 5 || nSid === 7 || nSid === 0) continue;
         const nSp = SPECIES[nSid];
-        if (!nSp) continue;
-        if (nSid === 0 || nSid === 3) {
-          // Empty/dead — chance to spread lava
-          if (!spread && Math.random() < LAVA_SPREAD_RATE) {
-            species[ni] = 7; hunger[ni] = 0; age[ni] = 0;
-            processed[ni] = 1;
-            spread = true;
-          }
-          continue;
-        }
-        // Living creature or transient — check resistance
+        if (!nSp || !nSp.hungerMax) continue;
         const nTraits = evoStats[nSid] ? evoStats[nSid].traits || [] : [];
         if (nTraits.indexOf('warmadapt') !== -1 && Math.random() < 0.6) continue;
         if (nTraits.indexOf('shell') !== -1 && Math.random() < 0.3) continue;
         if (nTraits.indexOf('armored') !== -1 && Math.random() < 0.25) continue;
-        // Kill and sometimes convert to lava
-        if (Math.random() < 0.3) {
-          species[ni] = 7; hunger[ni] = 0; age[ni] = 0;
-          processed[ni] = 1;
-        } else {
-          species[ni] = 3; hunger[ni] = 0; age[ni] = 0;
+        species[ni] = 3; hunger[ni] = 0; age[ni] = 0;
+      }
+      // Spread only while young — trail-like: pick ONE random open neighbour
+      if (age[idx] < LAVA_SPREAD_MAX_AGE && Math.random() < LAVA_SPREAD_RATE) {
+        // Count adjacent lava to suppress dense spreading (organic trails, not blobs)
+        let adjLava = 0;
+        for (let d = 0; d < 4; d++) {
+          const dir = CARDINAL[ldirs[d]];
+          const ni = wrapY(cy + dir[1]) * cw + wrapX(cx + dir[0]);
+          if (species[ni] === 7 || species[ni] === 1) adjLava++;
+        }
+        // If already surrounded by lava/rock, don't spread (prevents blob growth)
+        if (adjLava < 3) {
+          for (let d = 0; d < 4; d++) {
+            const dir = CARDINAL[ldirs[d]];
+            const nx = wrapX(cx + dir[0]);
+            const ny = wrapY(cy + dir[1]);
+            const ni = ny * cw + nx;
+            const nSid = species[ni];
+            if (nSid === 0 || nSid === 3 || nSid === 4 || nSid === 6) {
+              species[ni] = 7; hunger[ni] = 0; age[ni] = 0;
+              processed[ni] = 1;
+              break; // only one spread per tick
+            }
+          }
         }
       }
       // Lava melts ice on contact
       for (let d = 0; d < 4; d++) {
         const dir = CARDINAL[ldirs[d]];
-        const nx = wrapX(cx + dir[0]);
-        const ny = wrapY(cy + dir[1]);
-        const ni = ny * cw + nx;
+        const ni = wrapY(cy + dir[1]) * cw + wrapX(cx + dir[0]);
         if (species[ni] === 5) {
           species[ni] = 0; hunger[ni] = 0; age[ni] = 0;
         }
@@ -3596,47 +3601,64 @@ function triggerDisaster(canvasX, canvasY) {
     }
     startToxicPulse(cellX * CELL_SIZE + CELL_SIZE / 2, cellY * CELL_SIZE + CELL_SIZE / 2, r * CELL_SIZE);
   } else if (selectedType === -8) {
-    // VOLCANO — subsea eruption: rock core, lava radiating outward, kills with heat
-    // Warm Adapted get resistance; Cold Adapted extra vulnerable; Shell/Armored partial resist
-    const volcR = Math.max(10, brushSize * 3);
-    const volcR2 = volcR * volcR;
-    const coreR = Math.max(3, Math.floor(volcR * 0.25)); // solid rock core
-    const lavaR = Math.max(5, Math.floor(volcR * 0.55)); // lava zone
-    for (let dy = -volcR; dy <= volcR; dy++) {
-      for (let dx = -volcR; dx <= volcR; dx++) {
+    // VOLCANO — subsea eruption: small rock core + lava fingers radiating outward
+    const volcR = Math.max(8, brushSize * 3);
+    const coreR = Math.max(2, Math.floor(volcR * 0.2));
+    const coreR2 = coreR * coreR + coreR;
+    // Phase 1: small rock core
+    for (let dy = -coreR; dy <= coreR; dy++) {
+      for (let dx = -coreR; dx <= coreR; dx++) {
+        if (dx * dx + dy * dy > coreR2) continue;
+        const x = wrapX(cellX + dx);
+        const y = wrapY(cellY + dy);
+        const idx = y * gridW + x;
+        species[idx] = 1; hunger[idx] = 0; age[idx] = 0;
+      }
+    }
+    // Phase 2: grow lava fingers outward using random walks from the core edge
+    const numFingers = 4 + Math.floor(Math.random() * 5); // 4-8 lava trails
+    const fingerLen = Math.max(4, Math.floor(volcR * 0.6));
+    for (let f = 0; f < numFingers; f++) {
+      const angle = (f / numFingers) * Math.PI * 2 + (Math.random() - 0.5) * 0.8;
+      let fx = cellX + Math.round(Math.cos(angle) * (coreR + 1));
+      let fy = cellY + Math.round(Math.sin(angle) * (coreR + 1));
+      const drift = (Math.random() - 0.5) * 0.6; // direction bias for organic curves
+      for (let step = 0; step < fingerLen; step++) {
+        const wx = wrapX(fx);
+        const wy = wrapY(fy);
+        const wi = wy * gridW + wx;
+        if (species[wi] !== 1) { // don't overwrite rock
+          species[wi] = 7; hunger[wi] = 0;
+          age[wi] = Math.floor(Math.random() * 6); // stagger cooling for varied shapes
+        }
+        // Random walk biased in the finger's direction
+        const stepAngle = angle + drift + (Math.random() - 0.5) * 1.2;
+        fx += Math.round(Math.cos(stepAngle));
+        fy += Math.round(Math.sin(stepAngle));
+      }
+    }
+    // Phase 3: heat zone — kill nearby creatures (small radius around the eruption)
+    const heatR = Math.max(5, Math.floor(volcR * 0.7));
+    const heatR2 = heatR * heatR;
+    for (let dy = -heatR; dy <= heatR; dy++) {
+      for (let dx = -heatR; dx <= heatR; dx++) {
         const dist2 = dx * dx + dy * dy;
-        if (dist2 > volcR2) continue;
-        const dist = Math.sqrt(dist2);
+        if (dist2 > heatR2) continue;
         const x = wrapX(cellX + dx);
         const y = wrapY(cellY + dy);
         const idx = y * gridW + x;
         const sid = species[idx];
-        if (dist <= coreR) {
-          // Inner core — becomes rock (volcanic vent)
-          species[idx] = 1; hunger[idx] = 0; age[idx] = 0;
-        } else if (dist <= lavaR) {
-          // Lava zone — becomes lava (will cool to rock over time)
-          if (sid === 1) continue; // don't overwrite existing rock
-          species[idx] = 7; hunger[idx] = 0; age[idx] = 0;
-        } else {
-          // Outer heat zone — damage/kill creatures
-          if (sid <= 1 || sid === 7) continue;
-          const sp = SPECIES[sid];
-          if (!sp) continue;
-          const traits = evoStats[sid] ? evoStats[sid].traits || [] : [];
-          if (traits.indexOf('warmadapt') !== -1 && Math.random() < 0.7) continue;
-          if (traits.indexOf('shell') !== -1 && Math.random() < 0.35) continue;
-          if (traits.indexOf('armored') !== -1 && Math.random() < 0.3) continue;
-          // Cold adapted species are extra vulnerable
-          const killChance = traits.indexOf('coldadapt') !== -1 ? 0.95 : (1 - dist / volcR) * 0.8 + 0.2;
-          if (Math.random() < killChance) {
-            if (sp.hungerMax) {
-              species[idx] = 3; hunger[idx] = 0; age[idx] = 0;
-            } else {
-              // Plants get scorched
-              species[idx] = 3; hunger[idx] = 0; age[idx] = 0;
-            }
-          }
+        if (sid <= 1 || sid === 7) continue;
+        const sp = SPECIES[sid];
+        if (!sp || !sp.hungerMax) continue;
+        const traits = evoStats[sid] ? evoStats[sid].traits || [] : [];
+        if (traits.indexOf('warmadapt') !== -1 && Math.random() < 0.7) continue;
+        if (traits.indexOf('shell') !== -1 && Math.random() < 0.35) continue;
+        if (traits.indexOf('armored') !== -1 && Math.random() < 0.3) continue;
+        const dist = Math.sqrt(dist2);
+        const killChance = traits.indexOf('coldadapt') !== -1 ? 0.95 : (1 - dist / heatR) * 0.6 + 0.15;
+        if (Math.random() < killChance) {
+          species[idx] = 3; hunger[idx] = 0; age[idx] = 0;
         }
       }
     }
