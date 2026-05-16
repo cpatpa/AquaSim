@@ -1634,6 +1634,9 @@ let species, hunger, age; // typed arrays (flat: y * gridW + x)
 let currents; // overlay layer: 1 = current present
 let canvasW, canvasH; // in pixels
 
+let cellNoise;  // precomputed per-cell noise for visual variation
+let cellNoise2; // second noise channel for independent variation
+
 function allocGrid(cw, ch) {
   gridW = cw; gridH = ch;
   canvasW = cw * CELL_SIZE; canvasH = ch * CELL_SIZE;
@@ -1642,6 +1645,15 @@ function allocGrid(cw, ch) {
   hunger   = new Int16Array(total);
   age      = new Uint16Array(total);
   currents = new Uint8Array(total);
+  cellNoise  = new Float32Array(total);
+  cellNoise2 = new Float32Array(total);
+  for (let cy = 0; cy < ch; cy++) {
+    for (let cx = 0; cx < cw; cx++) {
+      const i = cy * cw + cx;
+      cellNoise[i]  = noise2D(cx * 0.35, cy * 0.35);
+      cellNoise2[i] = noise2D(cx * 0.6 + 50, cy * 0.6 + 50);
+    }
+  }
 }
 
 function clearGrid() {
@@ -1679,70 +1691,243 @@ function initCanvas() {
 
 function render() {
   const cw = gridW, ch = gridH, cs = CELL_SIZE, gap = GRID_GAP;
-  const pw = canvasW;
+  const pw = canvasW, ph = canvasH;
   const data = imgPixels;
-  const bgR = COLOR_RGB[0][0], bgG = COLOR_RGB[0][1], bgB = COLOR_RGB[0][2];
-  const innerSize = cs - gap; // drawn square size per cell
+  const bgBase = COLOR_RGB[0];
+  const innerSize = cs - gap;
+  const gen = generation;
+  const hlSid = highlightSpecies;
+  const lastInner = innerSize - 1;
 
-  // Fill entire image with background (grid lines show through the gaps)
-  for (let i = 0, len = data.length; i < len; i += 4) {
-    data[i] = bgR; data[i+1] = bgG; data[i+2] = bgB; data[i+3] = 255;
+  // --- Pass 1: depth-gradient background ---
+  for (let py = 0; py < ph; py++) {
+    const dt = py / ph;
+    const bgR = Math.max(0, (bgBase[0] + 8 * (1 - dt)) | 0);
+    const bgG = Math.max(0, (bgBase[1] + 14 * (1 - dt)) | 0);
+    const bgB = Math.max(0, (bgBase[2] + 20 * (1 - dt) - 4 * dt) | 0);
+    const rowOff = py * pw * 4;
+    for (let px = 0; px < pw; px++) {
+      const off = rowOff + px * 4;
+      data[off] = bgR; data[off+1] = bgG; data[off+2] = bgB; data[off+3] = 255;
+    }
   }
 
+  // --- Pass 2: water caustic on empty cells ---
   for (let cy = 0; cy < ch; cy++) {
     for (let cx = 0; cx < cw; cx++) {
       const idx = cy * cw + cx;
-      const sid = species[idx];
-      if (sid === 0) continue; // already background
-
-      const rgb = COLOR_RGB[sid];
-      let r = rgb[0], g = rgb[1], b = rgb[2];
-
-      // Dim colour based on hunger for animals
-      const sp = SPECIES[sid];
-      if (sp && sp.hungerMax) {
-        const f = Math.max(0.35, 1 - hunger[idx] / evo(sid).hungerMax);
-        r = (r * f) | 0;
-        g = (g * f) | 0;
-        b = (b * f) | 0;
-      }
-
-      // Highlight mode: dim everything except the highlighted species
-      if (highlightSpecies >= 0 && sid !== highlightSpecies) {
-        r = (r * 0.15) | 0;
-        g = (g * 0.15) | 0;
-        b = (b * 0.15) | 0;
-      }
-
-      // Fill inner square, leaving gap on right and bottom edges
-      const px0 = cx * cs;
-      const py0 = cy * cs;
-      for (let py = py0; py < py0 + innerSize; py++) {
-        const rowOff = py * pw * 4;
-        for (let px = px0; px < px0 + innerSize; px++) {
-          const off = rowOff + px * 4;
-          data[off]     = r;
-          data[off + 1] = g;
-          data[off + 2] = b;
+      if (species[idx] !== 0) continue;
+      const nv = cellNoise[idx];
+      if (nv < 0.15) continue;
+      const bright = ((nv - 0.15) * 12) | 0;
+      if (bright <= 0) continue;
+      const px0 = cx * cs, py0 = cy * cs;
+      const cx2 = ((cellNoise2[idx] + 1) * 3.5) | 0;
+      const cy2 = ((cellNoise[idx]) * 3.5) | 0;
+      const cpx = px0 + Math.min(cx2, lastInner);
+      const cpy = py0 + Math.min(Math.abs(cy2), lastInner);
+      for (let dy = -1; dy <= 1; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+          const ppx = cpx + dx, ppy = cpy + dy;
+          if (ppx >= px0 && ppx < px0 + innerSize && ppy >= py0 && ppy < py0 + innerSize) {
+            const off = (ppy * pw + ppx) * 4;
+            const falloff = (dx === 0 && dy === 0) ? 1.0 : 0.5;
+            const b = (bright * falloff) | 0;
+            data[off] += b; data[off+1] += (b * 1.2) | 0; data[off+2] += (b * 1.5) | 0;
+          }
         }
       }
     }
   }
 
-  // Current overlay pass — blend semi-transparent blue on top + arrow
+  // --- Pass 3: cell rendering with noise, bevel, and effects ---
+  for (let cy = 0; cy < ch; cy++) {
+    const depthDim = 1.0 - (cy / ch) * 0.12;
+
+    for (let cx = 0; cx < cw; cx++) {
+      const idx = cy * cw + cx;
+      const sid = species[idx];
+      if (sid === 0) continue;
+
+      const rgb = COLOR_RGB[sid];
+      let baseR = rgb[0], baseG = rgb[1], baseB = rgb[2];
+
+      const nv = cellNoise[idx];
+      const nv2 = cellNoise2[idx];
+      const sp = SPECIES[sid];
+
+      // Hunger dimming for animals
+      let hungerF = 1.0;
+      if (sp && sp.hungerMax) {
+        hungerF = Math.max(0.35, 1 - hunger[idx] / evo(sid).hungerMax);
+      }
+
+      // Noise colour variation: per-cell subtle shift
+      let noiseShift = nv * 0.10;
+
+      // Species-specific rendering adjustments
+      let glowR = 0, glowG = 0, glowB = 0;
+      let bevelStrength = 16;
+      let isLava = false, isIce = false, isToxic = false;
+
+      if (sid === 1) {
+        // Rock: heavier noise for natural stone appearance
+        noiseShift = nv * 0.18;
+        const stoneHue = nv2 * 8;
+        baseR += stoneHue | 0;
+        baseG += (stoneHue * 0.7) | 0;
+        bevelStrength = 22;
+      } else if (sid === 7) {
+        // Lava: pulsing glow, warm centre
+        isLava = true;
+        const lavaAge = age[idx];
+        const pulse = 0.8 + 0.2 * Math.sin(lavaAge * 0.25 + nv * 3);
+        noiseShift = nv * 0.08;
+        baseR = Math.min(255, (baseR * pulse + 40 * (1 - lavaAge / LAVA_COOL_AGE)) | 0);
+        baseG = Math.min(255, (baseG * pulse + 25 * Math.max(0, 1 - lavaAge / 20)) | 0);
+        glowR = 60; glowG = 15;
+        bevelStrength = 10;
+      } else if (sid === 5) {
+        // Ice: crystalline shimmer
+        isIce = true;
+        const shimmer = 0.92 + 0.08 * Math.sin(cx * 1.5 + cy * 0.9 + gen * 0.15);
+        baseR = (baseR * shimmer) | 0;
+        baseG = (baseG * shimmer) | 0;
+        baseB = (baseB * shimmer) | 0;
+        noiseShift = nv2 * 0.06;
+        bevelStrength = 24;
+      } else if (sid === 6) {
+        // Toxic Bloom: eerie pulsing glow
+        isToxic = true;
+        const tPulse = 0.88 + 0.12 * Math.sin(gen * 0.2 + nv * 5);
+        baseG = Math.min(255, (baseG * tPulse) | 0);
+        glowG = 30;
+        bevelStrength = 12;
+      } else if (sid === 3) {
+        // Dead: muted, low variation
+        noiseShift = nv * 0.05;
+        bevelStrength = 8;
+      } else if (sid === 4) {
+        // Oil: dark with subtle iridescence
+        const iriShift = (nv2 * 6) | 0;
+        baseR += iriShift;
+        baseB += (iriShift * 0.8) | 0;
+        bevelStrength = 6;
+      } else if (sp && sp.tier === 'producer') {
+        // Producers: organic variation
+        noiseShift = nv * 0.14;
+        const organicWave = Math.sin(cx * 0.8 + cy * 0.5) * 4;
+        baseG = Math.min(255, Math.max(0, baseG + organicWave));
+      }
+
+      // Trait-based visual flair
+      if (sp && sp.tier !== 'environment' && sp.tier !== 'transient') {
+        const traits = evo(sid).traits;
+        if (traits && traits.length > 0) {
+          for (let ti = 0; ti < traits.length; ti++) {
+            const tr = traits[ti];
+            if (tr === 'bioluminesc') {
+              glowR += 15; glowG += 20; glowB += 30;
+            } else if (tr === 'toxic') {
+              baseG = Math.min(255, baseG + 12);
+            } else if (tr === 'armored' || tr === 'shell') {
+              bevelStrength += 8;
+            }
+          }
+        }
+      }
+
+      // Apply combined factor
+      let factor = hungerF * depthDim * (1 + noiseShift);
+      let r = Math.min(255, Math.max(0, (baseR * factor) | 0));
+      let g = Math.min(255, Math.max(0, (baseG * factor) | 0));
+      let b = Math.min(255, Math.max(0, (baseB * factor) | 0));
+
+      // Highlight dimming
+      if (hlSid >= 0 && sid !== hlSid) {
+        r = (r * 0.15) | 0; g = (g * 0.15) | 0; b = (b * 0.15) | 0;
+      }
+
+      // Fill inner cell with bevel effect
+      const px0 = cx * cs, py0 = cy * cs;
+      const hiR = Math.min(255, r + bevelStrength);
+      const hiG = Math.min(255, g + bevelStrength);
+      const hiB = Math.min(255, b + bevelStrength);
+      const shR = Math.max(0, r - bevelStrength);
+      const shG = Math.max(0, g - bevelStrength);
+      const shB = Math.max(0, b - bevelStrength);
+
+      for (let ly = 0; ly < innerSize; ly++) {
+        const rowOff = (py0 + ly) * pw * 4;
+        const isTop = ly === 0;
+        const isBot = ly === lastInner;
+        for (let lx = 0; lx < innerSize; lx++) {
+          const off = rowOff + (px0 + lx) * 4;
+          if (isTop || lx === 0) {
+            data[off] = hiR; data[off+1] = hiG; data[off+2] = hiB;
+          } else if (isBot || lx === lastInner) {
+            data[off] = shR; data[off+1] = shG; data[off+2] = shB;
+          } else {
+            data[off] = r; data[off+1] = g; data[off+2] = b;
+          }
+        }
+      }
+
+      // Glow: bleed light into gap pixels for lava, toxic bloom, bioluminescent
+      if (glowR | glowG | glowB) {
+        if (gap > 0) {
+          for (let ly = 0; ly < innerSize; ly++) {
+            const gapOff = ((py0 + ly) * pw + px0 + innerSize) * 4;
+            data[gapOff]   = Math.min(255, data[gapOff]   + glowR);
+            data[gapOff+1] = Math.min(255, data[gapOff+1] + glowG);
+            data[gapOff+2] = Math.min(255, data[gapOff+2] + glowB);
+          }
+          for (let lx = 0; lx <= innerSize; lx++) {
+            const gapOff = ((py0 + innerSize) * pw + px0 + lx) * 4;
+            data[gapOff]   = Math.min(255, data[gapOff]   + glowR);
+            data[gapOff+1] = Math.min(255, data[gapOff+1] + glowG);
+            data[gapOff+2] = Math.min(255, data[gapOff+2] + glowB);
+          }
+        }
+      }
+
+      // Lava: centre hot-spot (inner 3x3 brighter)
+      if (isLava && age[idx] < 20) {
+        const cStart = ((innerSize - 3) >> 1);
+        const heat = Math.max(0, 1 - age[idx] / 20);
+        const addR = (40 * heat) | 0, addG = (20 * heat) | 0;
+        for (let ly = cStart; ly < cStart + 3; ly++) {
+          const rowOff = (py0 + ly) * pw * 4;
+          for (let lx = cStart; lx < cStart + 3; lx++) {
+            const off = rowOff + (px0 + lx) * 4;
+            data[off]   = Math.min(255, data[off]   + addR);
+            data[off+1] = Math.min(255, data[off+1] + addG);
+          }
+        }
+      }
+
+      // Ice: bright centre pixel for sparkle
+      if (isIce) {
+        const sparkle = (Math.sin(cx * 2.7 + cy * 1.3 + gen * 0.3) > 0.6);
+        if (sparkle) {
+          const mid = innerSize >> 1;
+          const off = ((py0 + mid) * pw + px0 + mid) * 4;
+          data[off] = 255; data[off+1] = 255; data[off+2] = 255;
+        }
+      }
+    }
+  }
+
+  // --- Pass 4: current overlay + arrows ---
   const curR = COLOR_RGB[2][0], curG = COLOR_RGB[2][1], curB = COLOR_RGB[2][2];
-  const alpha = 0.25; // overlay opacity
-  const inv = 1 - alpha;
-  // Arrow highlight colour (brighter blue)
+  const alpha = 0.25, inv = 1 - alpha;
   const arwR = 80, arwG = 160, arwB = 255;
   for (let cy = 0; cy < ch; cy++) {
     for (let cx = 0; cx < cw; cx++) {
       const idx = cy * cw + cx;
       const cdir = currents[idx];
       if (!cdir) continue;
-      const px0 = cx * cs;
-      const py0 = cy * cs;
-      // Blend the tint
+      const px0 = cx * cs, py0 = cy * cs;
       for (let py = py0; py < py0 + innerSize; py++) {
         const rowOff = py * pw * 4;
         for (let px = px0; px < px0 + innerSize; px++) {
@@ -1752,20 +1937,13 @@ function render() {
           data[off + 2] = (data[off + 2] * inv + curB * alpha) | 0;
         }
       }
-      // Draw a small arrow (3px) in the centre of the cell
       const mid = (innerSize / 2) | 0;
       const mcx = px0 + mid, mcy = py0 + mid;
-      // Arrow pixels relative to centre, based on direction
       let arrowPx;
-      if (cdir === 1) {       // N ↑
-        arrowPx = [[0,-1],[0,0],[-1,0],[1,0],[0,1]];
-      } else if (cdir === 2) { // E →
-        arrowPx = [[-1,0],[0,0],[0,-1],[0,1],[1,0]];
-      } else if (cdir === 3) { // S ↓
-        arrowPx = [[0,1],[0,0],[-1,0],[1,0],[0,-1]];
-      } else {                 // W ←
-        arrowPx = [[1,0],[0,0],[0,-1],[0,1],[-1,0]];
-      }
+      if (cdir === 1) arrowPx = [[0,-1],[0,0],[-1,0],[1,0],[0,1]];
+      else if (cdir === 2) arrowPx = [[-1,0],[0,0],[0,-1],[0,1],[1,0]];
+      else if (cdir === 3) arrowPx = [[0,1],[0,0],[-1,0],[1,0],[0,-1]];
+      else arrowPx = [[1,0],[0,0],[0,-1],[0,1],[-1,0]];
       for (const [adx, ady] of arrowPx) {
         const apx = mcx + adx, apy = mcy + ady;
         if (apx >= px0 && apx < px0 + innerSize && apy >= py0 && apy < py0 + innerSize) {
