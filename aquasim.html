@@ -360,12 +360,6 @@ function layersCanReach(predatorSid, preyLayer) {
   const reach = sp.layerReach || 1;
   return Math.abs(sp.layer - preyLayer) <= reach;
 }
-// Backward compat wrapper for non-predation checks (movement, breeding)
-function layersAdjacent(l1, l2) {
-  if (l1 === -1 || l2 === -1) return true;
-  return Math.abs(l1 - l2) <= 1;
-}
-
 // Pre-parse colours to RGB triples
 const COLOR_RGB = {};
 for (const id in SPECIES) {
@@ -382,6 +376,12 @@ const CARDINAL = [[0,-1],[1,0],[0,1],[-1,0]];
 // Current direction values: 1=N, 2=E, 3=S, 4=W → index into CARDINAL is (val - 1)
 // All 8 neighbours
 const NEIGHBOURS_8 = [[0,-1],[1,-1],[1,0],[1,1],[0,1],[-1,1],[-1,0],[-1,-1]];
+
+// Pre-built scan cell lists for hunt ranges (avoids per-cell allocation in step())
+const _scanRange1 = []; // 8 neighbours
+const _scanRange2 = []; // 24 cells (5x5 minus centre)
+for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) { if (dx || dy) _scanRange1.push([dx, dy]); }
+for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) { if (dx || dy) _scanRange2.push([dx, dy]); }
 
 // --- Simplex-like 2D noise for natural terrain generation ---
 const _noiseP = new Uint8Array(512);
@@ -1678,7 +1678,7 @@ function wrapY(y) { return ((y % gridH) + gridH) % gridH; }
 // 3. RENDER
 // ============================================================
 const canvas = document.getElementById('grid-canvas');
-const ctx = canvas.getContext('2d');
+const ctx = canvas.getContext('2d', { willReadFrequently: true });
 let imgData, imgPixels;
 let highlightSpecies = -1; // -1 = no highlight, otherwise species ID to highlight
 
@@ -1965,15 +1965,7 @@ let running = false;
 let tickInterval = 100;
 let tickTimer = null;
 
-// Fisher-Yates on typed array
-function shuffleIndices(arr) {
-  for (let i = arr.length - 1; i > 0; i--) {
-    const j = (Math.random() * (i + 1)) | 0;
-    const tmp = arr[i]; arr[i] = arr[j]; arr[j] = tmp;
-  }
-}
-
-// Shuffle a small array in-place
+// Fisher-Yates shuffle in-place, returns array
 function shuffleSmall(arr) {
   for (let i = arr.length - 1; i > 0; i--) {
     const j = (Math.random() * (i + 1)) | 0;
@@ -1981,6 +1973,12 @@ function shuffleSmall(arr) {
   }
   return arr;
 }
+
+// Pre-allocated shuffle buffers to avoid per-cell array allocations in step()
+const _dirs4 = new Uint8Array([0, 1, 2, 3]);
+const _dirs8 = new Uint8Array([0, 1, 2, 3, 4, 5, 6, 7]);
+function shuffleDirs4() { shuffleSmall(_dirs4); return _dirs4; }
+function shuffleDirs8() { shuffleSmall(_dirs8); return _dirs8; }
 
 function step() {
   const total = gridW * gridH;
@@ -1995,20 +1993,21 @@ function step() {
   }
   const sMod = SEASON_MODS[currentSeason];
 
-  // Build index list of non-empty cells for efficiency
-  const indices = [];
+  // Build index list of non-empty cells using typed array (avoids JS array push overhead)
+  const indices = new Uint32Array(total);
+  let indexCount = 0;
   for (let i = 0; i < total; i++) {
-    if (species[i] !== 0) indices.push(i);
+    if (species[i] !== 0) indices[indexCount++] = i;
   }
-  // Shuffle
-  for (let i = indices.length - 1; i > 0; i--) {
+  // Fisher-Yates shuffle on the populated portion
+  for (let i = indexCount - 1; i > 0; i--) {
     const j = (Math.random() * (i + 1)) | 0;
     const tmp = indices[i]; indices[i] = indices[j]; indices[j] = tmp;
   }
 
   const cw = gridW, ch = gridH;
 
-  for (let k = 0; k < indices.length; k++) {
+  for (let k = 0; k < indexCount; k++) {
     const idx = indices[k];
     if (processed[idx]) continue;
     const sid = species[idx];
@@ -2041,7 +2040,7 @@ function step() {
         continue;
       }
       // Kill adjacent life and spread
-      const dirs = shuffleSmall([0,1,2,3]);
+      const dirs = shuffleDirs4();
       for (let d = 0; d < 4; d++) {
         const dir = CARDINAL[dirs[d]];
         const nx = wrapX(cx + dir[0]);
@@ -2075,7 +2074,7 @@ function step() {
         species[idx] = 0; hunger[idx] = 0; age[idx] = 0;
         continue;
       }
-      const tdirs = shuffleSmall([0,1,2,3]);
+      const tdirs = shuffleDirs4();
       for (let d = 0; d < 4; d++) {
         const dir = CARDINAL[tdirs[d]];
         const nx = wrapX(cx + dir[0]);
@@ -2115,7 +2114,7 @@ function step() {
         species[idx] = 1; hunger[idx] = 0; age[idx] = 0;
         continue;
       }
-      const ldirs = shuffleSmall([0,1,2,3]);
+      const ldirs = shuffleDirs4();
       // Kill adjacent living creatures (never convert them to more lava)
       for (let d = 0; d < 4; d++) {
         const dir = CARDINAL[ldirs[d]];
@@ -2171,10 +2170,11 @@ function step() {
     // Producer behaviour
     if (sp.tier === 'producer') {
       const pes = evo(sid);
+      const pTraits = pes.traits ? new Set(pes.traits) : null;
       let breedChance = pes.breedRate * sMod[3]; // seasonal producer breed modifier
       // Warm/cold adaptation overrides seasonal penalty
-      if (pes.traits && pes.traits.indexOf('warmadapt') !== -1 && (currentSeason === 'Summer' || currentSeason === 'Spring')) breedChance = pes.breedRate * 1.4;
-      if (pes.traits && pes.traits.indexOf('coldadapt') !== -1 && (currentSeason === 'Winter' || currentSeason === 'Autumn')) breedChance = pes.breedRate * 1.0;
+      if (pTraits && pTraits.has('warmadapt') && (currentSeason === 'Summer' || currentSeason === 'Spring')) breedChance = pes.breedRate * 1.4;
+      if (pTraits && pTraits.has('coldadapt') && (currentSeason === 'Winter' || currentSeason === 'Autumn')) breedChance = pes.breedRate * 1.0;
 
       // Coral grows faster near rock (reef affinity)
       let nearRock = false;
@@ -2188,7 +2188,7 @@ function step() {
       }
 
       // Nitrogen Fix: breed 2x faster near dead matter
-      if (pes.traits && pes.traits.indexOf('nitrofix') !== -1) {
+      if (pTraits && pTraits.has('nitrofix')) {
         for (let n = 0; n < 4; n++) {
           const dir = CARDINAL[n];
           const ni = wrapY(cy + dir[1]) * cw + wrapX(cx + dir[0]);
@@ -2197,7 +2197,7 @@ function step() {
       }
 
       // Allelopathy: inhibit other producer species within 2 tiles
-      if (pes.traits && pes.traits.indexOf('allelopathy') !== -1 && Math.random() < 0.08) {
+      if (pTraits && pTraits.has('allelopathy') && Math.random() < 0.08) {
         for (let ady = -2; ady <= 2; ady++) {
           for (let adx = -2; adx <= 2; adx++) {
             if (adx === 0 && ady === 0) continue;
@@ -2215,19 +2215,19 @@ function step() {
       }
 
       // Nocturnal/diurnal for producers (via pes)
-      if (pes.traits && pes.traits.indexOf('nocturnal') !== -1) {
+      if (pTraits && pTraits.has('nocturnal')) {
         if (currentSeason === 'Winter' || currentSeason === 'Autumn') breedChance *= 1.4;
         else breedChance *= 0.8;
       }
-      if (pes.traits && pes.traits.indexOf('diurnal') !== -1) {
+      if (pTraits && pTraits.has('diurnal')) {
         if (currentSeason === 'Summer' || currentSeason === 'Spring') breedChance *= 1.4;
         else breedChance *= 0.8;
       }
 
       if (Math.random() < breedChance) {
         // Spore Burst: can spread 2 tiles away
-        const maxDist = (pes.traits && pes.traits.indexOf('spore') !== -1) ? 2 : 1;
-        const dirs = shuffleSmall([0,1,2,3]);
+        const maxDist = (pTraits && pTraits.has('spore')) ? 2 : 1;
+        const dirs = shuffleDirs4();
         let bred = false;
         for (let dist = 1; dist <= maxDist && !bred; dist++) {
           for (let d = 0; d < 4; d++) {
@@ -2252,7 +2252,8 @@ function step() {
     if (!sp.hungerMax) continue;
     const es = evo(sid);
     const traits = es.traits || [];
-    const hasTrait = (t) => traits.indexOf(t) !== -1;
+    const traitSet = new Set(traits);
+    const hasTrait = (t) => traitSet.has(t);
     const restoreFrac = HUNGER_RESTORE_BY_TIER[sp.tier] || HUNGER_RESTORE_FRACTION;
 
     // Seasonal adaptation check
@@ -2384,6 +2385,7 @@ function step() {
     // 3. Eat: scan neighbours for food (layer-aware)
     // Apex/megafauna scan 2-tile radius; others scan 8 immediate neighbours
     const eats = es.eats;
+    const eatsSet = new Set(eats);
     let ate = false;
     const huntRange = (sp.tier === 'apex' || sp.tier === 'megafauna') ? 2 : 1;
     const isPackHunter = hasTrait('packhunter');
@@ -2392,14 +2394,7 @@ function step() {
     let trapJawUsed = false; // trap jaw only works once per tick
 
     if (eats && eats.length) {
-      // Build randomized scan list
-      const scanCells = [];
-      for (let dy = -huntRange; dy <= huntRange; dy++) {
-        for (let dx = -huntRange; dx <= huntRange; dx++) {
-          if (dx === 0 && dy === 0) continue;
-          scanCells.push([dx, dy]);
-        }
-      }
+      const scanCells = huntRange >= 2 ? _scanRange2 : _scanRange1;
       shuffleSmall(scanCells);
 
       // Pack hunter: count allies near self
@@ -2419,7 +2414,7 @@ function step() {
         const ny = wrapY(cy + dy);
         const ni = ny * cw + nx;
         const foodId = species[ni];
-        if (eats.indexOf(foodId) !== -1 && layersCanReach(sid, layerOf(foodId))) {
+        if (eatsSet.has(foodId) && layersCanReach(sid, layerOf(foodId))) {
           const preyEs = evo(foodId);
           const preyTraits = preyEs.traits || [];
 
@@ -2523,7 +2518,7 @@ function step() {
 
     // Softshell / Dwarfism: same-tier species can eat neighbours with softshell or dwarfism
     if (!ate && sp.hungerMax) {
-      const nbrs2 = shuffleSmall([0,1,2,3,4,5,6,7]);
+      const nbrs2 = shuffleDirs8();
       for (let n = 0; n < 8 && !ate; n++) {
         const dir = NEIGHBOURS_8[nbrs2[n]];
         const nx = wrapX(cx + dir[0]);
@@ -2548,13 +2543,13 @@ function step() {
     // Bulk Feeder: megafauna eats up to 3 prey in one tick
     if (ate && hasTrait('bulkfeeder') && eats && eats.length) {
       let extraEats = 0;
-      const nbrs3 = shuffleSmall([0,1,2,3,4,5,6,7]);
+      const nbrs3 = shuffleDirs8();
       for (let n = 0; n < 8 && extraEats < 2; n++) {
         const dir = NEIGHBOURS_8[nbrs3[n]];
         const nx = wrapX(cx + dir[0]);
         const ny = wrapY(cy + dir[1]);
         const ni = ny * cw + nx;
-        if (eats.indexOf(species[ni]) !== -1 && layersCanReach(sid, layerOf(species[ni]))) {
+        if (eatsSet.has(species[ni]) && layersCanReach(sid, layerOf(species[ni]))) {
           species[ni] = 0; hunger[ni] = 0; age[ni] = 0;
           hunger[idx] = Math.max(0, hunger[idx] - ((es.hungerMax * 0.3) | 0));
           processed[ni] = 1;
@@ -2565,7 +2560,7 @@ function step() {
 
     // Lithivore: if didn't eat normally, try eating adjacent rock
     if (!ate && hasTrait('lithivore')) {
-      const rdirs = shuffleSmall([0,1,2,3]);
+      const rdirs = shuffleDirs4();
       for (let d = 0; d < 4; d++) {
         const dir = CARDINAL[rdirs[d]];
         const nx = wrapX(cx + dir[0]);
@@ -2583,7 +2578,7 @@ function step() {
 
     // Scavenger: if didn't eat normally, eat adjacent dead matter
     if (!ate && hasTrait('scavenger')) {
-      const sdirs = shuffleSmall([0,1,2,3,4,5,6,7]);
+      const sdirs = shuffleDirs8();
       for (let d = 0; d < 8; d++) {
         const dir = NEIGHBOURS_8[sdirs[d]];
         const nx = wrapX(cx + dir[0]);
@@ -2607,7 +2602,7 @@ function step() {
         const ny = wrapY(cy + dir[1] * 2);
         const ni = ny * cw + nx;
         const foodId = species[ni];
-        if (eats.indexOf(foodId) !== -1 && layersCanReach(sid, layerOf(foodId))) {
+        if (eatsSet.has(foodId) && layersCanReach(sid, layerOf(foodId))) {
           const preyEs = evo(foodId);
           const aPT = preyEs.traits || [];
           if (aPT.indexOf('mimicry') !== -1 && Math.random() < 0.45) continue;
@@ -2660,7 +2655,7 @@ function step() {
           const px = wrapX(cx + dx);
           const py = wrapY(cy + dy);
           const pi = py * cw + px;
-          if (eats.indexOf(species[pi]) !== -1 && !processed[pi] && layersCanReach(sid, layerOf(species[pi]))) {
+          if (eatsSet.has(species[pi]) && !processed[pi] && layersCanReach(sid, layerOf(species[pi]))) {
             // Move prey one step closer to this predator
             const stepX = dx > 0 ? -1 : dx < 0 ? 1 : 0;
             const stepY = dy > 0 ? -1 : dy < 0 ? 1 : 0;
@@ -2708,7 +2703,7 @@ function step() {
             if (dist > 16 || dist >= bestDist) continue;
             const px = wrapX(cx + dx), py = wrapY(cy + dy);
             const echoSid = species[py * cw + px];
-            if (eats.indexOf(echoSid) !== -1 && layersCanReach(sid, layerOf(echoSid))) {
+            if (eatsSet.has(echoSid) && layersCanReach(sid, layerOf(echoSid))) {
               bestDist = dist; bestDx = dx; bestDy = dy;
             }
           }
@@ -2736,7 +2731,7 @@ function step() {
             if (dist > 9 || dist >= bestDist) continue;
             const px = wrapX(cx + dx), py = wrapY(cy + dy);
             const stSid = species[py * cw + px];
-            if (eats.indexOf(stSid) !== -1 && layersCanReach(sid, layerOf(stSid))) {
+            if (eatsSet.has(stSid) && layersCanReach(sid, layerOf(stSid))) {
               bestDist = dist; bestDx = dx; bestDy = dy;
             }
           }
@@ -2760,7 +2755,7 @@ function step() {
       }
 
       if (!moved) {
-        const dirs = shuffleSmall([0,1,2,3]);
+        const dirs = shuffleDirs4();
         for (let d = 0; d < 4; d++) {
           const dir = CARDINAL[dirs[d]];
           let nx = wrapX(cx + dir[0]);
@@ -2793,7 +2788,7 @@ function step() {
     if (hasTrait('territorial')) {
       if (sameAdjacentCount >= 4 && Math.random() < 0.3) {
         // Too crowded — kill a random neighbor of same species
-        const tNbrs = shuffleSmall([0,1,2,3,4,5,6,7]);
+        const tNbrs = shuffleDirs8();
         for (let tn = 0; tn < 8; tn++) {
           const tdir = NEIGHBOURS_8[tNbrs[tn]];
           const tni = wrapY(cy + tdir[1]) * cw + wrapX(cx + tdir[0]);
@@ -2809,7 +2804,7 @@ function step() {
     }
 
     if (Math.random() < breedRate) {
-      const nbrs = shuffleSmall([0,1,2,3,4,5,6,7]);
+      const nbrs = shuffleDirs8();
       for (let n = 0; n < 8; n++) {
         const dir = NEIGHBOURS_8[nbrs[n]];
         const nx = wrapX(cx + dir[0]);
@@ -2830,7 +2825,7 @@ function step() {
     if (sp.parentId !== undefined && evolveEnabled && Math.random() < 0.06) {
       const parentId = sp.parentId;
       const rootId = sp.rootAncestor || parentId;
-      const nbrs4 = shuffleSmall([0,1,2,3,4,5,6,7]);
+      const nbrs4 = shuffleDirs8();
       for (let n = 0; n < 8; n++) {
         const dir = NEIGHBOURS_8[nbrs4[n]];
         const nx = wrapX(cx + dir[0]);
@@ -2924,10 +2919,11 @@ function stopLoop() {
 // ============================================================
 const statsEl = document.getElementById('stats-list');
 const genEl = document.getElementById('gen-counter');
+const seasonEl = document.getElementById('season-display');
+const _evoEntriesEl = document.getElementById('evo-entries');
 
 function updateStats() {
   genEl.textContent = 'GEN ' + generation;
-  const seasonEl = document.getElementById('season-display');
   if (seasonEl) {
     const progress = ((seasonTick / SEASON_LENGTH) * 100) | 0;
     seasonEl.textContent = currentSeason + ' ' + progress + '%';
@@ -2940,50 +2936,27 @@ function updateStats() {
     if (s !== 0) counts[s] = (counts[s] || 0) + 1;
     if (currents[i]) counts[2] = (counts[2] || 0) + 1;
   }
-  let html = '';
+  const parts = [];
   for (const tier of TIER_ORDER) {
     for (const id of tier.ids) {
       if (id === 0) continue;
       const c = counts[id] || 0;
       if (c > 0) {
-        html += '<div class="stat-row" data-sid="' + id + '"><span class="stat-name" style="color:' +
+        parts.push('<div class="stat-row" data-sid="' + id + '"><span class="stat-name" style="color:' +
           SPECIES[id].color + '">' + SPECIES[id].name +
-          '</span><span class="stat-count">' + c + '</span></div>';
+          '</span><span class="stat-count">' + c + '</span></div>');
       }
     }
   }
   // Show transient counts
-  if (counts[3]) {
-    html += '<div class="stat-row" data-sid="3"><span class="stat-name" style="color:#1C1410">Dead</span><span class="stat-count">' + counts[3] + '</span></div>';
+  const transients = [[3,'#1C1410','Dead'],[4,'#2A1800','Oil'],[5,'#AADDFF','Ice'],[6,'#99FF00','Toxic Bloom'],[7,'#FF4400','Lava']];
+  for (const [tid, col, name] of transients) {
+    if (counts[tid]) parts.push('<div class="stat-row" data-sid="' + tid + '"><span class="stat-name" style="color:' + col + '">' + name + '</span><span class="stat-count">' + counts[tid] + '</span></div>');
   }
-  if (counts[4]) {
-    html += '<div class="stat-row" data-sid="4"><span class="stat-name" style="color:#2A1800">Oil</span><span class="stat-count">' + counts[4] + '</span></div>';
-  }
-  if (counts[5]) {
-    html += '<div class="stat-row" data-sid="5"><span class="stat-name" style="color:#AADDFF">Ice</span><span class="stat-count">' + counts[5] + '</span></div>';
-  }
-  if (counts[6]) {
-    html += '<div class="stat-row" data-sid="6"><span class="stat-name" style="color:#99FF00">Toxic Bloom</span><span class="stat-count">' + counts[6] + '</span></div>';
-  }
-  if (counts[7]) {
-    html += '<div class="stat-row" data-sid="7"><span class="stat-name" style="color:#FF4400">Lava</span><span class="stat-count">' + counts[7] + '</span></div>';
-  }
-  statsEl.innerHTML = html;
-
-  // Re-attach highlight listeners on stat rows
-  statsEl.querySelectorAll('.stat-row[data-sid]').forEach(row => {
-    row.addEventListener('mouseenter', function() {
-      highlightSpecies = parseInt(this.dataset.sid);
-      render();
-    });
-    row.addEventListener('mouseleave', function() {
-      highlightSpecies = -1;
-      render();
-    });
-  });
+  statsEl.innerHTML = parts.join('');
 
   // Update evolution log
-  const evoEl = document.getElementById('evo-entries');
+  const evoEl = _evoEntriesEl;
   if (evolveEnabled && evoLog.length > 0) {
     evoEl.innerHTML = evoLog.map(e => '<div class="evo-entry">' + e + '</div>').join('');
   } else if (!evolveEnabled) {
@@ -2992,6 +2965,22 @@ function updateStats() {
     evoEl.innerHTML = '<div class="evo-entry" style="opacity:0.4;">Waiting...</div>';
   }
 }
+
+// Event delegation for stat row hover (attached once, not per tick)
+statsEl.addEventListener('mouseenter', function(e) {
+  const row = e.target.closest('.stat-row[data-sid]');
+  if (row) {
+    highlightSpecies = parseInt(row.dataset.sid);
+    render();
+  }
+}, true);
+statsEl.addEventListener('mouseleave', function(e) {
+  const row = e.target.closest('.stat-row[data-sid]');
+  if (row) {
+    highlightSpecies = -1;
+    render();
+  }
+}, true);
 
 // ============================================================
 // 6. UI CONTROLS
@@ -3730,12 +3719,7 @@ function triggerDisaster(canvasX, canvasY) {
           // Animals: freeze (become ice or dead based on distance)
           if (traits.indexOf('shell') !== -1 && Math.random() < 0.4) continue;
           if (traits.indexOf('armored') !== -1 && Math.random() < 0.3) continue;
-          if (traits.indexOf('warmadapt') !== -1) {
-            // Extra vulnerable — instant death
-            species[idx] = 5; hunger[idx] = 0; age[idx] = 0;
-          } else {
-            species[idx] = 5; hunger[idx] = 0; age[idx] = 0;
-          }
+          species[idx] = 5; hunger[idx] = 0; age[idx] = 0;
         } else if (sp && sp.breedRate !== undefined) {
           // Producer: deep root survives, others frozen
           if (traits.indexOf('deeproot') !== -1) continue;
