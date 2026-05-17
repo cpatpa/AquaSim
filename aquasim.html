@@ -89,6 +89,22 @@ canvas { cursor: crosshair; display: block; }
 .stat-row:hover { background: rgba(0,229,255,0.08); }
 .stat-name { opacity: 0.85; }
 .stat-count { color: #00E5FF; }
+#bio-score {
+  display: flex; justify-content: space-between; align-items: baseline;
+  padding: 4px 10px 6px; border-bottom: 1px solid #0C2D40; flex-shrink: 0;
+}
+#bio-score-label {
+  font-family: 'Orbitron', monospace; font-size: 0.5rem;
+  color: #4A7A8A; letter-spacing: 1px;
+}
+#bio-score-value {
+  font-family: 'Orbitron', monospace; font-size: 0.85rem;
+  font-weight: 600; color: #00FF88; transition: color 0.3s;
+}
+#pop-graph-wrap {
+  flex-shrink: 0; padding: 2px 4px 4px; border-top: 1px solid #0C2D40;
+}
+#pop-graph { display: block; width: 100%; height: 80px; }
 #grid-config { padding: 8px; border-top: 1px solid #0C2D40; }
 #grid-config label { font-size: 0.55rem; display: block; margin-bottom: 2px; }
 #grid-config input {
@@ -265,7 +281,14 @@ canvas { cursor: crosshair; display: block; }
   <!-- RIGHT PANEL -->
   <div id="right-panel">
     <h2>POPULATION</h2>
+    <div id="bio-score">
+      <span id="bio-score-label">BIODIVERSITY</span>
+      <span id="bio-score-value">0</span>
+    </div>
     <div id="stats-list"></div>
+    <div id="pop-graph-wrap">
+      <canvas id="pop-graph"></canvas>
+    </div>
     <div id="evo-resize"></div>
     <div id="evo-log">
       <h2>EVOLUTION</h2>
@@ -583,6 +606,14 @@ const NICHE_SHIFT_CHANCE      = 0.12; // chance per eligible species per evo cyc
 const TIER_PROMOTE = { herbivore: 'consumer', consumer: 'apex', decomposer: 'herbivore', apex: 'megafauna' };
 // Self-predation: evolved variants can prey on siblings/parent in same lineage
 const SELF_PREDATION_CHANCE = 0.18;   // chance per evo cycle per eligible variant
+
+// Population graph constants
+const GRAPH_HISTORY_MAX = 200;
+const GRAPH_RECORD_INTERVAL = 2;
+let graphHistory = [];
+
+// Tier list for biodiversity scoring (excludes 'none', 'environment', 'transient')
+const BIO_TIERS = ['producer', 'herbivore', 'consumer', 'apex', 'megafauna', 'decomposer'];
 
 // Living species IDs (everything that evolves)
 const LIVING_IDS = [];
@@ -1664,6 +1695,7 @@ function clearGrid() {
   generation = 0;
   currentSeason = 'Spring';
   seasonTick = 0;
+  graphHistory = [];
   initEvoStats();
 }
 
@@ -2921,6 +2953,153 @@ const statsEl = document.getElementById('stats-list');
 const genEl = document.getElementById('gen-counter');
 const seasonEl = document.getElementById('season-display');
 const _evoEntriesEl = document.getElementById('evo-entries');
+const _bioScoreEl = document.getElementById('bio-score-value');
+const _popGraphCanvas = document.getElementById('pop-graph');
+const _popGraphCtx = _popGraphCanvas ? _popGraphCanvas.getContext('2d') : null;
+
+function calcBiodiversity(counts) {
+  let score = 0;
+  const livePops = [];
+  const tiersPresent = new Set();
+  const allTraits = new Set();
+  let totalPop = 0;
+
+  for (const id of LIVING_IDS) {
+    const c = counts[id] || 0;
+    if (c <= 0) continue;
+    livePops.push(c);
+    totalPop += c;
+    const sp = SPECIES[id];
+    if (sp && BIO_TIERS.indexOf(sp.tier) !== -1) tiersPresent.add(sp.tier);
+    score += dynamicSpeciesIds.indexOf(id) !== -1 ? 15 : 10;
+    const es = evoStats[id];
+    if (es && es.traits) {
+      for (let t = 0; t < es.traits.length; t++) allTraits.add(es.traits[t]);
+    }
+  }
+
+  score += allTraits.size * 5;
+  score += tiersPresent.size * 25;
+
+  if (livePops.length >= 2 && totalPop > 0) {
+    let H = 0;
+    for (let i = 0; i < livePops.length; i++) {
+      const pi = livePops[i] / totalPop;
+      if (pi > 0) H -= pi * Math.log(pi);
+    }
+    const J = H / Math.log(livePops.length);
+    score += (J * 100) | 0;
+  }
+
+  return score;
+}
+
+function scoreColour(score) {
+  if (score < 100) return '#FF4444';
+  if (score < 250) return '#FF8844';
+  if (score < 450) return '#FFDD44';
+  if (score < 650) return '#88FF88';
+  return '#00FF88';
+}
+
+function drawPopGraph() {
+  const cv = _popGraphCanvas;
+  const ctx = _popGraphCtx;
+  if (!cv || !ctx || graphHistory.length < 2) return;
+
+  const rect = cv.parentElement.getBoundingClientRect();
+  const dpr = window.devicePixelRatio || 1;
+  const w = Math.floor(rect.width);
+  const h = 80;
+  cv.width = w * dpr;
+  cv.height = h * dpr;
+  cv.style.width = w + 'px';
+  cv.style.height = h + 'px';
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+  ctx.fillStyle = '#04090F';
+  ctx.fillRect(0, 0, w, h);
+
+  const hist = graphHistory;
+  const len = hist.length;
+
+  const sidSet = new Set();
+  for (let i = 0; i < len; i++) {
+    const snap = hist[i];
+    for (const sid in snap) {
+      const n = parseInt(sid);
+      if (n >= 10 && snap[sid] > 0) sidSet.add(n);
+    }
+  }
+
+  const tierRank = {};
+  for (let ti = 0; ti < TIER_ORDER.length; ti++) {
+    for (const id of TIER_ORDER[ti].ids) tierRank[id] = ti * 100 + id;
+  }
+  for (const did of dynamicSpeciesIds) {
+    if (!tierRank[did]) {
+      const sp = SPECIES[did];
+      const parentTi = sp && sp.parentId ? (tierRank[sp.parentId] || 500) : 500;
+      tierRank[did] = parentTi + 0.5;
+    }
+  }
+
+  const sids = Array.from(sidSet).sort((a, b) => (tierRank[a] || 999) - (tierRank[b] || 999));
+  if (sids.length === 0) return;
+
+  let maxTotal = 0;
+  for (let i = 0; i < len; i++) {
+    let t = 0;
+    const snap = hist[i];
+    for (let s = 0; s < sids.length; s++) t += snap[sids[s]] || 0;
+    if (t > maxTotal) maxTotal = t;
+  }
+  if (maxTotal === 0) return;
+
+  const colW = w / len;
+
+  for (let si = 0; si < sids.length; si++) {
+    const sid = sids[si];
+    const rgb = COLOR_RGB[sid];
+    if (!rgb) continue;
+    ctx.fillStyle = 'rgba(' + rgb[0] + ',' + rgb[1] + ',' + rgb[2] + ',0.7)';
+    ctx.beginPath();
+
+    ctx.moveTo(0, h);
+    for (let i = 0; i < len; i++) {
+      const snap = hist[i];
+      let stackBelow = 0;
+      for (let s = 0; s < si; s++) stackBelow += snap[sids[s]] || 0;
+      const stackTop = stackBelow + (snap[sid] || 0);
+      const x = i * colW + colW * 0.5;
+      const y = h - (stackTop / maxTotal) * (h - 2);
+      if (i === 0) ctx.lineTo(x, y);
+      else ctx.lineTo(x, y);
+    }
+
+    for (let i = len - 1; i >= 0; i--) {
+      const snap = hist[i];
+      let stackBelow = 0;
+      for (let s = 0; s < si; s++) stackBelow += snap[sids[s]] || 0;
+      const x = i * colW + colW * 0.5;
+      const y = h - (stackBelow / maxTotal) * (h - 2);
+      ctx.lineTo(x, y);
+    }
+
+    ctx.closePath();
+    ctx.fill();
+  }
+
+  ctx.strokeStyle = 'rgba(12,45,64,0.6)';
+  ctx.lineWidth = 0.5;
+  for (let q = 1; q <= 3; q++) {
+    const y = h * q / 4;
+    ctx.beginPath();
+    ctx.moveTo(0, y);
+    ctx.lineTo(w, y);
+    ctx.stroke();
+  }
+}
 
 function updateStats() {
   genEl.textContent = 'GEN ' + generation;
@@ -2954,6 +3133,23 @@ function updateStats() {
     if (counts[tid]) parts.push('<div class="stat-row" data-sid="' + tid + '"><span class="stat-name" style="color:' + col + '">' + name + '</span><span class="stat-count">' + counts[tid] + '</span></div>');
   }
   statsEl.innerHTML = parts.join('');
+
+  // Biodiversity score
+  const bioScore = calcBiodiversity(counts);
+  _bioScoreEl.textContent = bioScore;
+  _bioScoreEl.style.color = scoreColour(bioScore);
+
+  // Population graph recording
+  if (generation % GRAPH_RECORD_INTERVAL === 0) {
+    const snap = {};
+    for (const sid in counts) {
+      const n = parseInt(sid);
+      if (n >= 10) snap[n] = counts[n];
+    }
+    graphHistory.push(snap);
+    if (graphHistory.length > GRAPH_HISTORY_MAX) graphHistory.shift();
+    drawPopGraph();
+  }
 
   // Update evolution log
   const evoEl = _evoEntriesEl;
