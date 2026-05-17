@@ -807,18 +807,14 @@ let radiationBoost = 0; // evo events remaining with boosted mutation (post-disa
 let prevLivingCount = 0; // living cell count last gen, for detecting mass death
 
 function initEvoStats() {
+  // Clean up all dynamic species (active and extinct)
+  for (const id in SPECIES) {
+    const numId = parseInt(id);
+    if (numId >= 100) { delete SPECIES[numId]; delete COLOR_RGB[numId]; removeFromTierGroups(numId); }
+  }
   for (const did of dynamicSpeciesIds) {
-    delete SPECIES[did];
-    delete COLOR_RGB[did];
     const li = LIVING_IDS.indexOf(did);
     if (li !== -1) LIVING_IDS.splice(li, 1);
-    removeFromTierGroups(did);
-    for (const oid of LIVING_IDS) {
-      if (evoStats[oid] && evoStats[oid].eats) {
-        const ei = evoStats[oid].eats.indexOf(did);
-        if (ei !== -1) evoStats[oid].eats.splice(ei, 1);
-      }
-    }
   }
   dynamicSpeciesIds = [];
   nextSpeciesId = 100;
@@ -2874,10 +2870,8 @@ function step() {
       for (let di = dynamicSpeciesIds.length - 1; di >= 0; di--) {
         const did = dynamicSpeciesIds[di];
         if ((now[did] || 0) === 0 && (prev[did] || 0) === 0) {
-          // Species is extinct — clean up
-          delete SPECIES[did];
-          delete COLOR_RGB[did];
-          delete evoStats[did];
+          // Species is extinct — remove from active systems but keep in SPECIES for family tree
+          SPECIES[did]._extinct = true;
           const li = LIVING_IDS.indexOf(did);
           if (li !== -1) LIVING_IDS.splice(li, 1);
           dynamicSpeciesIds.splice(di, 1);
@@ -2889,7 +2883,7 @@ function step() {
               if (ei !== -1) evoStats[oid].eats.splice(ei, 1);
             }
           }
-          addEvoEvent(did + ' went extinct — slot freed');
+          addEvoEvent(SPECIES[did].name + ' went extinct');
         }
       }
     }
