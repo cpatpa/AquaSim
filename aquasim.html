@@ -3218,11 +3218,12 @@ document.addEventListener('keydown', function(e) {
   if (e.key === 'Escape') document.getElementById('species-info-panel').classList.remove('visible');
 });
 
-statsEl.addEventListener('click', function(e) {
+statsEl.addEventListener('mousedown', function(e) {
   const row = e.target.closest('.stat-row[data-sid]');
   if (row) {
     const sid = parseInt(row.dataset.sid);
     if (SPECIES[sid] && sid >= 10) {
+      e.preventDefault();
       openSpeciesInfo(sid);
     }
   }
