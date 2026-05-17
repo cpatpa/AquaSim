@@ -123,6 +123,8 @@ canvas { cursor: crosshair; display: block; }
 #btn-evo.evo-active { border-color: #00FF88 !important; color: #00FF88 !important; background: rgba(0,255,136,0.12) !important; }
 #btn-mutate { color: #FF44FF !important; border-color: #FF44FF !important; }
 #btn-mutate:hover { background: rgba(255,68,255,0.12) !important; }
+#btn-export { color: #FF8800 !important; border-color: #FF8800 !important; }
+#btn-export:hover { background: rgba(255,136,0,0.12) !important; }
 #evo-log { padding: 0 8px 8px; overflow-y: auto; min-height: 60px; height: 220px; flex-shrink: 0; }
 #evo-log::-webkit-scrollbar { width: 4px; }
 #evo-log::-webkit-scrollbar-thumb { background: #0C2D40; border-radius: 2px; }
@@ -301,6 +303,7 @@ canvas { cursor: crosshair; display: block; }
       <button id="btn-balance">☯ BALANCE</button>
       <button id="btn-biome">🌊 BIOME</button>
       <button id="btn-clear">✕ CLEAR</button>
+      <button id="btn-export">EXPORT LOG</button>
       <span id="season-display" style="font-size:0.65rem;color:#88FF88;white-space:nowrap;">Spring</span>
       <span id="gen-counter">GEN 0</span>
       <span id="info-text"></span>
@@ -725,6 +728,32 @@ const TRAIT_GENE_REQS = {
   poddefense:  { genes: { o: 0.65, a: 0.45 } },
 };
 
+const NOVEL_ADAPTATIONS = {
+  jetpropulsion:   { name: 'Jet Propulsion',   icon: '>', desc: 'Burst-moves 3 tiles when fleeing predators',          eligible: t => t === 'consumer' || t === 'herbivore' },
+  flyingfish:      { name: 'Flying Fish',      icon: '^', desc: 'Leaps over obstacles when moving',                    eligible: t => t === 'consumer' || t === 'herbivore' },
+  burrowing:       { name: 'Burrowing',        icon: 'v', desc: 'Digs in to hide from predators',                      eligible: t => t === 'herbivore' || t === 'decomposer' },
+  electricorgan:   { name: 'Electric Organ',   icon: 'Z', desc: 'Stuns attackers with hunger penalty',                 eligible: t => t === 'consumer' || t === 'apex' },
+  calcification:   { name: 'Calcification',    icon: '#', desc: 'Leaves rock instead of dead matter on death',         eligible: () => true },
+  autotomy:        { name: 'Autotomy',         icon: '%', desc: 'Sheds body part to escape, predator still eats',      eligible: t => t === 'herbivore' || t === 'consumer' },
+  mucuscoat:       { name: 'Mucus Coating',    icon: '~', desc: 'Slippery body, hard to catch',                        eligible: t => t !== 'apex' && t !== 'megafauna' && t !== 'producer' },
+  kleptoplasty:    { name: 'Kleptoplasty',     icon: 'K', desc: 'Gains temp photosynthesis from eaten algae',          eligible: t => t === 'herbivore' || t === 'consumer' },
+  aestivation:     { name: 'Aestivation',      icon: 'z', desc: 'Goes dormant when starving, extending survival',      eligible: t => t !== 'producer' },
+  chemosynthesis:  { name: 'Chemosynthesis',   icon: 'W', desc: 'Feeds on minerals near rock and lava',                eligible: t => t === 'producer' || t === 'decomposer' },
+  broodparasite:   { name: 'Brood Parasite',   icon: 'Q', desc: 'Converts rival species cells when breeding',         eligible: t => t === 'herbivore' || t === 'consumer' },
+  budding:         { name: 'Budding',          icon: 'Y', desc: 'Sometimes breeds into two cells at once',             eligible: t => t === 'producer' || t === 'decomposer' },
+  neoteny:         { name: 'Neoteny',          icon: 'o', desc: 'Breeds faster but more vulnerable to predation',      eligible: t => t !== 'producer' },
+  electroreception:{ name: 'Electroreception', icon: 'E', desc: 'Detects hidden prey through bioelectric fields',      eligible: t => t === 'apex' || t === 'consumer' },
+  hivemind:        { name: 'Hive Mind',        icon: 'H', desc: 'Colony coordinates defence and breeding as one',      eligible: t => t === 'herbivore' || t === 'decomposer' || t === 'producer' },
+};
+const NOVEL_ADAPT_KEYS = Object.keys(NOVEL_ADAPTATIONS);
+const NOVEL_ADAPT_CHANCE = 0.02;
+const MAX_NOVEL_ADAPTS = 2;
+
+function hasNovelAdapt(sid, key) {
+  const es = evoStats[sid];
+  return es && es.novelAdapts && es.novelAdapts.indexOf(key) !== -1;
+}
+
 const GENE_NAME_POOLS = {
   v: ['Prolific', 'Thriving', 'Fecund', 'Blooming', 'Verdant'],
   s: ['Swift', 'Darting', 'Fleet', 'Agile', 'Racing'],
@@ -1102,6 +1131,21 @@ function evolve() {
 
     deriveStats(id);
     expressTraits(id);
+
+    if (Math.random() < NOVEL_ADAPT_CHANCE) {
+      if (!es.novelAdapts) es.novelAdapts = [];
+      if (es.novelAdapts.length < MAX_NOVEL_ADAPTS) {
+        const eligible = NOVEL_ADAPT_KEYS.filter(k =>
+          NOVEL_ADAPTATIONS[k].eligible(sp.tier) && es.novelAdapts.indexOf(k) === -1
+        );
+        if (eligible.length > 0) {
+          const pick = eligible[Math.floor(Math.random() * eligible.length)];
+          es.novelAdapts.push(pick);
+          addEvoEvent(sp.name + ' developed ' + NOVEL_ADAPTATIONS[pick].name + '!');
+          for (const k in _creatureCache) delete _creatureCache[k];
+        }
+      }
+    }
   }
 
   // Phase 1b: Competitive exclusion (character displacement)
@@ -1279,6 +1323,7 @@ function speciate() {
       breedRate: tmpBR, moveRate: tmpMR, hungerMax: tmpHM,
       eats: newEats.slice(), traits: [], traitStrengths: {},
       genes: newGenes, geneVar: newGeneVar, baseGenes: { ...newGenes },
+      novelAdapts: (es.novelAdapts || []).slice(),
     };
     expressTraits(newId);
 
@@ -1479,6 +1524,7 @@ function nicheShift() {
       breedRate: tmpBR, moveRate: tmpMR, hungerMax: tmpHM,
       eats: newEats.slice(), traits: [], traitStrengths: {},
       genes: newGenes, geneVar: newGeneVar, baseGenes: { ...newGenes },
+      novelAdapts: (es.novelAdapts || []).slice(),
     };
     expressTraits(newId);
 
@@ -2342,12 +2388,65 @@ function step() {
       }
     }
 
-    // Biofilm: damage reduction tracked via biofilm flag (used during predation checks)
+    // Novel: Kleptoplasty: passive -1 hunger per 5 ticks (stolen photosynthesis)
+    if (hasNovelAdapt(sid, 'kleptoplasty') && hunger[idx] > 0 && age[idx] % 5 === 0) {
+      hunger[idx] = Math.max(0, hunger[idx] - 1);
+    }
+    // Novel: Chemosynthesis: -2 hunger when adjacent to rock or lava
+    if (hasNovelAdapt(sid, 'chemosynthesis') && hunger[idx] > 0) {
+      for (let n = 0; n < 4; n++) {
+        const dir = CARDINAL[n];
+        const cni = wrapY(cy + dir[1]) * cw + wrapX(cx + dir[0]);
+        const ns = species[cni];
+        if (ns === 2 || ns === 7) { hunger[idx] = Math.max(0, hunger[idx] - 2); break; }
+      }
+    }
+    // Novel: Hive Mind: boost breed/defence when 4+ same-species adjacent
+    if (hasNovelAdapt(sid, 'hivemind') && age[idx] % 2 === 0) {
+      let hiveCount = 0;
+      let totalH = hunger[idx], cnt = 1;
+      for (let n = 0; n < 8; n++) {
+        const dir = NEIGHBOURS_8[n];
+        const cni = wrapY(cy + dir[1]) * cw + wrapX(cx + dir[0]);
+        if (species[cni] === sid) { hiveCount++; totalH += hunger[cni]; cnt++; }
+      }
+      if (hiveCount >= 4 && cnt > 1) {
+        const avg = (totalH / cnt) | 0;
+        hunger[idx] = avg;
+        for (let n = 0; n < 8; n++) {
+          const dir = NEIGHBOURS_8[n];
+          const cni = wrapY(cy + dir[1]) * cw + wrapX(cx + dir[0]);
+          if (species[cni] === sid) hunger[cni] = avg;
+        }
+      }
+    }
 
     // 2. Starvation check
+    // Novel: Aestivation: dormancy when starving (hunger increases at 25% rate)
+    if (hasNovelAdapt(sid, 'aestivation') && hunger[idx] >= Math.round(es.hungerMax * 0.8)) {
+      let foodAdj = false;
+      const aeEats = es.eats;
+      if (aeEats && aeEats.length) {
+        for (let n = 0; n < 4; n++) {
+          const dir = CARDINAL[n];
+          const cni = wrapY(cy + dir[1]) * cw + wrapX(cx + dir[0]);
+          if (aeEats.indexOf(species[cni]) !== -1) { foodAdj = true; break; }
+        }
+      }
+      if (!foodAdj) {
+        if (Math.random() > 0.25) hunger[idx] = Math.max(hunger[idx] - 1, Math.round(es.hungerMax * 0.8));
+        processed[idx] = 1;
+        continue;
+      }
+    }
     if (hunger[idx] >= es.hungerMax) {
       spawnDeathParticles(idx, sid);
-      species[idx] = 3; hunger[idx] = 0; age[idx] = 0; // become Dead
+      // Novel: Calcification on starvation death too
+      if (hasNovelAdapt(sid, 'calcification')) {
+        species[idx] = 2; hunger[idx] = 0; age[idx] = 0;
+      } else {
+        species[idx] = 3; hunger[idx] = 0; age[idx] = 0;
+      }
       continue;
     }
 
@@ -2408,6 +2507,11 @@ function step() {
             }
             // Gigantism: 30% miss chance
             if (preyTraits.indexOf('gigantism') !== -1 && Math.random() < 0.3 * traitStr(foodId, 'gigantism')) continue;
+            // Novel: Burrowing: 40% dodge
+            if (hasNovelAdapt(foodId, 'burrowing') && Math.random() < 0.4) continue;
+            // Novel: Mucus Coating: 35% dodge, wastes predator's tick
+            if (hasNovelAdapt(foodId, 'mucuscoat') && Math.random() < 0.35) { ate = true; break; }
+            // Novel: Neoteny makes prey 20% more vulnerable (reduce evasion already checked above, handled via skip)
             // Ink Cloud: 50% dodge + teleport 2 tiles
             if (preyTraits.indexOf('inkcloud') !== -1 && Math.random() < 0.5 * traitStr(foodId, 'inkcloud')) {
               // Teleport prey 2 tiles in random direction
@@ -2476,8 +2580,39 @@ function step() {
               }
             }
           }
+          // Novel: Autotomy: 45% survive, predator still gets food from shed part
+          if (hasNovelAdapt(foodId, 'autotomy') && Math.random() < 0.45) {
+            hunger[idx] = Math.max(0, hunger[idx] - ((es.hungerMax * restoreFrac * 0.5) | 0));
+            for (let ad = 0; ad < 4; ad++) {
+              const adir = CARDINAL[ad];
+              const ari = wrapY(ny + adir[1]) * cw + wrapX(nx + adir[0]);
+              if (species[ari] === 0) { species[ari] = 3; age[ari] = 0; break; }
+            }
+            ate = true; break;
+          }
+          // Novel: Electric Organ on prey: stun predator (+5 hunger)
+          if (hasNovelAdapt(foodId, 'electricorgan')) {
+            hunger[idx] += 5;
+          }
+          // Novel: Jet Propulsion: 30% chance to flee 3 tiles
+          if (hasNovelAdapt(foodId, 'jetpropulsion') && Math.random() < 0.3) {
+            const jDir = CARDINAL[(Math.random() * 4) | 0];
+            const jx = wrapX(nx + jDir[0] * 3), jy = wrapY(ny + jDir[1] * 3);
+            const ji = jy * cw + jx;
+            if (species[ji] === 0) {
+              species[ji] = foodId; hunger[ji] = hunger[ni]; age[ji] = age[ni];
+              species[ni] = 0; hunger[ni] = 0; age[ni] = 0;
+              processed[ji] = 1;
+            }
+            continue;
+          }
           spawnDeathParticles(ni, foodId);
-          species[ni] = 0; hunger[ni] = 0; age[ni] = 0;
+          // Novel: Calcification: leave rock instead of dead
+          if (hasNovelAdapt(foodId, 'calcification')) {
+            species[ni] = 2; hunger[ni] = 0; age[ni] = 0;
+          } else {
+            species[ni] = 0; hunger[ni] = 0; age[ni] = 0;
+          }
           hunger[idx] = Math.max(0, hunger[idx] - ((es.hungerMax * restoreFrac) | 0));
           processed[ni] = 1;
           ate = true;
@@ -2692,6 +2827,34 @@ function step() {
         }
       }
 
+      // Novel: Electroreception: detect prey within 5 tiles (ignores camouflage)
+      if (!moved && hasNovelAdapt(sid, 'electroreception') && eats && eats.length) {
+        let bestDist = 999, bestDx = 0, bestDy = 0;
+        for (let dy = -5; dy <= 5; dy++) {
+          for (let dx = -5; dx <= 5; dx++) {
+            if (dx === 0 && dy === 0) continue;
+            const dist = dx * dx + dy * dy;
+            if (dist > 25 || dist >= bestDist) continue;
+            const px = wrapX(cx + dx), py = wrapY(cy + dy);
+            const erSid = species[py * cw + px];
+            if (eatsSet.has(erSid) && layersCanReach(sid, layerOf(erSid))) {
+              bestDist = dist; bestDx = dx; bestDy = dy;
+            }
+          }
+        }
+        if (bestDist < 999) {
+          const stepX = bestDx > 0 ? 1 : bestDx < 0 ? -1 : 0;
+          const stepY = bestDy > 0 ? 1 : bestDy < 0 ? -1 : 0;
+          const tnx = wrapX(cx + stepX), tny = wrapY(cy + stepY);
+          const tni = tny * cw + tnx;
+          if (species[tni] === 0) {
+            species[tni] = sid; hunger[tni] = hunger[idx]; age[tni] = age[idx];
+            species[idx] = 0; hunger[idx] = 0; age[idx] = 0;
+            processed[tni] = 1; moved = true;
+          }
+        }
+      }
+
       // Stalker: move 2 tiles toward nearest prey (within 3 tiles)
       if (!moved && hasTrait('stalker') && eats && eats.length) {
         let bestDist = 999, bestDx = 0, bestDy = 0;
@@ -2739,6 +2902,15 @@ function step() {
             species[idx] = 0; hunger[idx] = 0; age[idx] = 0;
             processed[ni] = 1;
             break;
+          // Novel: Flying Fish: leap over 1 occupied tile
+          } else if (hasNovelAdapt(sid, 'flyingfish') && Math.random() < 0.25) {
+            const fx = wrapX(nx + dir[0]), fy = wrapY(ny + dir[1]);
+            const fi = fy * cw + fx;
+            if (species[fi] === 0) {
+              species[fi] = sid; hunger[fi] = hunger[idx]; age[fi] = age[idx];
+              species[idx] = 0; hunger[idx] = 0; age[idx] = 0;
+              processed[fi] = 1; break;
+            }
           }
         }
       }
@@ -2754,6 +2926,10 @@ function step() {
       if (species[ni] === sid) sameAdjacentCount++;
     }
     if (hasTrait('schooling') && sameAdjacentCount >= 3) breedRate *= 1 + 0.5 * traitStr(sid, 'schooling');
+    // Novel: Neoteny: breed 50% faster
+    if (hasNovelAdapt(sid, 'neoteny')) breedRate *= 1.5;
+    // Novel: Hive Mind: breed 30% faster when 4+ adjacent
+    if (hasNovelAdapt(sid, 'hivemind') && sameAdjacentCount >= 4) breedRate *= 1.3;
 
     // Territorial: kill adjacent same-species when crowded, breed faster when alone
     if (hasTrait('territorial')) {
@@ -2775,19 +2951,49 @@ function step() {
     }
 
     if (Math.random() < breedRate) {
-      const nbrs = shuffleDirs8();
-      for (let n = 0; n < 8; n++) {
-        const dir = NEIGHBOURS_8[nbrs[n]];
-        const nx = wrapX(cx + dir[0]);
-        const ny = wrapY(cy + dir[1]);
-        const ni = ny * cw + nx;
-        if (species[ni] === 0) {
-          species[ni] = sid;
-          // Maternal: offspring start well-fed
-          hunger[ni] = hasTrait('maternal') ? 0 : Math.min(hunger[idx], ((es.hungerMax * 0.3) | 0));
-          age[ni] = 0;
-          processed[ni] = 1;
-          break;
+      // Novel: Brood Parasite: 15% chance to convert a rival same-tier cell
+      let broodDone = false;
+      if (hasNovelAdapt(sid, 'broodparasite') && Math.random() < 0.15) {
+        const bNbrs = shuffleDirs8();
+        for (let n = 0; n < 8; n++) {
+          const dir = NEIGHBOURS_8[bNbrs[n]];
+          const bni = wrapY(cy + dir[1]) * cw + wrapX(cx + dir[0]);
+          const bsid = species[bni];
+          if (bsid >= 10 && bsid !== sid && SPECIES[bsid] && SPECIES[bsid].tier === sp.tier) {
+            species[bni] = sid;
+            hunger[bni] = 0; age[bni] = 0;
+            processed[bni] = 1;
+            broodDone = true; break;
+          }
+        }
+      }
+      if (!broodDone) {
+        const nbrs = shuffleDirs8();
+        let bred = false;
+        for (let n = 0; n < 8; n++) {
+          const dir = NEIGHBOURS_8[nbrs[n]];
+          const nx = wrapX(cx + dir[0]);
+          const ny = wrapY(cy + dir[1]);
+          const ni = ny * cw + nx;
+          if (species[ni] === 0) {
+            species[ni] = sid;
+            hunger[ni] = hasTrait('maternal') ? 0 : Math.min(hunger[idx], ((es.hungerMax * 0.3) | 0));
+            age[ni] = 0;
+            processed[ni] = 1;
+            bred = true;
+            // Novel: Budding: 30% chance to breed a second cell
+            if (hasNovelAdapt(sid, 'budding') && Math.random() < 0.3) {
+              for (let b = n + 1; b < 8; b++) {
+                const bdir = NEIGHBOURS_8[nbrs[b]];
+                const bnx = wrapX(cx + bdir[0]), bny = wrapY(cy + bdir[1]);
+                const bni = bny * cw + bnx;
+                if (species[bni] === 0) {
+                  species[bni] = sid; hunger[bni] = 0; age[bni] = 0; processed[bni] = 1; break;
+                }
+              }
+            }
+            break;
+          }
         }
       }
     }
@@ -4148,6 +4354,18 @@ function openSpeciesInfo(sid) {
     html += '</div></div>';
   }
 
+  const novelAdapts = es && es.novelAdapts ? es.novelAdapts : [];
+  if (novelAdapts.length > 0) {
+    html += '<div class="sip-section"><div class="sip-section-title">NOVEL ADAPTATIONS</div>';
+    html += '<div class="sip-traits">';
+    for (const na of novelAdapts) {
+      const nad = NOVEL_ADAPTATIONS[na];
+      if (!nad) continue;
+      html += '<span class="sip-trait-badge" style="border-color:rgba(255,136,0,0.5);color:#FF8800;background:rgba(255,136,0,0.12);" title="' + nad.desc + '">' + nad.icon + ' ' + nad.name + '</span>';
+    }
+    html += '</div></div>';
+  }
+
   html += '<div class="sip-section"><div class="sip-section-title">STATS</div>';
   html += '<div class="sip-stats-grid">';
   html += '<span class="sip-stat-label">Breed Rate</span><span class="sip-stat-val">' + (es ? es.breedRate.toFixed(4) : sp.breedRate.toFixed(4)) + '</span>';
@@ -4389,6 +4607,80 @@ document.getElementById('btn-clear').addEventListener('click', function() {
   clearGrid();
   render();
   updateStats();
+});
+
+document.getElementById('btn-export').addEventListener('click', function() {
+  const total = gridW * gridH;
+  const popCounts = {};
+  for (let i = 0; i < total; i++) {
+    const s = species[i];
+    if (s >= 10) popCounts[s] = (popCounts[s] || 0) + 1;
+  }
+  const speciesData = {};
+  for (const id in SPECIES) {
+    const s = SPECIES[id];
+    if (!s || s.tier === 'transient') continue;
+    const numId = parseInt(id);
+    const es = evoStats[numId];
+    speciesData[numId] = {
+      name: s.name, tier: s.tier, color: s.color,
+      parentId: s.parentId, rootAncestor: s.rootAncestor, lineageDepth: s.lineageDepth || 0,
+      population: popCounts[numId] || 0,
+      genes: es && es.genes ? { ...es.genes } : null,
+      geneVar: es && es.geneVar ? { ...es.geneVar } : null,
+      traits: es && es.traits ? es.traits.slice() : [],
+      novelAdapts: es && es.novelAdapts ? es.novelAdapts.slice() : [],
+      breedRate: es ? es.breedRate : s.breedRate,
+      moveRate: es ? es.moveRate : s.moveRate,
+      hungerMax: es ? es.hungerMax : s.hungerMax,
+      extinct: !!s._extinct
+    };
+  }
+  const lineages = {};
+  for (const id in speciesData) {
+    const sd = speciesData[id];
+    const root = sd.rootAncestor || parseInt(id);
+    if (!lineages[root]) lineages[root] = [];
+    if (parseInt(id) !== root) lineages[root].push(parseInt(id));
+  }
+  let totalCreated = 0, totalExtinct = 0, totalNiche = 0, totalNovel = 0, maxDepth = 0;
+  let domName = '', domPop = 0;
+  for (const id in speciesData) {
+    const sd = speciesData[id];
+    if (sd.lineageDepth > 0) totalCreated++;
+    if (sd.extinct) totalExtinct++;
+    if (sd.lineageDepth > maxDepth) maxDepth = sd.lineageDepth;
+    if (sd.population > domPop) { domPop = sd.population; domName = sd.name; }
+    if (sd.novelAdapts.length > 0) totalNovel += sd.novelAdapts.length;
+  }
+  const tierPops = {};
+  for (const id in speciesData) {
+    const sd = speciesData[id];
+    tierPops[sd.tier] = (tierPops[sd.tier] || 0) + sd.population;
+  }
+  const emptyTiers = ['producer','herbivore','consumer','apex','megafauna','decomposer'].filter(t => !tierPops[t]);
+  const log = {
+    version: 1, generation, settings: { evolveEnabled, gridW, gridH },
+    biodiversity: biodivScore,
+    species: speciesData,
+    popHistory: popHistory.slice(-100),
+    evoEvents: evoLog.slice(),
+    lineages,
+    summary: {
+      totalSpeciesCreated: totalCreated, totalExtinctions: totalExtinct,
+      novelAdaptationsAppeared: totalNovel, longestLineageDepth: maxDepth,
+      dominantSpecies: { name: domName, pop: domPop }, emptyTiers
+    }
+  };
+  const text = JSON.stringify(log, null, 2);
+  navigator.clipboard.writeText(text).then(() => {
+    const btn = document.getElementById('btn-export');
+    btn.textContent = 'COPIED!';
+    setTimeout(() => { btn.textContent = 'EXPORT LOG'; }, 2000);
+  }).catch(() => {
+    const w = window.open('', '_blank');
+    if (w) { w.document.write('<pre>' + text.replace(/</g, '&lt;') + '</pre>'); }
+  });
 });
 
 // Grid resize
