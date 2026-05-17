@@ -4661,7 +4661,7 @@ document.getElementById('btn-export').addEventListener('click', function() {
   const emptyTiers = ['producer','herbivore','consumer','apex','megafauna','decomposer'].filter(t => !tierPops[t]);
   const log = {
     version: 1, generation, settings: { evolveEnabled, gridW, gridH },
-    biodiversity: biodivScore,
+    biodiversity: parseInt(_bioScoreEl.textContent) || 0,
     species: speciesData,
     popHistory: popHistory.slice(-100),
     evoEvents: evoLog.slice(),
