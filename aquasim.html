@@ -665,6 +665,10 @@ const TRAIT_LOCAL_RADIUS = 8;     // trait acquisition only converts cells withi
 // ============================================================
 const GENE_KEYS = ['v', 's', 'f', 'a', 'p', 'o'];
 const GENE_NAMES = { v: 'Vigour', s: 'Speed', f: 'Fortitude', a: 'Armour', p: 'Predation', o: 'Sociality' };
+const TIER_GENE_NAMES = {
+  producer:   { s: 'Dispersal', p: 'Toxicity',  a: 'Toughness' },
+  decomposer: { s: 'Motility',  p: 'Digestion',  a: 'Resistance' },
+};
 const GENE_COLORS = { v: '#44FF88', s: '#44CCFF', f: '#FFAA44', a: '#AAAACC', p: '#FF4466', o: '#CC88FF' };
 const GENE_MUTATION_SD = 0.045;
 
@@ -4122,7 +4126,8 @@ function openSpeciesInfo(sid) {
       const variance = es.geneVar ? es.geneVar[g] : 0;
       const varLabel = variance > 0.2 ? ' (diverse)' : variance < 0.05 ? ' (bottleneck)' : '';
       html += '<div class="sip-gene-row">';
-      html += '<span class="sip-gene-label" style="color:' + col + ';">' + GENE_NAMES[g] + '</span>';
+      const gLabel = (TIER_GENE_NAMES[sp.tier] && TIER_GENE_NAMES[sp.tier][g]) || GENE_NAMES[g];
+      html += '<span class="sip-gene-label" style="color:' + col + ';">' + gLabel + '</span>';
       html += '<div class="sip-gene-bar"><div class="sip-gene-fill" style="width:' + pct + '%;background:' + col + ';"></div></div>';
       html += '<span class="sip-gene-val">' + val.toFixed(2) + varLabel + '</span>';
       html += '</div>';
@@ -5417,7 +5422,8 @@ canvas.addEventListener('mouseleave', function() {
         html += '<div style="display:flex;gap:1px;height:4px;margin:1px 0 2px 18px;">';
         for (const g of GENE_KEYS) {
           const gv = es.genes[g] || 0;
-          html += '<div style="flex:1;background:' + GENE_COLORS[g] + ';opacity:' + (0.3 + gv * 0.7).toFixed(2) + ';height:' + Math.round(gv * 4) + 'px;align-self:flex-end;border-radius:1px;" title="' + GENE_NAMES[g] + ': ' + gv.toFixed(2) + '"></div>';
+          const gn = (TIER_GENE_NAMES[sp.tier] && TIER_GENE_NAMES[sp.tier][g]) || GENE_NAMES[g];
+          html += '<div style="flex:1;background:' + GENE_COLORS[g] + ';opacity:' + (0.3 + gv * 0.7).toFixed(2) + ';height:' + Math.round(gv * 4) + 'px;align-self:flex-end;border-radius:1px;" title="' + gn + ': ' + gv.toFixed(2) + '"></div>';
         }
         html += '</div>';
       }
