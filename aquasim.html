@@ -568,9 +568,9 @@ const DISASTERS = {
 // ============================================================
 // 1b. EVOLUTION STATE
 // ============================================================
-const EVO_CHANCE_PER_GEN  = 0.14; // 14% per gen (~once every 7 gens on avg)
-const EVO_COOLDOWN_MIN    = 4;    // minimum gens between evo events
-const EVO_COOLDOWN_MAX    = 12;   // max cooldown (randomized each time)
+const EVO_CHANCE_PER_GEN  = 0.18; // 18% per gen (~once every 5-6 gens on avg)
+const EVO_COOLDOWN_MIN    = 3;    // minimum gens between evo events
+const EVO_COOLDOWN_MAX    = 9;    // max cooldown (randomized each time)
 const EVO_MUTATION_RATE  = 0.12; // max % change per cycle
 const EVO_HISTORY_LEN    = 10;   // snapshots to track trends
 const OVERPOP_THRESHOLD  = 2.5;  // × average = "overpopulated"
@@ -578,11 +578,11 @@ const PRESSURE_HIGH      = 1.5;  // predator:prey ratio that triggers adaptation
 const POP_SNAPSHOT_INTERVAL = 10; // record population every N gens
 
 // Speciation constants
-const SPECIATION_MIN_POP   = 30;   // species must have this many cells to fork
-const SPECIATION_DRIFT     = 0.18; // stats must have drifted 18%+ from baseline
-const SPECIATION_CHANCE    = 0.40; // probability per eligible species per evo cycle
-const SPECIATION_CONVERT   = 0.40; // fraction of parent cells converted to new species
-const MAX_DYNAMIC_SPECIES  = 20;   // cap on total new species
+const SPECIATION_MIN_POP   = 20;   // species must have this many cells to fork
+const SPECIATION_DRIFT     = 0.12; // stats must have drifted 12%+ from baseline
+const SPECIATION_CHANCE    = 0.50; // probability per eligible species per evo cycle
+const SPECIATION_CONVERT   = 0.35; // fraction of parent cells converted to new species
+const MAX_DYNAMIC_SPECIES  = 30;   // cap on total new species
 let nextSpeciesId = 100;           // dynamic IDs start at 100 (Uint8Array max = 255)
 let dynamicSpeciesIds = [];        // track which IDs are dynamically created
 
@@ -679,7 +679,7 @@ const TIER_GENE_NAMES = {
   decomposer: { s: 'Motility',  p: 'Digestion',  a: 'Resistance' },
 };
 const GENE_COLORS = { v: '#44FF88', s: '#44CCFF', f: '#FFAA44', a: '#AAAACC', p: '#FF4466', o: '#CC88FF' };
-const GENE_MUTATION_SD = 0.045;
+const GENE_MUTATION_SD = 0.06;
 
 const TIER_DEFAULT_GENES = {
   producer:   { v: 0.50, s: 0.10, f: 0.45, a: 0.32, p: 0.08, o: 0.28 },
@@ -799,9 +799,9 @@ let currentSeason = 'Spring';
 let seasonTick = 0;  // ticks within current season
 
 // Niche shifting: animals can change ecological tier under sustained pressure
-const NICHE_SHIFT_MIN_DEPTH   = 2;    // must be at least this many speciations deep
-const NICHE_SHIFT_MIN_DRIFT   = 0.45; // stats must have drifted 45%+ from baseline
-const NICHE_SHIFT_CHANCE      = 0.12; // chance per eligible species per evo cycle
+const NICHE_SHIFT_MIN_DEPTH   = 1;    // must be at least this many speciations deep
+const NICHE_SHIFT_MIN_DRIFT   = 0.35; // stats must have drifted 35%+ from baseline
+const NICHE_SHIFT_CHANCE      = 0.15; // chance per eligible species per evo cycle
 // Tier promotion map: which tier can shift into which (only upward pressure shifts)
 const TIER_PROMOTE = { herbivore: 'consumer', consumer: 'apex', decomposer: 'herbivore', apex: 'megafauna' };
 // Extended promotion: cross-tier jumps allowed when target niche is vacant
@@ -1268,7 +1268,7 @@ function speciate() {
     const sp = SPECIES[id];
     if (!sp.breedRate) continue;
     const depth = sp.lineageDepth || 0;
-    const minPop = Math.max(25, SPECIATION_MIN_POP - depth * 15);
+    const minPop = Math.max(15, SPECIATION_MIN_POP - depth * 8);
     if (popNow < minPop) continue;
 
     const es = evoStats[id];
@@ -1276,10 +1276,10 @@ function speciate() {
 
     const divergence = geneDivergence(es.genes, es.baseGenes);
     const radDiv = radiationBoost > 0 ? 0.5 : 1.0;
-    const driftThreshold = 0.15 * Math.max(0.4, 1 - depth * 0.15) * radDiv;
+    const driftThreshold = SPECIATION_DRIFT * Math.max(0.3, 1 - depth * 0.2) * radDiv;
     if (divergence < driftThreshold) continue;
 
-    const speciationChance = Math.min(0.6, SPECIATION_CHANCE + depth * 0.05);
+    const speciationChance = Math.min(0.7, SPECIATION_CHANCE + depth * 0.06);
     if (Math.random() > speciationChance) continue;
 
     const newId = nextSpeciesId++;
@@ -1557,7 +1557,7 @@ function nicheShift() {
   }
 }
 
-// --- IMMIGRATION: reintroduce base species when entire tiers go extinct ---
+// --- IMMIGRATION: reintroduce pre-adapted species when entire tiers go extinct ---
 const TIER_BASE_SPECIES = {
   herbivore: [20, 21, 22, 23],
   consumer:  [30, 31, 32],
@@ -1567,15 +1567,135 @@ const TIER_BASE_SPECIES = {
 };
 let _tierEmptyGens = { herbivore: 0, consumer: 0, apex: 0, megafauna: 0, decomposer: 0 };
 
-// Predator tiers get faster immigration since they need prey to already exist
 const IMMIGRATION_TIER_INTERVAL = {
-  herbivore: 150, consumer: 60, apex: 60, megafauna: 100, decomposer: 150
+  herbivore: 80, consumer: 50, apex: 50, megafauna: 80, decomposer: 120
 };
-// When a predator tier immigrates, also seed some of its prey nearby
 const IMMIGRATION_PREY_SEED = {
-  consumer: [20, 21, 22],  // herbivores
-  apex:     [30, 31, 32],  // consumers
+  consumer: [20, 21, 22],
+  apex:     [30, 31, 32],
 };
+const IMMIGRATION_NAMES = {
+  herbivore:  ['Migratory', 'Pelagic', 'Drifting', 'Oceanic', 'Wayward'],
+  consumer:   ['Roaming', 'Vagrant', 'Nomadic', 'Invasive', 'Colonist'],
+  apex:       ['Ranging', 'Territorial', 'Dominant', 'Marauding', 'Alpha'],
+  megafauna:  ['Wandering', 'Titan', 'Colossal', 'Deep-sea', 'Leviathan'],
+  decomposer: ['Drifting', 'Benthic', 'Abyssal', 'Settling', 'Foreign'],
+};
+
+function createImmigrantSpecies(tier) {
+  if (dynamicSpeciesIds.length >= MAX_DYNAMIC_SPECIES || nextSpeciesId > 254) return null;
+
+  const candidates = TIER_BASE_SPECIES[tier];
+  if (!candidates || !candidates.length) return null;
+  const templateId = candidates[(Math.random() * candidates.length) | 0];
+  const templateSp = SPECIES[templateId];
+  if (!templateSp) return null;
+
+  const newId = nextSpeciesId++;
+  const tierGenes = TIER_DEFAULT_GENES[tier] || TIER_DEFAULT_GENES.herbivore;
+  const genes = {};
+  const geneVar = {};
+  for (const g of GENE_KEYS) {
+    genes[g] = clamp(tierGenes[g] + gaussRandom() * 0.15, 0.08, 0.92);
+    geneVar[g] = 0.10 + Math.random() * 0.08;
+  }
+
+  const namePool = IMMIGRATION_NAMES[tier] || ['Foreign'];
+  const adj = namePool[(Math.random() * namePool.length) | 0];
+  const existingNames = new Set(LIVING_IDS.map(id => SPECIES[id] ? SPECIES[id].name : ''));
+  let newName = adj + ' ' + templateSp.name;
+  if (existingNames.has(newName)) {
+    let suffix = 2;
+    while (existingNames.has(newName + ' ' + suffix)) suffix++;
+    newName = newName + ' ' + suffix;
+  }
+
+  const baseRGB = COLOR_RGB[templateId];
+  const shift = () => Math.round((Math.random() - 0.5) * 80);
+  const nr = clamp(baseRGB[0] + shift(), 20, 255);
+  const ng = clamp(baseRGB[1] + shift(), 20, 255);
+  const nb = clamp(baseRGB[2] + shift(), 20, 255);
+  const newHex = '#' + ((1 << 24) + (nr << 16) + (ng << 8) + nb).toString(16).slice(1).toUpperCase();
+
+  const vigour = 1.05 + Math.random() * 0.15;
+  const tmpBR = templateSp.breedRate * (0.5 + genes.v) * vigour;
+  const tmpMR = templateSp.moveRate ? clamp(templateSp.moveRate * (0.5 + genes.s) * vigour, 0.02, 0.98) : 0;
+  const tmpHM = templateSp.hungerMax ? clamp(Math.round(templateSp.hungerMax * (0.5 + genes.f) * vigour), 6, 80) : 0;
+
+  let newEats = templateSp.eats ? templateSp.eats.slice() : [];
+  const liveTierSpecies = LIVING_IDS.filter(lid => {
+    const lsp = SPECIES[lid]; return lsp && lsp.tier && newEats.indexOf(lid) === -1;
+  });
+  if (tier === 'herbivore') {
+    const prods = liveTierSpecies.filter(lid => SPECIES[lid].tier === 'producer');
+    if (prods.length > 0) {
+      for (let i = 0; i < Math.min(prods.length, 2); i++) {
+        const pick = prods[(Math.random() * prods.length) | 0];
+        if (newEats.indexOf(pick) === -1) newEats.push(pick);
+      }
+    }
+  } else if (tier === 'consumer') {
+    const herbs = liveTierSpecies.filter(lid => SPECIES[lid].tier === 'herbivore');
+    for (let i = 0; i < Math.min(herbs.length, 2); i++) {
+      const pick = herbs[(Math.random() * herbs.length) | 0];
+      if (newEats.indexOf(pick) === -1) newEats.push(pick);
+    }
+  } else if (tier === 'apex') {
+    const prey = liveTierSpecies.filter(lid => { const t = SPECIES[lid].tier; return t === 'consumer' || t === 'herbivore'; });
+    for (let i = 0; i < Math.min(prey.length, 3); i++) {
+      const pick = prey[(Math.random() * prey.length) | 0];
+      if (newEats.indexOf(pick) === -1) newEats.push(pick);
+    }
+  }
+
+  const depth = 1 + ((Math.random() * 2) | 0);
+
+  SPECIES[newId] = {
+    name: newName, color: newHex, tier: tier, layer: templateSp.layer,
+    breedRate: templateSp.breedRate, moveRate: templateSp.moveRate || undefined,
+    hungerMax: templateSp.hungerMax || undefined, eats: newEats.length ? newEats : undefined,
+    desc: 'Immigrated from distant waters at gen ' + generation,
+    parentId: null, rootAncestor: newId,
+    lineageDepth: depth,
+  };
+  COLOR_RGB[newId] = [nr, ng, nb];
+  LIVING_IDS.push(newId);
+  dynamicSpeciesIds.push(newId);
+
+  const novelAdapts = [];
+  if (Math.random() < 0.35) {
+    const eligible = NOVEL_ADAPT_KEYS.filter(k => NOVEL_ADAPTATIONS[k].eligible(tier));
+    if (eligible.length > 0) {
+      novelAdapts.push(eligible[(Math.random() * eligible.length) | 0]);
+    }
+  }
+
+  evoStats[newId] = {
+    breedRate: tmpBR, moveRate: tmpMR, hungerMax: tmpHM,
+    eats: newEats.slice(), traits: [], traitStrengths: {},
+    genes: genes, geneVar: geneVar, baseGenes: { ...genes },
+    novelAdapts: novelAdapts,
+  };
+  expressTraits(newId);
+  addToTierGroup(newId, tier);
+
+  for (const oid of LIVING_IDS) {
+    if (oid === newId) continue;
+    const osp = SPECIES[oid];
+    if (!osp || !osp.eats) continue;
+    if (osp.tier === tier) continue;
+    const oe = evoStats[oid];
+    if (!oe || !oe.eats) continue;
+    for (const baseCandidate of candidates) {
+      if (oe.eats.indexOf(baseCandidate) !== -1 && oe.eats.indexOf(newId) === -1) {
+        oe.eats.push(newId);
+        break;
+      }
+    }
+  }
+
+  return newId;
+}
 
 function tierImmigration() {
   if (popHistory.length < 2) return;
@@ -1596,12 +1716,11 @@ function tierImmigration() {
     const interval = IMMIGRATION_TIER_INTERVAL[tier] || IMMIGRATION_CHECK_INTERVAL;
     if (_tierEmptyGens[tier] < interval) continue;
     _tierEmptyGens[tier] = 0;
-    const candidates = TIER_BASE_SPECIES[tier];
-    if (!candidates || !candidates.length) continue;
-    const baseId = candidates[(Math.random() * candidates.length) | 0];
-    const bsp = SPECIES[baseId];
-    if (!bsp) continue;
-    if (LIVING_IDS.indexOf(baseId) === -1) LIVING_IDS.push(baseId);
+
+    const newId = createImmigrantSpecies(tier);
+    if (!newId) continue;
+    const bsp = SPECIES[newId];
+
     let bestIdx = -1, attempts = 0;
     while (bestIdx === -1 && attempts < 200) {
       const ri = (Math.random() * total) | 0;
@@ -1624,21 +1743,31 @@ function tierImmigration() {
       for (let dx = -2; dx <= 2 && placed < IMMIGRATION_CLUSTER_SIZE; dx++) {
         const pi = wrapY(oy + dy) * gridW + wrapX(ox + dx);
         if (species[pi] === 0) {
-          species[pi] = baseId; hunger[pi] = 0; age[pi] = 0;
+          species[pi] = newId; hunger[pi] = 0; age[pi] = 0;
           placed++;
         }
       }
     }
     if (placed > 0) {
-      addEvoEvent(bsp.name + ' immigrated into the ecosystem! (' + placed + ' individuals)');
+      const es = evoStats[newId];
+      const traitNames = es.traits.length > 0 ? ' [' + es.traits.map(t => TRAITS[t].name).join(', ') + ']' : '';
+      const novelNames = es.novelAdapts.length > 0 ? ' +' + es.novelAdapts.map(k => NOVEL_ADAPTATIONS[k].name).join(', ') : '';
+      addEvoEvent(bsp.name + ' immigrated (pre-adapted)! ' + placed + ' ind.' + traitNames + novelNames);
     }
-    // Co-seed prey for predator tiers so they have food to survive on
+
     const preyList = IMMIGRATION_PREY_SEED[tier];
     if (preyList && preyList.length) {
-      const preyId = preyList[(Math.random() * preyList.length) | 0];
+      const preyTier = tier === 'consumer' ? 'herbivore' : tier === 'apex' ? 'consumer' : null;
+      let preyId = null;
+      if (preyTier) {
+        preyId = createImmigrantSpecies(preyTier);
+      }
+      if (!preyId) {
+        preyId = preyList[(Math.random() * preyList.length) | 0];
+        if (LIVING_IDS.indexOf(preyId) === -1) LIVING_IDS.push(preyId);
+      }
       const psp = SPECIES[preyId];
       if (psp) {
-        if (LIVING_IDS.indexOf(preyId) === -1) LIVING_IDS.push(preyId);
         let preyPlaced = 0;
         for (let dy = -3; dy <= 3 && preyPlaced < IMMIGRATION_CLUSTER_SIZE; dy++) {
           for (let dx = -3; dx <= 3 && preyPlaced < IMMIGRATION_CLUSTER_SIZE; dx++) {
@@ -1650,7 +1779,10 @@ function tierImmigration() {
           }
         }
         if (preyPlaced > 0) {
-          addEvoEvent(psp.name + ' co-migrated with ' + bsp.name + '! (' + preyPlaced + ' individuals)');
+          addEvoEvent(psp.name + ' co-migrated with ' + SPECIES[newId].name + '! (' + preyPlaced + ' ind.)');
+        }
+        if (newId && evoStats[newId] && evoStats[newId].eats.indexOf(preyId) === -1) {
+          evoStats[newId].eats.push(preyId);
         }
       }
     }
