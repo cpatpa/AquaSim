@@ -399,11 +399,11 @@ const METABOLISM = { herbivore: 0.85, consumer: 0.8, apex: 0.5, megafauna: 0.35,
 // Hunger restored per meal scales with tier (apex/mega get more per kill)
 const HUNGER_RESTORE_BY_TIER = { herbivore: 0.75, consumer: 0.70, apex: 0.85, megafauna: 0.90, decomposer: 0.65 };
 // Ecosystem balance: density-dependent population control
-const DOMINANCE_THRESHOLD = 0.25;   // species > 25% of living cells faces crowding pressure
-const DOMINANCE_DEATH_CHANCE = 0.03; // per-tick death chance for overcrowded dominant species
+const DOMINANCE_THRESHOLD = 0.20;   // species > 20% of living cells faces crowding pressure
+const DOMINANCE_DEATH_BASE = 0.02;  // base per-tick death chance, scales with dominance ratio
 // Tier immigration: repopulate empty tiers periodically
 const IMMIGRATION_CHECK_INTERVAL = 150; // check every N generations
-const IMMIGRATION_CLUSTER_SIZE = 12;    // spawn this many individuals per immigration event
+const IMMIGRATION_CLUSTER_SIZE = 20;    // spawn this many individuals per immigration event
 const MIN_GRID_PX = 480;
 const MAX_GRID_PX = 3200;
 
@@ -582,7 +582,7 @@ const SPECIATION_MIN_POP   = 20;   // species must have this many cells to fork
 const SPECIATION_DRIFT     = 0.12; // stats must have drifted 12%+ from baseline
 const SPECIATION_CHANCE    = 0.50; // probability per eligible species per evo cycle
 const SPECIATION_CONVERT   = 0.35; // fraction of parent cells converted to new species
-const MAX_DYNAMIC_SPECIES  = 30;   // cap on total new species
+const MAX_DYNAMIC_SPECIES  = 40;   // cap on total new species
 let nextSpeciesId = 100;           // dynamic IDs start at 100 (Uint8Array max = 255)
 let dynamicSpeciesIds = [];        // track which IDs are dynamically created
 
@@ -657,6 +657,8 @@ const EXCLUSIVE_TRAIT_GROUPS = [
   ['packhunter', 'trapjaw'],        // attack specialization
   ['inkcloud', 'poddefense'],       // evasion strategy
 ];
+const PRODUCER_DEFENCE_TRAITS = ['thorns', 'toxic', 'deeproot', 'allelopathy', 'biofilm'];
+const MAX_PRODUCER_DEFENCE_TRAITS = 2;
 function getExclusiveConflict(traitKey, currentTraits) {
   for (const group of EXCLUSIVE_TRAIT_GROUPS) {
     if (group.indexOf(traitKey) === -1) continue;
@@ -975,7 +977,25 @@ function expressTraits(id) {
   }
 
   expressed.sort((a, b) => b.strength - a.strength);
-  const newTraits = expressed.slice(0, MAX_TRAITS_PER_SPECIES).map(e => e.trait);
+  let candidates = expressed.slice(0, MAX_TRAITS_PER_SPECIES);
+  if (sp.tier === 'producer') {
+    let defCount = 0;
+    candidates = candidates.filter(e => {
+      if (PRODUCER_DEFENCE_TRAITS.indexOf(e.trait) !== -1) {
+        defCount++;
+        if (defCount > MAX_PRODUCER_DEFENCE_TRAITS) return false;
+      }
+      return true;
+    });
+    while (candidates.length < MAX_TRAITS_PER_SPECIES && expressed.length > candidates.length) {
+      const next = expressed.find(e => candidates.indexOf(e) === -1 &&
+        (PRODUCER_DEFENCE_TRAITS.indexOf(e.trait) === -1 || defCount < MAX_PRODUCER_DEFENCE_TRAITS));
+      if (!next) break;
+      if (PRODUCER_DEFENCE_TRAITS.indexOf(next.trait) !== -1) defCount++;
+      candidates.push(next);
+    }
+  }
+  const newTraits = candidates.map(e => e.trait);
   const oldTraits = es.traits || [];
   for (const t of newTraits) {
     if (oldTraits.indexOf(t) === -1) addEvoEvent(sp.name + ' expressed ' + TRAITS[t].name);
@@ -985,7 +1005,7 @@ function expressTraits(id) {
   }
   es.traits = newTraits;
   es.traitStrengths = {};
-  for (const e of expressed.slice(0, MAX_TRAITS_PER_SPECIES)) {
+  for (const e of candidates) {
     es.traitStrengths[e.trait] = e.strength;
   }
 }
@@ -1568,7 +1588,7 @@ const TIER_BASE_SPECIES = {
 let _tierEmptyGens = { herbivore: 0, consumer: 0, apex: 0, megafauna: 0, decomposer: 0 };
 
 const IMMIGRATION_TIER_INTERVAL = {
-  herbivore: 80, consumer: 50, apex: 50, megafauna: 80, decomposer: 120
+  herbivore: 8, consumer: 6, apex: 6, megafauna: 10, decomposer: 15
 };
 const IMMIGRATION_PREY_SEED = {
   consumer: [20, 21, 22],
@@ -1583,6 +1603,20 @@ const IMMIGRATION_NAMES = {
 };
 
 function createImmigrantSpecies(tier) {
+  if (dynamicSpeciesIds.length >= MAX_DYNAMIC_SPECIES && popHistory.length >= 2) {
+    const now = popHistory[popHistory.length - 1];
+    for (let di = dynamicSpeciesIds.length - 1; di >= 0; di--) {
+      const did = dynamicSpeciesIds[di];
+      if ((now[did] || 0) === 0) {
+        SPECIES[did]._extinct = true;
+        const li = LIVING_IDS.indexOf(did);
+        if (li !== -1) LIVING_IDS.splice(li, 1);
+        dynamicSpeciesIds.splice(di, 1);
+        removeFromTierGroups(did);
+      }
+      if (dynamicSpeciesIds.length < MAX_DYNAMIC_SPECIES) break;
+    }
+  }
   if (dynamicSpeciesIds.length >= MAX_DYNAMIC_SPECIES || nextSpeciesId > 254) return null;
 
   const candidates = TIER_BASE_SPECIES[tier];
@@ -2441,10 +2475,15 @@ function step() {
 
     // Producer behaviour
     if (sp.tier === 'producer') {
-      // Density-dependent mortality for dominant producer species
-      if ((_popCounts[sid] || 0) > _dominantThreshold && Math.random() < DOMINANCE_DEATH_CHANCE) {
-        species[idx] = 0; hunger[idx] = 0; age[idx] = 0;
-        continue;
+      // Density-dependent mortality for dominant producer species (scales with dominance)
+      const _pPop = _popCounts[sid] || 0;
+      if (_pPop > _dominantThreshold) {
+        const _domRatio = _pPop / Math.max(1, _totalLiving);
+        const _domChance = DOMINANCE_DEATH_BASE * (1 + (_domRatio - DOMINANCE_THRESHOLD) * 8);
+        if (Math.random() < _domChance) {
+          species[idx] = 0; hunger[idx] = 0; age[idx] = 0;
+          continue;
+        }
       }
       const pes = evo(sid);
       const pTraits = pes.traits ? new Set(pes.traits) : null;
@@ -2725,10 +2764,15 @@ function step() {
     }
 
     // Density-dependent mortality: overcrowded dominant species face disease/competition
-    if ((_popCounts[sid] || 0) > _dominantThreshold && Math.random() < DOMINANCE_DEATH_CHANCE) {
-      species[idx] = 3; hunger[idx] = 0; age[idx] = 0;
-      processed[idx] = 1;
-      continue;
+    const _aPop = _popCounts[sid] || 0;
+    if (_aPop > _dominantThreshold) {
+      const _aRatio = _aPop / Math.max(1, _totalLiving);
+      const _aChance = DOMINANCE_DEATH_BASE * (1 + (_aRatio - DOMINANCE_THRESHOLD) * 8);
+      if (Math.random() < _aChance) {
+        species[idx] = 3; hunger[idx] = 0; age[idx] = 0;
+        processed[idx] = 1;
+        continue;
+      }
     }
 
     // 3. Eat: scan neighbours for food (layer-aware)
@@ -2806,8 +2850,8 @@ function step() {
               }
               continue;
             }
-            // Biofilm: 35% damage reduction when 3+ same species adjacent
-            if (preyTraits.indexOf('biofilm') !== -1) {
+            // Biofilm: 35% damage reduction when 3+ same species adjacent (herbivores ignore)
+            if (preyTraits.indexOf('biofilm') !== -1 && sp.tier !== 'herbivore') {
               let bfCount = 0;
               for (let bn = 0; bn < 8; bn++) {
                 const bdir = NEIGHBOURS_8[bn];
@@ -2817,15 +2861,15 @@ function step() {
             }
           }
 
-          // Toxic: predator takes hunger damage (herbivores take half - adapted grazers)
+          // Toxic: predator takes hunger damage (herbivores take 25% - specialist grazers)
           if (preyTraits.indexOf('toxic') !== -1) {
             const toxDmg = Math.round(4 * traitStr(foodId, 'toxic'));
-            hunger[idx] += sp.tier === 'herbivore' ? ((toxDmg * 0.5) | 0) : toxDmg;
+            hunger[idx] += sp.tier === 'herbivore' ? ((toxDmg * 0.25) | 0) : toxDmg;
           }
-          // Thorns: predator takes hunger penalty (herbivores take half - adapted grazers)
+          // Thorns: predator takes hunger penalty (herbivores take 25% - specialist grazers)
           if (preyTraits.indexOf('thorns') !== -1) {
             const thDmg = Math.round(7 * traitStr(foodId, 'thorns'));
-            hunger[idx] += sp.tier === 'herbivore' ? ((thDmg * 0.5) | 0) : thDmg;
+            hunger[idx] += sp.tier === 'herbivore' ? ((thDmg * 0.25) | 0) : thDmg;
           }
           // Venomous predator: extra damage to prey's neighbors (area denial)
           if (isVenomous) {
@@ -2838,8 +2882,9 @@ function step() {
               }
             }
           }
-          // Deep Root: producer has 35% chance to survive being eaten
-          if (preyTraits.indexOf('deeproot') !== -1 && Math.random() < 0.35 * traitStr(foodId, 'deeproot')) {
+          // Deep Root: producer has 35% chance to survive being eaten (15% vs herbivores)
+          const _drChance = sp.tier === 'herbivore' ? 0.15 : 0.35;
+          if (preyTraits.indexOf('deeproot') !== -1 && Math.random() < _drChance * traitStr(foodId, 'deeproot')) {
             hunger[idx] = Math.max(0, hunger[idx] - ((es.hungerMax * restoreFrac * 0.4) | 0));
             ate = true;
             break;
