@@ -227,7 +227,7 @@ canvas { cursor: crosshair; display: block; }
   display: flex; align-items: center; gap: 12px; padding: 14px 16px;
   border-bottom: 1px solid #0C2D40;
 }
-.sip-portrait { width: 64px; height: 64px; border-radius: 4px; border: 1px solid #0C2D40; image-rendering: pixelated; flex-shrink: 0; }
+.sip-portrait { width: 160px; height: 160px; border-radius: 6px; border: 1px solid #0C2D40; image-rendering: pixelated; flex-shrink: 0; }
 .sip-title-area { flex: 1; }
 .sip-name { font-family: 'Orbitron', monospace; font-size: 0.8rem; color: #00E5FF; letter-spacing: 1px; margin-bottom: 4px; }
 .sip-tier { font-size: 0.6rem; color: #4A7A8A; text-transform: uppercase; }
@@ -746,6 +746,18 @@ const NICHE_SHIFT_MIN_DRIFT   = 0.45; // stats must have drifted 45%+ from basel
 const NICHE_SHIFT_CHANCE      = 0.12; // chance per eligible species per evo cycle
 // Tier promotion map: which tier can shift into which (only upward pressure shifts)
 const TIER_PROMOTE = { herbivore: 'consumer', consumer: 'apex', decomposer: 'herbivore', apex: 'megafauna' };
+// Extended promotion: cross-tier jumps allowed when target niche is vacant
+const TIER_PROMOTE_EXTENDED = {
+  producer:   ['herbivore'],
+  herbivore:  ['consumer', 'apex'],
+  consumer:   ['apex', 'megafauna'],
+  decomposer: ['herbivore', 'consumer'],
+  apex:       ['megafauna'],
+};
+// Convergent evolution: empty niche attraction thresholds
+const EMPTY_NICHE_THRESHOLD   = 0.03; // tier < 3% of total living = "empty"
+const EMPTY_NICHE_SHIFT_BOOST = 0.40; // boosted shift chance for empty niches
+const EMPTY_NICHE_MIN_DRIFT   = 0.08; // reduced divergence for empty niches
 // Self-predation: evolved variants can prey on siblings/parent in same lineage
 const SELF_PREDATION_CHANCE = 0.18;   // chance per evo cycle per eligible variant
 
@@ -1285,6 +1297,7 @@ function speciate() {
 }
 
 // --- NICHE SHIFT: animals can change ecological tier under sustained pressure ---
+// Also supports convergent evolution: unrelated species fill empty niches
 function nicheShift() {
   if (dynamicSpeciesIds.length >= MAX_DYNAMIC_SPECIES || nextSpeciesId > 254) return;
   if (popHistory.length < 3) return;
@@ -1294,42 +1307,87 @@ function nicheShift() {
   const { predators, preyOf } = buildFoodWeb();
   const total = gridW * gridH;
 
+  // Calculate per-tier population for empty niche detection
+  const tierPop = {};
+  let totalLiving = 0;
+  for (const tid of LIVING_IDS) {
+    const tsp = SPECIES[tid];
+    if (!tsp) continue;
+    const cnt = now[tid] || 0;
+    tierPop[tsp.tier] = (tierPop[tsp.tier] || 0) + cnt;
+    totalLiving += cnt;
+  }
+
   for (const id of LIVING_IDS) {
     if (dynamicSpeciesIds.length >= MAX_DYNAMIC_SPECIES || nextSpeciesId > 254) break;
     const sp = SPECIES[id];
-    if (!sp.hungerMax) continue;
-    if (sp.tier === 'producer' || sp.tier === 'megafauna') continue;
-
-    const depth = sp.lineageDepth || 0;
-    if (depth < NICHE_SHIFT_MIN_DEPTH) continue;
+    if (sp.tier === 'megafauna') continue;
+    if (sp.tier === 'producer' && !sp.breedRate) continue;
 
     const es = evoStats[id];
     const popNow = now[id] || 0;
-    if (popNow < 30) continue;
     if (!es.genes || !es.baseGenes) continue;
-
+    const depth = sp.lineageDepth || 0;
     const divergence = geneDivergence(es.genes, es.baseGenes);
-    if (divergence < NICHE_SHIFT_MIN_DRIFT * 0.4) continue;
-    if (Math.random() > NICHE_SHIFT_CHANCE) continue;
 
-    let underPressure = false;
-    if (predators[id]) {
-      let predPop = 0;
-      for (const pid of predators[id]) predPop += (now[pid] || 0);
-      if (popNow > 0 && predPop / popNow > PRESSURE_HIGH * 0.7) underPressure = true;
-    }
-    if (preyOf[id] && preyOf[id].length > 0) {
-      let preyPop = 0;
-      for (const prey of preyOf[id]) preyPop += (now[prey] || 0);
-      if (popNow > 0 && preyPop < popNow * 0.8) underPressure = true;
-    }
-    const popPrev = prev[id] || 0;
-    const trend = popPrev > 0 ? (popNow - popPrev) / popPrev : 0;
-    if (trend < -0.15) underPressure = true;
-    if (!underPressure) continue;
+    // Find target tier: standard promotion first, then scan for empty niches
+    let newTier = TIER_PROMOTE[sp.tier] || null;
+    let targetEmpty = false;
 
-    const newTier = TIER_PROMOTE[sp.tier];
+    // Check if standard target is empty
+    if (newTier && totalLiving > 50) {
+      const tp = tierPop[newTier] || 0;
+      if (tp < totalLiving * EMPTY_NICHE_THRESHOLD) targetEmpty = true;
+    }
+
+    // If standard target isn't empty, scan extended paths for empty niches
+    if (!targetEmpty) {
+      const extended = TIER_PROMOTE_EXTENDED[sp.tier] || [];
+      let emptiest = null, emptiestPop = Infinity;
+      for (const ct of extended) {
+        const cp = tierPop[ct] || 0;
+        if (totalLiving > 50 && cp < totalLiving * EMPTY_NICHE_THRESHOLD && cp < emptiestPop) {
+          emptiest = ct;
+          emptiestPop = cp;
+        }
+      }
+      if (emptiest) {
+        newTier = emptiest;
+        targetEmpty = true;
+      }
+    }
+
     if (!newTier) continue;
+
+    // Gate checks: relaxed when target niche is empty (convergent evolution)
+    if (targetEmpty) {
+      if (popNow < 15) continue;
+      if (divergence < EMPTY_NICHE_MIN_DRIFT) continue;
+      if (Math.random() > EMPTY_NICHE_SHIFT_BOOST) continue;
+    } else {
+      if (!sp.hungerMax) continue;
+      if (sp.tier === 'producer') continue;
+      if (depth < NICHE_SHIFT_MIN_DEPTH) continue;
+      if (popNow < 30) continue;
+      if (divergence < NICHE_SHIFT_MIN_DRIFT * 0.4) continue;
+      if (Math.random() > NICHE_SHIFT_CHANCE) continue;
+
+      let underPressure = false;
+      if (predators[id]) {
+        let predPop = 0;
+        for (const pid of predators[id]) predPop += (now[pid] || 0);
+        if (popNow > 0 && predPop / popNow > PRESSURE_HIGH * 0.7) underPressure = true;
+      }
+      if (preyOf[id] && preyOf[id].length > 0) {
+        let preyPop = 0;
+        for (const prey of preyOf[id]) preyPop += (now[prey] || 0);
+        if (popNow > 0 && preyPop < popNow * 0.8) underPressure = true;
+      }
+      const popPrev = prev[id] || 0;
+      const trend = popPrev > 0 ? (popNow - popPrev) / popPrev : 0;
+      if (trend < -0.15) underPressure = true;
+      if (!underPressure) continue;
+    }
 
     const newId = nextSpeciesId++;
     const rootId = sp.rootAncestor || id;
@@ -1350,7 +1408,19 @@ function nicheShift() {
     }
 
     let newEats = [];
-    if (newTier === 'consumer') {
+    if (newTier === 'herbivore') {
+      if (sp.tier === 'producer') {
+        newGenes.s = clamp(newGenes.s + 0.25, 0, 1);
+        newGenes.v = clamp(newGenes.v * 0.6, 0, 1);
+        newGenes.p = clamp(newGenes.p + 0.15, 0, 1);
+      } else {
+        newGenes.s = clamp(newGenes.s * 1.1, 0, 1);
+        newGenes.p = clamp(newGenes.p * 0.5, 0, 1);
+      }
+      const targets = LIVING_IDS.filter(pid => { const psp = SPECIES[pid]; return psp && psp.tier === 'producer'; });
+      const sh = targets.slice(); for (let i = sh.length - 1; i > 0; i--) { const j = (Math.random() * (i + 1)) | 0; const t = sh[i]; sh[i] = sh[j]; sh[j] = t; }
+      for (let i = 0; i < Math.min(sh.length, 1 + ((Math.random() * 2) | 0)); i++) newEats.push(sh[i]);
+    } else if (newTier === 'consumer') {
       newGenes.s = clamp(newGenes.s * 1.3, 0, 1);
       newGenes.v = clamp(newGenes.v * 0.7, 0, 1);
       newGenes.p = clamp(newGenes.p + 0.2, 0, 1);
@@ -1362,7 +1432,7 @@ function nicheShift() {
       newGenes.v = clamp(newGenes.v * 0.5, 0, 1);
       newGenes.p = clamp(newGenes.p + 0.15, 0, 1);
       newGenes.f = clamp(newGenes.f * 1.2, 0, 1);
-      const targets = LIVING_IDS.filter(cid => { const csp = SPECIES[cid]; return csp && csp.tier === 'consumer' && cid !== id; });
+      const targets = LIVING_IDS.filter(cid => { const csp = SPECIES[cid]; return csp && (csp.tier === 'consumer' || csp.tier === 'herbivore') && cid !== id; });
       const sh = targets.slice(); for (let i = sh.length - 1; i > 0; i--) { const j = (Math.random() * (i + 1)) | 0; const t = sh[i]; sh[i] = sh[j]; sh[j] = t; }
       for (let i = 0; i < Math.min(sh.length, 1 + ((Math.random() * 3) | 0)); i++) newEats.push(sh[i]);
     } else if (newTier === 'megafauna') {
@@ -1373,24 +1443,18 @@ function nicheShift() {
       const targets = LIVING_IDS.filter(pid => { const psp = SPECIES[pid]; return psp && (psp.tier === 'consumer' || psp.tier === 'herbivore') && pid !== id; });
       const sh = targets.slice(); for (let i = sh.length - 1; i > 0; i--) { const j = (Math.random() * (i + 1)) | 0; const t = sh[i]; sh[i] = sh[j]; sh[j] = t; }
       for (let i = 0; i < Math.min(sh.length, 2 + ((Math.random() * 3) | 0)); i++) newEats.push(sh[i]);
-    } else if (newTier === 'herbivore') {
-      newGenes.s = clamp(newGenes.s * 1.1, 0, 1);
-      newGenes.p = clamp(newGenes.p * 0.5, 0, 1);
-      const targets = LIVING_IDS.filter(pid => { const psp = SPECIES[pid]; return psp && psp.tier === 'producer'; });
-      const sh = targets.slice(); for (let i = sh.length - 1; i > 0; i--) { const j = (Math.random() * (i + 1)) | 0; const t = sh[i]; sh[i] = sh[j]; sh[j] = t; }
-      for (let i = 0; i < Math.min(sh.length, 1 + ((Math.random() * 2) | 0)); i++) newEats.push(sh[i]);
     }
 
-    const tmpBR = sp.breedRate * (0.5 + newGenes.v);
-    const tmpMR = sp.moveRate ? clamp(sp.moveRate * (0.5 + newGenes.s), 0.02, 0.98) : 0;
-    const tmpHM = sp.hungerMax ? clamp(Math.round(sp.hungerMax * (0.5 + newGenes.f)), 6, 80) : 0;
+    const tmpBR = (sp.breedRate || 0.04) * (0.5 + newGenes.v);
+    const tmpMR = clamp((sp.moveRate || 0.35) * (0.5 + newGenes.s), 0.02, 0.98);
+    const tmpHM = clamp(Math.round((sp.hungerMax || 20) * (0.5 + newGenes.f)), 6, 80);
 
     const tierLayerMap = { herbivore: 1, consumer: 2, apex: 3, megafauna: 3 };
     const newLayer = tierLayerMap[newTier] !== undefined ? tierLayerMap[newTier] : sp.layer;
     SPECIES[newId] = {
       name: newName, color: newHex, tier: newTier, layer: newLayer,
-      breedRate: sp.breedRate, moveRate: sp.moveRate || undefined,
-      hungerMax: sp.hungerMax || undefined, eats: newEats.length ? newEats : undefined,
+      breedRate: sp.breedRate || 0.04, moveRate: sp.moveRate || 0.35,
+      hungerMax: sp.hungerMax || 20, eats: newEats.length ? newEats : undefined,
       desc: sp.name + ' shifted to ' + newTier + ' niche (gen ' + generation + ')',
       parentId: id, rootAncestor: rootId,
       lineageDepth: (sp.lineageDepth || 0) + 1,
@@ -1422,7 +1486,11 @@ function nicheShift() {
       converted++;
     }
 
-    addEvoEvent(newName + ' shifted niche: ' + sp.tier + ' → ' + newTier + '!');
+    if (targetEmpty) {
+      addEvoEvent(newName + ' filled empty ' + newTier + ' niche (convergent evolution)!');
+    } else {
+      addEvoEvent(newName + ' shifted niche: ' + sp.tier + ' → ' + newTier + '!');
+    }
   }
 }
 
@@ -3087,109 +3155,340 @@ statsEl.addEventListener('mouseout', function(e) {
 // ============================================================
 const _creatureCache = {};
 
+function _seedRng(seed) {
+  let s = seed | 0;
+  return function() {
+    s = (s + 0x6D2B79F5) | 0;
+    let t = Math.imul(s ^ (s >>> 15), 1 | s);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function _portraitPalette(rgb, genes) {
+  const dark = [Math.max(0, rgb[0] - 60), Math.max(0, rgb[1] - 60), Math.max(0, rgb[2] - 60)];
+  const light = [Math.min(255, rgb[0] + 50), Math.min(255, rgb[1] + 50), Math.min(255, rgb[2] + 50)];
+  const secHue = { v: [40,200,80], s: [60,180,220], f: [200,160,60], a: [160,160,200], p: [220,60,80], o: [180,120,220] };
+  let highG = 'v', highV = 0;
+  for (const g of GENE_KEYS) { if (genes[g] > highV) { highV = genes[g]; highG = g; } }
+  const sh = secHue[highG];
+  const secondary = [Math.round(rgb[0]*0.55+sh[0]*0.45), Math.round(rgb[1]*0.55+sh[1]*0.45), Math.round(rgb[2]*0.55+sh[2]*0.45)];
+  const belly = [Math.min(255, rgb[0]+70), Math.min(255, rgb[1]+70), Math.min(255, rgb[2]+50)];
+  return { base: rgb, dark, light, secondary, belly };
+}
+
 function generateCreaturePortrait(sid) {
   if (_creatureCache[sid]) return _creatureCache[sid];
   const sp = SPECIES[sid];
   if (!sp) return null;
   const es = evoStats[sid];
   const rgb = COLOR_RGB[sid] || [128, 128, 128];
-  const size = 32;
+  const size = 64;
   const cv = document.createElement('canvas');
   cv.width = size; cv.height = size;
   const cx = cv.getContext('2d');
-
-  const dark = [Math.max(0, rgb[0] - 60), Math.max(0, rgb[1] - 60), Math.max(0, rgb[2] - 60)];
-  const light = [Math.min(255, rgb[0] + 40), Math.min(255, rgb[1] + 40), Math.min(255, rgb[2] + 40)];
-
   const genes = es && es.genes ? es.genes : { v: 0.5, s: 0.5, f: 0.5, a: 0.5, p: 0.5, o: 0.5 };
+  const rng = _seedRng(sid * 2654435761);
+  const pal = _portraitPalette(rgb, genes);
+  const mid = size / 2;
 
-  const bodyW = 5 + Math.round(genes.f * 4);
-  const bodyH = 4 + Math.round(genes.f * 3);
-  const midY = size / 2;
-  const midX = size / 2;
+  function px(x, y, c, a) {
+    if (x < 0 || x >= size || y < 0 || y >= size) return;
+    cx.fillStyle = a !== undefined ? 'rgba('+c[0]+','+c[1]+','+c[2]+','+a+')' : 'rgb('+c[0]+','+c[1]+','+c[2]+')';
+    cx.fillRect(Math.round(x), Math.round(y), 1, 1);
+  }
+  function rect(x, y, w, h, c, a) {
+    if (a !== undefined) cx.fillStyle = 'rgba('+c[0]+','+c[1]+','+c[2]+','+a+')';
+    else cx.fillStyle = 'rgb('+c[0]+','+c[1]+','+c[2]+')';
+    cx.fillRect(Math.round(x), Math.round(y), w, h);
+  }
 
-  const isProducer = sp.tier === 'producer' || sp.tier === 'decomposer';
-
-  if (isProducer) {
-    const stemH = 8 + Math.round(genes.v * 8);
-    const leafW = 3 + Math.round(genes.v * 3);
-    cx.fillStyle = 'rgb(' + dark[0] + ',' + dark[1] + ',' + dark[2] + ')';
-    cx.fillRect(midX - 1, midY - stemH / 2, 2, stemH);
-    cx.fillStyle = 'rgb(' + rgb[0] + ',' + rgb[1] + ',' + rgb[2] + ')';
-    for (let ly = -2; ly <= 2; ly++) {
-      const lw = leafW - Math.abs(ly);
-      if (lw > 0) cx.fillRect(midX - lw, midY - stemH / 2 + 2 + ly, lw * 2, 2);
-    }
-    if (genes.a > 0.5) {
-      cx.fillStyle = 'rgb(' + dark[0] + ',' + dark[1] + ',' + dark[2] + ')';
-      for (let s = 0; s < 3; s++) {
-        const sy = midY - stemH / 2 + 4 + s * 3;
-        cx.fillRect(midX - leafW - 1, sy, 1, 1);
-        cx.fillRect(midX + leafW, sy, 1, 1);
+  if (sp.tier === 'decomposer') {
+    // Amorphous blob with pseudopods
+    const blobR = 8 + Math.round(genes.f * 5);
+    const steps = 24;
+    const radii = [];
+    for (let i = 0; i < steps; i++) radii.push(blobR + Math.round((rng() - 0.5) * 5));
+    for (let py = -blobR - 4; py <= blobR + 4; py++) {
+      for (let ppx = -blobR - 4; ppx <= blobR + 4; ppx++) {
+        const angle = Math.atan2(py, ppx);
+        const idx = ((angle / (Math.PI * 2) + 1) % 1) * steps;
+        const i0 = Math.floor(idx) % steps, i1 = (i0 + 1) % steps;
+        const frac = idx - Math.floor(idx);
+        const r = radii[i0] * (1 - frac) + radii[i1] * frac;
+        const dist = Math.sqrt(ppx * ppx + py * py);
+        if (dist <= r) {
+          const edgeDist = r - dist;
+          if (edgeDist < 1.5) px(mid + ppx, mid + py, pal.dark);
+          else if (py > 0) px(mid + ppx, mid + py, pal.base);
+          else px(mid + ppx, mid + py, pal.light);
+        }
       }
     }
-    if (genes.o > 0.5) {
-      cx.fillStyle = 'rgba(' + light[0] + ',' + light[1] + ',' + light[2] + ',0.6)';
-      cx.fillRect(midX - 1, midY - stemH / 2, 1, 1);
-      cx.fillRect(midX + 1, midY - stemH / 2 + 1, 1, 1);
+    const tentCount = 2 + Math.round(genes.s * 3);
+    for (let t = 0; t < tentCount; t++) {
+      const a = rng() * Math.PI * 2;
+      const len = 4 + Math.round(rng() * genes.v * 6);
+      for (let s = 0; s < len; s++) {
+        const tx = mid + Math.round(Math.cos(a) * (blobR + s));
+        const ty = mid + Math.round(Math.sin(a) * (blobR + s));
+        px(tx, ty, pal.dark);
+        px(tx, ty + 1, pal.base);
+      }
+    }
+    if (genes.o > 0.25) {
+      const dotCount = 2 + Math.round(genes.o * 5);
+      for (let d = 0; d < dotCount; d++) {
+        const dx = mid + Math.round((rng() - 0.5) * blobR);
+        const dy = mid + Math.round((rng() - 0.5) * blobR);
+        rect(dx, dy, 2, 2, pal.secondary, 0.5 + genes.o * 0.3);
+      }
+    }
+  } else if (sp.tier === 'producer') {
+    // Branching plant with fronds
+    const stemH = 16 + Math.round(genes.v * 14);
+    const stemW = 2 + Math.round(genes.f * 2);
+    const stemTop = mid - stemH / 2;
+    rect(mid - Math.floor(stemW / 2), stemTop, stemW, stemH, pal.dark);
+    rect(mid - Math.floor(stemW / 2) + 1, stemTop, Math.max(1, stemW - 2), stemH, pal.base);
+    const frondCount = 3 + Math.round(genes.v * 4);
+    for (let f = 0; f < frondCount; f++) {
+      const fy = stemTop + 3 + Math.round(f * (stemH - 8) / Math.max(1, frondCount - 1));
+      const side = (f % 2 === 0) ? 1 : -1;
+      const fLen = 4 + Math.round(genes.v * 5 + rng() * 3);
+      const droop = 0.15 + rng() * 0.3;
+      for (let s = 0; s < fLen; s++) {
+        const fx = mid + side * (Math.floor(stemW / 2) + s);
+        const fdy = fy + Math.round(s * droop);
+        const fw = Math.max(1, Math.round((1 - s / fLen) * 3));
+        rect(fx, fdy, 1, fw, s < 1 ? pal.dark : pal.base);
+        if (genes.o > 0.3 && s === fLen - 1) {
+          px(fx, fdy, pal.secondary, 0.7);
+          px(fx + side, fdy, pal.secondary, 0.5);
+        }
+      }
+    }
+    const thornCount = Math.round(genes.a * 5);
+    for (let t = 0; t < thornCount; t++) {
+      const ty = stemTop + 4 + Math.round(rng() * (stemH - 8));
+      const tside = rng() > 0.5 ? 1 : -1;
+      const tx = mid + tside * (Math.floor(stemW / 2) + 1);
+      px(tx, ty, pal.light);
+      px(tx + tside, ty - 1, pal.light);
+    }
+    rect(mid - Math.floor(stemW / 2) - 1, stemTop + stemH - 2, stemW + 2, 2, pal.dark);
+    const rootCount = 2 + Math.round(genes.f * 2);
+    for (let r = 0; r < rootCount; r++) {
+      const rx = mid + Math.round((rng() - 0.5) * (stemW + 4));
+      for (let rl = 0; rl < 3 + Math.round(rng() * 3); rl++) {
+        px(rx + Math.round((rng() - 0.5) * 2), stemTop + stemH + rl, pal.dark);
+      }
     }
   } else {
-    const half = [];
-    for (let y = 0; y < bodyH; y++) {
-      const t = y / (bodyH - 1);
-      const w = Math.round(bodyW * Math.sin(t * Math.PI));
-      half.push(Math.max(1, w));
+    // Animals: tier-specific body shapes
+    let bodyW, bodyH, taperFront, taperBack;
+    const sizeMul = 0.8 + genes.v * 0.4;
+    switch (sp.tier) {
+      case 'herbivore':
+        bodyW = Math.round((8 + genes.f * 5) * sizeMul);
+        bodyH = Math.round((9 + genes.f * 5) * sizeMul);
+        taperFront = 0.7; taperBack = 0.8;
+        break;
+      case 'consumer':
+        bodyW = Math.round((12 + genes.f * 4) * sizeMul);
+        bodyH = Math.round((6 + genes.f * 3) * sizeMul);
+        taperFront = 0.45; taperBack = 0.35;
+        break;
+      case 'apex':
+        bodyW = Math.round((11 + genes.f * 5) * sizeMul);
+        bodyH = Math.round((8 + genes.f * 4) * sizeMul);
+        taperFront = 0.3; taperBack = 0.55;
+        break;
+      case 'megafauna':
+        bodyW = Math.round((15 + genes.f * 5) * sizeMul);
+        bodyH = Math.round((11 + genes.f * 4) * sizeMul);
+        taperFront = 0.6; taperBack = 0.65;
+        break;
+      default:
+        bodyW = Math.round((9 + genes.f * 4) * sizeMul);
+        bodyH = Math.round((7 + genes.f * 3) * sizeMul);
+        taperFront = 0.5; taperBack = 0.5;
     }
-    const tailLen = 2 + Math.round(genes.s * 4);
-    const finH = 1 + Math.round(genes.s * 2);
+    bodyW = Math.min(bodyW, 22); bodyH = Math.min(bodyH, 20);
 
+    // Build body silhouette: array of half-widths per row
+    const rows = [];
     for (let y = 0; y < bodyH; y++) {
-      const w = half[y];
-      const py = midY - bodyH / 2 + y;
-      cx.fillStyle = 'rgb(' + dark[0] + ',' + dark[1] + ',' + dark[2] + ')';
-      cx.fillRect(midX - w - 1, py, 1, 1);
-      cx.fillRect(midX + w, py, 1, 1);
-      cx.fillStyle = 'rgb(' + rgb[0] + ',' + rgb[1] + ',' + rgb[2] + ')';
-      cx.fillRect(midX - w, py, w * 2, 1);
-      if (genes.o > 0.5 && y % 2 === 0) {
-        cx.fillStyle = 'rgb(' + light[0] + ',' + light[1] + ',' + light[2] + ')';
-        cx.fillRect(midX - w + 1, py, w * 2 - 2, 1);
+      const t = y / Math.max(1, bodyH - 1);
+      const sine = Math.sin(t * Math.PI);
+      const frontBias = t < 0.5 ? (1 - taperFront) + taperFront * sine : 1;
+      const backBias = t >= 0.5 ? (1 - taperBack) + taperBack * sine : 1;
+      const w = Math.round(bodyW * sine * (t < 0.5 ? frontBias : backBias));
+      rows.push(Math.max(1, w));
+    }
+    const startY = Math.round(mid - bodyH / 2);
+    const bodyOff = Math.round(mid - bodyW * 0.15);
+
+    // Belly zone: bottom portion of body uses belly colour
+    const bellyStart = Math.round(bodyH * (0.55 + genes.f * 0.15));
+
+    // Draw body fill
+    for (let y = 0; y < bodyH; y++) {
+      const w = rows[y];
+      const py = startY + y;
+      const col = y >= bellyStart ? pal.belly : pal.base;
+      rect(bodyOff - w, py, w * 2, 1, col);
+    }
+
+    // Body outline
+    for (let y = 0; y < bodyH; y++) {
+      const w = rows[y];
+      const py = startY + y;
+      px(bodyOff - w - 1, py, pal.dark);
+      px(bodyOff + w, py, pal.dark);
+    }
+    for (let x = -rows[0]; x < rows[0]; x++) px(bodyOff + x, startY - 1, pal.dark);
+    for (let x = -rows[bodyH-1]; x < rows[bodyH-1]; x++) px(bodyOff + x, startY + bodyH, pal.dark);
+
+    // Pattern overlay (deterministic per species lineage)
+    const patRng = _seedRng((sp.rootAncestor || sid) * 1337);
+    const patType = Math.floor(patRng() * 4);
+    if (genes.o > 0.25) {
+      const intensity = (genes.o - 0.25) / 0.75;
+      const alpha = 0.2 + intensity * 0.35;
+      if (patType === 0) {
+        const gap = Math.max(2, 5 - Math.round(intensity * 3));
+        for (let y = gap; y < bodyH - 1; y += gap) {
+          const w = rows[y];
+          if (w > 2) rect(bodyOff - w + 2, startY + y, w * 2 - 4, 1, pal.secondary, alpha);
+        }
+      } else if (patType === 1) {
+        const gap = Math.max(2, 5 - Math.round(intensity * 3));
+        for (let y = 0; y < bodyH; y++) {
+          const w = rows[y];
+          for (let x = -w + gap; x < w; x += gap) {
+            px(bodyOff + x, startY + y, pal.secondary, alpha);
+          }
+        }
+      } else if (patType === 2) {
+        const spotCount = 3 + Math.round(intensity * 8);
+        for (let s = 0; s < spotCount; s++) {
+          const sy = Math.round(rng() * (bodyH - 3)) + 1;
+          const w = rows[Math.min(sy, bodyH - 1)];
+          const sx = Math.round((rng() - 0.5) * (w - 1) * 2);
+          rect(bodyOff + sx, startY + sy, 2, 2, pal.secondary, alpha);
+        }
+      } else {
+        const patchCount = 2 + Math.round(intensity * 2);
+        for (let p = 0; p < patchCount; p++) {
+          const py = 2 + Math.round(rng() * (bodyH - 5));
+          const w = rows[Math.min(py, bodyH - 1)];
+          const ppx = Math.round((rng() - 0.5) * (w - 2) * 2);
+          const pw = 2 + Math.round(rng() * 3);
+          const ph = 2 + Math.round(rng() * 2);
+          rect(bodyOff + ppx, startY + py, pw, ph, pal.secondary, alpha);
+        }
       }
     }
 
-    cx.fillStyle = 'rgb(' + dark[0] + ',' + dark[1] + ',' + dark[2] + ')';
+    // Tail
+    const tailLen = 2 + Math.round(genes.s * 7);
+    const forkDepth = Math.round(genes.s * 5);
+    const tailX = bodyOff - rows[Math.round(bodyH / 2)] - 1;
     for (let t = 0; t < tailLen; t++) {
-      const tw = Math.max(1, Math.round((1 - t / tailLen) * 2));
-      cx.fillRect(midX - bodyW - t - 2, midY - tw, tw * 2, tw * 2);
-    }
-
-    if (finH > 1) {
-      cx.fillStyle = 'rgba(' + rgb[0] + ',' + rgb[1] + ',' + rgb[2] + ',0.7)';
-      cx.fillRect(midX, midY - bodyH / 2 - finH, 3, finH);
-      cx.fillRect(midX, midY + bodyH / 2, 3, finH);
-    }
-
-    if (genes.a > 0.5) {
-      cx.fillStyle = 'rgb(' + light[0] + ',' + light[1] + ',' + light[2] + ')';
-      const spikeCount = 2 + Math.round(genes.a * 3);
-      for (let s = 0; s < spikeCount; s++) {
-        const sy = midY - bodyH / 2 + 1 + Math.round(s * (bodyH - 2) / Math.max(1, spikeCount - 1));
-        cx.fillRect(midX + half[Math.min(s, half.length - 1)] + 1, sy, 2, 1);
+      const tw = Math.max(1, Math.round((1 - t / tailLen) * 3));
+      if (forkDepth > 1 && t >= tailLen - forkDepth) {
+        const fSpread = (t - (tailLen - forkDepth)) + 1;
+        px(tailX - t, mid - fSpread, pal.base);
+        px(tailX - t, mid + fSpread - 1, pal.base);
+        px(tailX - t - 1, mid - fSpread, pal.dark);
+        px(tailX - t - 1, mid + fSpread - 1, pal.dark);
+      } else {
+        rect(tailX - t, mid - tw, 1, tw * 2, pal.base);
+        px(tailX - t, mid - tw - 1, pal.dark);
+        px(tailX - t, mid + tw, pal.dark);
       }
     }
 
-    if (genes.p > 0.4) {
-      const jawLen = 1 + Math.round(genes.p * 2);
-      cx.fillStyle = 'rgb(' + dark[0] + ',' + dark[1] + ',' + dark[2] + ')';
-      cx.fillRect(midX + bodyW, midY - 1, jawLen, 2);
-      cx.fillRect(midX + bodyW + jawLen, midY, 1, 1);
+    // Dorsal fin
+    const finH = 1 + Math.round(genes.s * 5);
+    const finLen = 2 + Math.round(genes.s * 3);
+    if (finH > 1) {
+      for (let f = 0; f < finLen; f++) {
+        const fh = Math.round(finH * (1 - f / finLen * 0.6));
+        const fx = bodyOff - Math.round(bodyW * 0.1) + f;
+        rect(fx, startY - fh, 1, fh, pal.base);
+        px(fx, startY - fh - 1, pal.dark);
+      }
+    }
+    // Pectoral fin
+    const pFinLen = 2 + Math.round(genes.s * 3);
+    const pFinY = startY + Math.round(bodyH * 0.55);
+    const pFinX = bodyOff + Math.round(rows[Math.round(bodyH * 0.55)] * 0.4);
+    for (let f = 0; f < pFinLen; f++) {
+      const fw = Math.max(1, pFinLen - f);
+      rect(pFinX + f, pFinY + f, 1, fw, f === 0 ? pal.dark : pal.base);
     }
 
-    const eyeSize = 1 + (genes.p > 0.6 ? 1 : 0);
-    cx.fillStyle = '#FFFFFF';
-    cx.fillRect(midX + bodyW - 3, midY - bodyH / 2 + 2, eyeSize, eyeSize);
-    cx.fillStyle = '#000000';
-    cx.fillRect(midX + bodyW - 3 + eyeSize - 1, midY - bodyH / 2 + 2 + eyeSize - 1, 1, 1);
+    // Armour: spikes along dorsal edge
+    const spikeCount = Math.round(genes.a * 6);
+    if (spikeCount > 0) {
+      const spikeLen = 1 + Math.round(genes.a * 3);
+      for (let s = 0; s < spikeCount; s++) {
+        const sy = startY + 1 + Math.round(s * (bodyH - 2) / Math.max(1, spikeCount));
+        const w = rows[Math.min(sy - startY, bodyH - 1)];
+        for (let sl = 0; sl < spikeLen; sl++) {
+          px(bodyOff + w + sl, sy, sl === 0 ? pal.light : pal.dark);
+        }
+      }
+    }
+    // Armour: ridge lines
+    if (genes.a > 0.35) {
+      const ridgeGap = Math.max(3, 8 - Math.round(genes.a * 5));
+      for (let y = ridgeGap; y < bodyH - 1; y += ridgeGap) {
+        const w = rows[y];
+        rect(bodyOff - w + 1, startY + y, w * 2 - 2, 1, pal.dark, 0.25 + genes.a * 0.3);
+      }
+    }
+
+    // Jaw/mouth
+    const jawLen = Math.round(genes.p * 6);
+    const headX = bodyOff + rows[Math.round(bodyH * 0.35)];
+    if (jawLen > 0) {
+      rect(headX, mid - 1, jawLen, 2, pal.dark);
+      if (genes.p > 0.3) {
+        px(headX + jawLen, mid, pal.dark);
+        const teeth = Math.round(genes.p * 4);
+        for (let t = 0; t < teeth; t++) {
+          const tx = headX + 1 + Math.round(t * (jawLen - 1) / Math.max(1, teeth));
+          px(tx, mid + 1, pal.light);
+          if (genes.p > 0.6) px(tx, mid - 2, pal.light);
+        }
+      }
+    }
+
+    // Eye
+    const eyeSize = 1 + (genes.p > 0.5 ? 1 : 0) + (genes.p > 0.75 ? 1 : 0);
+    const eyeX = bodyOff + rows[Math.min(2, bodyH - 1)] - 3;
+    const eyeY = startY + Math.round(bodyH * 0.25);
+    if (sp.tier === 'apex' || sp.tier === 'megafauna') {
+      rect(eyeX - 1, eyeY - 1, eyeSize + 2, eyeSize + 2, [255,255,200], 0.2);
+    }
+    rect(eyeX, eyeY, eyeSize, eyeSize, [255,255,255]);
+    if (eyeSize >= 3) {
+      px(eyeX + 1, eyeY, pal.secondary);
+      px(eyeX + 1, eyeY + 1, [0,0,0]);
+      px(eyeX + 1, eyeY + 2, pal.secondary);
+    } else {
+      px(eyeX + eyeSize - 1, eyeY + eyeSize - 1, [0,0,0]);
+    }
+    if (sp.tier === 'megafauna' && genes.p > 0.3) {
+      const baleenX = headX - 1;
+      const baleenH = 2 + Math.round(genes.p * 3);
+      for (let b = 0; b < baleenH; b++) {
+        px(baleenX, mid - Math.floor(baleenH / 2) + b, pal.light, 0.5);
+      }
+    }
   }
 
   const dataUrl = cv.toDataURL();
