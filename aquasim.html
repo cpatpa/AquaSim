@@ -2443,7 +2443,7 @@ function step() {
       spawnDeathParticles(idx, sid);
       // Novel: Calcification on starvation death too
       if (hasNovelAdapt(sid, 'calcification')) {
-        species[idx] = 2; hunger[idx] = 0; age[idx] = 0;
+        species[idx] = 1; hunger[idx] = 0; age[idx] = 0;
       } else {
         species[idx] = 3; hunger[idx] = 0; age[idx] = 0;
       }
@@ -2609,7 +2609,7 @@ function step() {
           spawnDeathParticles(ni, foodId);
           // Novel: Calcification: leave rock instead of dead
           if (hasNovelAdapt(foodId, 'calcification')) {
-            species[ni] = 2; hunger[ni] = 0; age[ni] = 0;
+            species[ni] = 1; hunger[ni] = 0; age[ni] = 0;
           } else {
             species[ni] = 0; hunger[ni] = 0; age[ni] = 0;
           }
@@ -4673,14 +4673,18 @@ document.getElementById('btn-export').addEventListener('click', function() {
     }
   };
   const text = JSON.stringify(log, null, 2);
-  navigator.clipboard.writeText(text).then(() => {
-    const btn = document.getElementById('btn-export');
-    btn.textContent = 'COPIED!';
-    setTimeout(() => { btn.textContent = 'EXPORT LOG'; }, 2000);
-  }).catch(() => {
-    const w = window.open('', '_blank');
-    if (w) { w.document.write('<pre>' + text.replace(/</g, '&lt;') + '</pre>'); }
-  });
+  const blob = new Blob([text], { type: 'text/plain' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'aquasim-log-gen' + generation + '.txt';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  const btn = document.getElementById('btn-export');
+  btn.textContent = 'SAVED!';
+  setTimeout(() => { btn.textContent = 'EXPORT LOG'; }, 2000);
 });
 
 // Grid resize
