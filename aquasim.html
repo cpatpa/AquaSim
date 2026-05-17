@@ -529,6 +529,20 @@ const TIER_ORDER = [
   { label: 'MEGAFAUNA',   ids: [42, 43] },
   { label: 'DECOMPOSERS', ids: [50, 51] },
 ];
+const TIER_TO_LABEL = { producer: 'PRODUCERS', herbivore: 'HERBIVORES', consumer: 'CONSUMERS', apex: 'APEX', megafauna: 'MEGAFAUNA', decomposer: 'DECOMPOSERS' };
+function addToTierGroup(speciesId, tier) {
+  const label = TIER_TO_LABEL[tier];
+  if (label) {
+    const group = TIER_ORDER.find(t => t.label === label);
+    if (group && group.ids.indexOf(speciesId) === -1) group.ids.push(speciesId);
+  }
+}
+function removeFromTierGroups(speciesId) {
+  for (const group of TIER_ORDER) {
+    const idx = group.ids.indexOf(speciesId);
+    if (idx !== -1) { group.ids.splice(idx, 1); return; }
+  }
+}
 
 // Disaster tools (negative IDs to distinguish from species)
 const DISASTERS = {
@@ -798,11 +812,7 @@ function initEvoStats() {
     delete COLOR_RGB[did];
     const li = LIVING_IDS.indexOf(did);
     if (li !== -1) LIVING_IDS.splice(li, 1);
-    const evoTier = TIER_ORDER.find(t => t.label === 'EVOLVED');
-    if (evoTier) {
-      const ti = evoTier.ids.indexOf(did);
-      if (ti !== -1) evoTier.ids.splice(ti, 1);
-    }
+    removeFromTierGroups(did);
     for (const oid of LIVING_IDS) {
       if (evoStats[oid] && evoStats[oid].eats) {
         const ei = evoStats[oid].eats.indexOf(did);
@@ -1272,9 +1282,7 @@ function speciate() {
     };
     expressTraits(newId);
 
-    let evoTier = TIER_ORDER.find(t => t.label === 'EVOLVED');
-    if (!evoTier) { evoTier = { label: 'EVOLVED', ids: [] }; TIER_ORDER.push(evoTier); }
-    evoTier.ids.push(newId);
+    addToTierGroup(newId, sp.tier);
 
     for (const oid of LIVING_IDS) {
       if (oid === newId) continue;
@@ -1474,9 +1482,7 @@ function nicheShift() {
     };
     expressTraits(newId);
 
-    let evoTier = TIER_ORDER.find(t => t.label === 'EVOLVED');
-    if (!evoTier) { evoTier = { label: 'EVOLVED', ids: [] }; TIER_ORDER.push(evoTier); }
-    evoTier.ids.push(newId);
+    addToTierGroup(newId, newTier);
 
     const convertTarget = (popNow * 0.25) | 0;
     const parentCells = [];
@@ -2875,11 +2881,7 @@ function step() {
           const li = LIVING_IDS.indexOf(did);
           if (li !== -1) LIVING_IDS.splice(li, 1);
           dynamicSpeciesIds.splice(di, 1);
-          const evoTier = TIER_ORDER.find(t => t.label === 'EVOLVED');
-          if (evoTier) {
-            const ti = evoTier.ids.indexOf(did);
-            if (ti !== -1) evoTier.ids.splice(ti, 1);
-          }
+          removeFromTierGroups(did);
           // Remove from all species' eats lists
           for (const oid of LIVING_IDS) {
             if (evoStats[oid] && evoStats[oid].eats) {
