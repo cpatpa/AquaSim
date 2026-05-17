@@ -211,6 +211,55 @@ canvas { cursor: crosshair; display: block; }
   font-family: 'Share Tech Mono', monospace;
 }
 .settings-close:hover { color: #FF4400; }
+
+/* Species Info Panel */
+#species-info-panel {
+  display: none; position: fixed; z-index: 1002;
+  top: 50%; left: 50%; transform: translate(-50%, -50%);
+  background: rgba(4,9,15,0.97); border: 1px solid #00E5FF; border-radius: 8px;
+  padding: 0; width: 420px; max-height: 85vh; overflow-y: auto;
+  backdrop-filter: blur(8px); box-shadow: 0 8px 32px rgba(0,0,0,0.7);
+}
+#species-info-panel::-webkit-scrollbar { width: 4px; }
+#species-info-panel::-webkit-scrollbar-thumb { background: #0C2D40; border-radius: 2px; }
+#species-info-panel.visible { display: block; }
+.sip-header {
+  display: flex; align-items: center; gap: 12px; padding: 14px 16px;
+  border-bottom: 1px solid #0C2D40;
+}
+.sip-portrait { width: 64px; height: 64px; border-radius: 4px; border: 1px solid #0C2D40; image-rendering: pixelated; flex-shrink: 0; }
+.sip-title-area { flex: 1; }
+.sip-name { font-family: 'Orbitron', monospace; font-size: 0.8rem; color: #00E5FF; letter-spacing: 1px; margin-bottom: 4px; }
+.sip-tier { font-size: 0.6rem; color: #4A7A8A; text-transform: uppercase; }
+.sip-pop { font-size: 0.65rem; color: #00FF88; margin-top: 2px; }
+.sip-close {
+  position: absolute; top: 8px; right: 12px; cursor: pointer;
+  color: #FF6B6B; font-size: 0.85rem; background: none; border: none;
+  font-family: 'Share Tech Mono', monospace;
+}
+.sip-close:hover { color: #FF4400; }
+.sip-section { padding: 10px 16px; border-bottom: 1px solid #0C2D40; }
+.sip-section-title { font-family: 'Orbitron', monospace; font-size: 0.55rem; color: #4A7A8A; letter-spacing: 1px; margin-bottom: 6px; }
+.sip-gene-row { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; font-size: 0.6rem; }
+.sip-gene-label { width: 60px; color: #7EE8FA; }
+.sip-gene-bar { flex: 1; height: 8px; background: #0A1622; border-radius: 2px; overflow: hidden; position: relative; }
+.sip-gene-fill { height: 100%; border-radius: 2px; transition: width 0.3s; }
+.sip-gene-val { width: 32px; text-align: right; color: #4A7A8A; font-size: 0.55rem; }
+.sip-traits { display: flex; flex-wrap: wrap; gap: 4px; }
+.sip-trait-badge { padding: 2px 6px; border-radius: 3px; font-size: 0.55rem; background: rgba(221,187,68,0.15); color: #DDBB44; border: 1px solid rgba(221,187,68,0.3); }
+.sip-trait-strength { color: #4A7A8A; font-size: 0.5rem; margin-left: 2px; }
+.sip-diet-list { font-size: 0.6rem; color: #7EE8FA; }
+.sip-diet-item { display: inline-flex; align-items: center; gap: 3px; margin: 2px 4px 2px 0; }
+.sip-diet-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+.sip-stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 12px; font-size: 0.6rem; }
+.sip-stat-label { color: #4A7A8A; }
+.sip-stat-val { color: #00E5FF; text-align: right; }
+.sip-lineage { font-size: 0.6rem; }
+.sip-lineage-node { display: flex; align-items: center; gap: 4px; padding: 2px 0; color: #7EE8FA; }
+.sip-lineage-node.sip-current { color: #00FF88; font-weight: bold; }
+.sip-lineage-indent { color: #0C2D40; margin-right: 2px; }
+.sip-lineage-swatch { width: 8px; height: 8px; border-radius: 2px; display: inline-block; border: 1px solid rgba(255,255,255,0.15); }
+.sip-desc { font-size: 0.55rem; color: #4A7A8A; font-style: italic; padding: 8px 16px; }
 </style>
 </head>
 <body>
@@ -313,6 +362,10 @@ canvas { cursor: crosshair; display: block; }
   <div class="etp-title">EVOLUTION TREE</div>
   <button class="etp-close" id="etp-close-btn">✕</button>
   <div id="etp-content"></div>
+</div>
+<div id="species-info-panel">
+  <button class="sip-close" id="sip-close-btn">&times;</button>
+  <div id="sip-body"></div>
 </div>
 
 <script>
@@ -587,6 +640,91 @@ function getExclusiveConflict(traitKey, currentTraits) {
 const TRAIT_DEGRADE_GENS = 4;     // evo cycles of non-use before trait degrades
 const TRAIT_LOCAL_RADIUS = 8;     // trait acquisition only converts cells within this radius
 
+// ============================================================
+// 1c. GENE POOL SYSTEM
+// ============================================================
+const GENE_KEYS = ['v', 's', 'f', 'a', 'p', 'o'];
+const GENE_NAMES = { v: 'Vigour', s: 'Speed', f: 'Fortitude', a: 'Armour', p: 'Predation', o: 'Sociality' };
+const GENE_COLORS = { v: '#44FF88', s: '#44CCFF', f: '#FFAA44', a: '#AAAACC', p: '#FF4466', o: '#CC88FF' };
+const GENE_MUTATION_SD = 0.035;
+
+const TIER_DEFAULT_GENES = {
+  producer:   { v: 0.50, s: 0.10, f: 0.45, a: 0.32, p: 0.08, o: 0.28 },
+  herbivore:  { v: 0.42, s: 0.38, f: 0.38, a: 0.28, p: 0.18, o: 0.36 },
+  consumer:   { v: 0.32, s: 0.45, f: 0.40, a: 0.24, p: 0.48, o: 0.28 },
+  apex:       { v: 0.22, s: 0.48, f: 0.45, a: 0.28, p: 0.52, o: 0.18 },
+  megafauna:  { v: 0.18, s: 0.32, f: 0.58, a: 0.35, p: 0.48, o: 0.42 },
+  decomposer: { v: 0.42, s: 0.28, f: 0.42, a: 0.18, p: 0.12, o: 0.32 },
+};
+
+const TRAIT_GENE_REQS = {
+  camouflage:  { genes: { a: 0.50 }, anti: { p: 0.35 } },
+  toxic:       { genes: { a: 0.55, f: 0.45 } },
+  shell:       { genes: { a: 0.70 }, anti: { s: 0.40 } },
+  thorns:      { genes: { a: 0.60 } },
+  deeproot:    { genes: { f: 0.65 } },
+  regrowth:    { genes: { v: 0.70 }, anti: { f: 0.55, o: 0.40 } },
+  softshell:   { genes: { s: 0.50 }, anti: { a: 0.20 } },
+  armored:     { genes: { a: 0.60, s: 0.45, f: 0.45 } },
+  inkcloud:    { genes: { s: 0.55, a: 0.35 }, anti: { o: 0.40 } },
+  mimicry:     { genes: { a: 0.45, p: 0.40 } },
+  regen:       { genes: { f: 0.65, v: 0.45 } },
+  ambush:      { genes: { p: 0.65 }, anti: { s: 0.40 } },
+  bioluminesc: { genes: { p: 0.55, o: 0.35 }, anti: { a: 0.40 } },
+  echoloc:     { genes: { p: 0.60, s: 0.40 } },
+  packhunter:  { genes: { p: 0.55, o: 0.60 } },
+  venomous:    { genes: { p: 0.60, a: 0.35 } },
+  stalker:     { genes: { p: 0.70, s: 0.65 } },
+  trapjaw:     { genes: { p: 0.85 }, anti: { o: 0.40 } },
+  bulkfeeder:  { genes: { p: 0.60, f: 0.55 } },
+  symbiosis:   { genes: { o: 0.50, f: 0.40 } },
+  lithivore:   { genes: { f: 0.55, p: 0.30 } },
+  parasite:    { genes: { p: 0.45 }, anti: { o: 0.30 } },
+  scavenger:   { genes: { f: 0.50 } },
+  photosyn:    { genes: { f: 0.55 } },
+  nitrofix:    { genes: { v: 0.60, o: 0.45 }, anti: { f: 0.60 } },
+  filterfeeder:{ genes: { f: 0.50, o: 0.30 } },
+  coldadapt:   { genes: { f: 0.55 }, anti: { v: 0.45 } },
+  warmadapt:   { genes: { v: 0.55 }, anti: { f: 0.45 } },
+  nocturnal:   { genes: { p: 0.40 }, anti: { s: 0.45 } },
+  diurnal:     { genes: { v: 0.45, s: 0.50 } },
+  migratory:   { genes: { s: 0.65, f: 0.50 } },
+  dwarfism:    { genes: { s: 0.55 }, anti: { f: 0.35 } },
+  gigantism:   { genes: { f: 0.75 }, anti: { v: 0.35 } },
+  colonial:    { genes: { o: 0.60, v: 0.35 } },
+  schooling:   { genes: { o: 0.65, v: 0.40 } },
+  territorial: { genes: { p: 0.55 }, anti: { o: 0.30 } },
+  maternal:    { genes: { o: 0.50, v: 0.45 } },
+  biofilm:     { genes: { o: 0.50, a: 0.35 } },
+  allelopathy: { genes: { p: 0.45 }, anti: { a: 0.50 } },
+  spore:       { genes: { v: 0.60, s: 0.30 } },
+  poddefense:  { genes: { o: 0.65, a: 0.45 } },
+};
+
+const GENE_NAME_POOLS = {
+  v: ['Prolific', 'Thriving', 'Fecund', 'Blooming', 'Verdant'],
+  s: ['Swift', 'Darting', 'Fleet', 'Agile', 'Racing'],
+  f: ['Hardy', 'Stalwart', 'Ironclad', 'Enduring', 'Rugged'],
+  a: ['Plated', 'Spiny', 'Shielded', 'Thorned', 'Mailed'],
+  p: ['Fierce', 'Razor', 'Fanged', 'Savage', 'Vicious'],
+  o: ['Swarming', 'Herding', 'Colonial', 'Gregarious', 'Social'],
+};
+const NICHE_SHIFT_NAMES = {
+  consumer: ['Hunter', 'Predatory', 'Prowling', 'Raptor'],
+  apex: ['Alpha', 'Apex', 'Dominant', 'Supreme'],
+  megafauna: ['Titan', 'Giant', 'Colossal', 'Leviathan'],
+  herbivore: ['Grazer', 'Foraging', 'Browsing', 'Pastoral'],
+};
+const DIVERGENT_NAMES = {
+  coldadapt: 'Frost', warmadapt: 'Sun', nocturnal: 'Night', diurnal: 'Day',
+  camouflage: 'Shadow', bioluminesc: 'Glowing', mimicry: 'Mimic',
+  shell: 'Shelled', softshell: 'Soft', armored: 'Armoured',
+  dwarfism: 'Dwarf', gigantism: 'Giant', ambush: 'Lurking', stalker: 'Stalking',
+  thorns: 'Thorned', allelopathy: 'Chemical', deeproot: 'Rooted',
+  regrowth: 'Budding', nitrofix: 'Nitrogen', packhunter: 'Pack', trapjaw: 'Jaw',
+  inkcloud: 'Ink', poddefense: 'Pod',
+};
+
 // Seasonality constants
 const SEASON_LENGTH = 80;          // ticks per season
 const SEASONS = ['Spring', 'Summer', 'Autumn', 'Winter'];
@@ -635,19 +773,16 @@ let evoCooldown = 0;   // gens remaining before next evo can fire
 let lastEvoGen  = 0;   // generation of last evo event
 
 function initEvoStats() {
-  // Remove dynamic species from all registries
   for (const did of dynamicSpeciesIds) {
     delete SPECIES[did];
     delete COLOR_RGB[did];
     const li = LIVING_IDS.indexOf(did);
     if (li !== -1) LIVING_IDS.splice(li, 1);
-    // Remove from TIER_ORDER evolved section if present
     const evoTier = TIER_ORDER.find(t => t.label === 'EVOLVED');
     if (evoTier) {
       const ti = evoTier.ids.indexOf(did);
       if (ti !== -1) evoTier.ids.splice(ti, 1);
     }
-    // Remove from other species' eats lists
     for (const oid of LIVING_IDS) {
       if (evoStats[oid] && evoStats[oid].eats) {
         const ei = evoStats[oid].eats.indexOf(did);
@@ -661,13 +796,29 @@ function initEvoStats() {
   evoStats = {};
   for (const id of LIVING_IDS) {
     const sp = SPECIES[id];
+    const tierGenes = TIER_DEFAULT_GENES[sp.tier] || TIER_DEFAULT_GENES.herbivore;
+    const noise = (seed) => {
+      const x = Math.sin(seed * 127.1 + id * 311.7) * 43758.5453;
+      return (x - Math.floor(x)) * 0.08 - 0.04;
+    };
+    const genes = {};
+    const geneVar = {};
+    for (let gi = 0; gi < GENE_KEYS.length; gi++) {
+      const g = GENE_KEYS[gi];
+      genes[g] = clamp(tierGenes[g] + noise(gi + 1), 0.05, 0.95);
+      geneVar[g] = 0.1;
+    }
     evoStats[id] = {
       breedRate: sp.breedRate,
       moveRate:  sp.moveRate || 0,
       hungerMax: sp.hungerMax || 0,
       eats:      sp.eats ? sp.eats.slice() : [],
       traits:    [],
-      traitAge:  {},  // trait_key → evo cycles since trait was last "useful"
+      traitAge:  {},
+      traitStrengths: {},
+      genes: genes,
+      geneVar: geneVar,
+      baseGenes: { ...genes },
     };
   }
   popHistory = [];
@@ -698,6 +849,124 @@ function addEvoEvent(msg) {
   if (evoLog.length > EVO_LOG_MAX) evoLog.pop();
 }
 
+function gaussRandom() {
+  let u = 0, v = 0;
+  while (u === 0) u = Math.random();
+  while (v === 0) v = Math.random();
+  return Math.sqrt(-2.0 * Math.log(u)) * Math.cos(2.0 * Math.PI * v);
+}
+
+function geneDivergence(genesA, genesB) {
+  let sum = 0;
+  for (const g of GENE_KEYS) {
+    const d = (genesA[g] || 0.5) - (genesB[g] || 0.5);
+    sum += d * d;
+  }
+  return Math.sqrt(sum);
+}
+
+function deriveStats(id) {
+  const sp = SPECIES[id];
+  const es = evoStats[id];
+  if (!es || !es.genes) return;
+  const g = es.genes;
+  es.breedRate = sp.breedRate * (0.5 + g.v);
+  if (sp.moveRate) es.moveRate = clamp(sp.moveRate * (0.5 + g.s), 0.02, 0.98);
+  if (sp.hungerMax) es.hungerMax = clamp(Math.round(sp.hungerMax * (0.5 + g.f)), 6, 80);
+}
+
+function expressTraits(id) {
+  const sp = SPECIES[id];
+  const es = evoStats[id];
+  if (!es || !es.genes) return;
+  const genes = es.genes;
+  const expressed = [];
+
+  for (const tk of TRAIT_KEYS) {
+    if (!TRAITS[tk].eligible(sp.tier)) continue;
+    const req = TRAIT_GENE_REQS[tk];
+    if (!req) continue;
+    let qualifies = true;
+    let totalExcess = 0;
+    let reqCount = 0;
+    if (req.genes) {
+      for (const g in req.genes) {
+        if (genes[g] < req.genes[g]) { qualifies = false; break; }
+        totalExcess += (genes[g] - req.genes[g]) / Math.max(0.01, 1.0 - req.genes[g]);
+        reqCount++;
+      }
+    }
+    if (qualifies && req.anti) {
+      for (const g in req.anti) {
+        if (genes[g] >= req.anti[g]) { qualifies = false; break; }
+      }
+    }
+    if (qualifies) {
+      const strength = reqCount > 0 ? Math.min(1.5, 1 + totalExcess / reqCount) : 1;
+      expressed.push({ trait: tk, strength: strength });
+    }
+  }
+
+  expressed.sort((a, b) => b.strength - a.strength);
+  const newTraits = expressed.slice(0, MAX_TRAITS_PER_SPECIES).map(e => e.trait);
+  const oldTraits = es.traits || [];
+  for (const t of newTraits) {
+    if (oldTraits.indexOf(t) === -1) addEvoEvent(sp.name + ' expressed ' + TRAITS[t].name);
+  }
+  for (const t of oldTraits) {
+    if (newTraits.indexOf(t) === -1) addEvoEvent(sp.name + ' lost ' + TRAITS[t].name);
+  }
+  es.traits = newTraits;
+  es.traitStrengths = {};
+  for (const e of expressed.slice(0, MAX_TRAITS_PER_SPECIES)) {
+    es.traitStrengths[e.trait] = e.strength;
+  }
+}
+
+function traitStr(sid, trait) {
+  if (!evolveEnabled) return 1;
+  const es = evoStats[sid];
+  return (es && es.traitStrengths && es.traitStrengths[trait]) || 1;
+}
+
+function generateSpeciesName(parentId, genes, context, extraData) {
+  const sp = SPECIES[parentId];
+  const rootId = sp.rootAncestor || parentId;
+  const rootSp = SPECIES[rootId];
+  const rootName = rootSp ? rootSp.name : sp.name;
+  const existingNames = new Set(LIVING_IDS.map(id => SPECIES[id] ? SPECIES[id].name : ''));
+  let adj = '';
+  if (context === 'niche' && extraData && NICHE_SHIFT_NAMES[extraData]) {
+    const pool = NICHE_SHIFT_NAMES[extraData];
+    adj = pool[(Math.random() * pool.length) | 0];
+  } else if (context === 'divergent' && extraData && DIVERGENT_NAMES[extraData]) {
+    adj = DIVERGENT_NAMES[extraData];
+  } else {
+    const parentGenes = evoStats[parentId] ? evoStats[parentId].genes : null;
+    let maxDrift = 0, maxGene = 'v';
+    if (parentGenes) {
+      for (const g of GENE_KEYS) {
+        const drift = Math.abs((genes[g] || 0.5) - (parentGenes[g] || 0.5));
+        if (drift > maxDrift) { maxDrift = drift; maxGene = g; }
+      }
+    } else {
+      let maxVal = 0;
+      for (const g of GENE_KEYS) {
+        if ((genes[g] || 0) > maxVal) { maxVal = genes[g]; maxGene = g; }
+      }
+    }
+    const pool = GENE_NAME_POOLS[maxGene];
+    adj = pool[(Math.random() * pool.length) | 0];
+  }
+  let name = adj + ' ' + rootName;
+  if (existingNames.has(name)) {
+    let suffix = 2;
+    while (existingNames.has(name + ' ' + suffix)) suffix++;
+    name = name + ' ' + suffix;
+  }
+  return name;
+}
+
 // Build predator→prey map: which species eat which
 function buildFoodWeb() {
   const predators = {};  // prey_id → [predator_ids]
@@ -718,13 +987,12 @@ function buildFoodWeb() {
 function clamp(v, lo, hi) { return v < lo ? lo : v > hi ? hi : v; }
 
 function evolve() {
-  if (popHistory.length < 3) return; // need history
+  if (popHistory.length < 3) return;
 
   const now = popHistory[popHistory.length - 1];
   const prev = popHistory[popHistory.length - 3];
   const { predators, preyOf } = buildFoodWeb();
 
-  // Compute average living population (excluding empty/rock/dead/oil)
   let totalPop = 0, livingCount = 0;
   for (const id of LIVING_IDS) {
     const c = now[id] || 0;
@@ -732,252 +1000,94 @@ function evolve() {
   }
   const avgPop = livingCount > 0 ? totalPop / livingCount : 1;
 
+  // Phase 1: Gene mutation + selection + trait expression
   for (const id of LIVING_IDS) {
     const sp = SPECIES[id];
     const es = evoStats[id];
-    const popNow  = now[id] || 0;
+    const popNow = now[id] || 0;
     const popPrev = prev[id] || 0;
     if (popNow === 0 && popPrev === 0) continue;
+    if (!es.genes) continue;
 
     const trend = popPrev > 0 ? (popNow - popPrev) / popPrev : 0;
-    const baseBR = sp.breedRate;
-    const baseMR = sp.moveRate || 0;
-    const baseHM = sp.hungerMax || 0;
-    const mut = EVO_MUTATION_RATE;
+    const genes = es.genes;
+    const gv = es.geneVar;
 
-    // --- PREY ADAPTATION: under heavy predation → evolve to escape ---
+    // Random mutation: gaussian shift per gene, scaled by genetic variance
+    for (const g of GENE_KEYS) {
+      const sd = GENE_MUTATION_SD * (0.5 + gv[g] * 3);
+      genes[g] = clamp(genes[g] + gaussRandom() * sd, 0, 1);
+    }
+
+    // Selection nudge: light directional pressure from environment
     if (predators[id] && predators[id].length > 0) {
       let predPop = 0;
       for (const pid of predators[id]) predPop += (now[pid] || 0);
       const pressure = popNow > 0 ? predPop / popNow : 0;
-
       if (pressure > PRESSURE_HIGH || trend < -0.15) {
-        // Under pressure: boost speed and breeding
-        if (baseMR > 0) {
-          es.moveRate = clamp(es.moveRate + baseMR * mut * (0.5 + Math.random()), baseMR * 0.5, Math.min(0.98, baseMR * 2.0));
-          addEvoEvent(sp.name + ' evolved faster movement');
-        }
-        if (trend < -0.25) {
-          es.breedRate = clamp(es.breedRate + baseBR * mut * (0.5 + Math.random()), baseBR * 0.5, baseBR * 2.5);
-          addEvoEvent(sp.name + ' evolved faster breeding');
-        }
+        genes.s = clamp(genes.s + 0.008 * (0.5 + Math.random()), 0, 1);
+        genes.a = clamp(genes.a + 0.006 * (0.5 + Math.random()), 0, 1);
+        if (trend < -0.25) genes.v = clamp(genes.v + 0.006, 0, 1);
       }
     }
-
-    // --- PREDATOR ADAPTATION: prey scarce → evolve better hunting ---
     if (preyOf[id] && preyOf[id].length > 0) {
       let totalPreyPop = 0;
       for (const prey of preyOf[id]) totalPreyPop += (now[prey] || 0);
-
       if (totalPreyPop < popNow * 0.5 && popNow > 2) {
-        // Prey is scarce — evolve speed + hunger tolerance
-        if (baseMR > 0) {
-          es.moveRate = clamp(es.moveRate + baseMR * mut * (0.5 + Math.random()), baseMR * 0.5, Math.min(0.98, baseMR * 2.0));
-          addEvoEvent(sp.name + ' evolved faster hunting');
-        }
-        if (baseHM > 0) {
-          es.hungerMax = clamp(es.hungerMax + 1 + ((Math.random() * 2) | 0), baseHM, baseHM * 2);
-          addEvoEvent(sp.name + ' evolved hunger resistance');
-        }
+        genes.p = clamp(genes.p + 0.008 * (0.5 + Math.random()), 0, 1);
+        genes.s = clamp(genes.s + 0.004, 0, 1);
+        genes.f = clamp(genes.f + 0.004, 0, 1);
       }
     }
-
-    // --- PRODUCER ADAPTATION: heavily grazed → multiple defensive responses ---
     if (sp.tier === 'producer' && popNow > 0) {
-      // Measure grazing pressure: how many herbivores eat this producer
       let grazerPop = 0;
       if (predators[id]) {
         for (const pid of predators[id]) grazerPop += (now[pid] || 0);
       }
-      const grazePressure = popNow > 0 ? grazerPop / popNow : 0;
-
-      if (trend < -0.2 || grazePressure > 0.8) {
-        // Boost breed rate to compensate for being eaten
-        es.breedRate = clamp(es.breedRate + baseBR * mut * (0.5 + Math.random()), baseBR * 0.5, baseBR * 4.0);
-        addEvoEvent(sp.name + ' evolved faster growth (grazing pressure)');
-      }
-      if (trend < -0.35 && grazePressure > 1.0) {
-        // Under extreme pressure: also boost further to outpace consumption
-        es.breedRate = clamp(es.breedRate + baseBR * mut * (0.3 + Math.random() * 0.5), baseBR * 0.5, baseBR * 4.0);
-        addEvoEvent(sp.name + ' evolved explosive growth under heavy grazing');
+      if (trend < -0.2 || (popNow > 0 && grazerPop / popNow > 0.8)) {
+        genes.v = clamp(genes.v + 0.01, 0, 1);
+        genes.a = clamp(genes.a + 0.004, 0, 1);
       }
     }
 
-    // --- ABUNDANCE DECAY: thriving species slowly revert toward baseline ---
+    // Abundance decay: thriving species drift genes toward neutral
     if (trend > 0.15 && popNow > avgPop) {
-      es.breedRate = clamp(es.breedRate - baseBR * mut * 0.3, baseBR * 0.5, baseBR * 3.0);
-      if (baseMR > 0) es.moveRate = clamp(es.moveRate - baseMR * mut * 0.3, baseMR * 0.5, baseMR * 2.0);
-    }
-
-    // --- TRAIT-REINFORCED STAT DRIFT: traits that helped survival get doubled down ---
-    if (es.traits && es.traits.length > 0) {
-      for (const trait of es.traits) {
-        if (trait === 'schooling' && trend >= 0) {
-          // Schooling works → breed rate keeps improving
-          es.breedRate = clamp(es.breedRate + baseBR * mut * 0.2, baseBR * 0.5, baseBR * 3.0);
-        }
-        if (trait === 'ambush' && baseMR > 0 && trend >= -0.05) {
-          // Ambush working → move less, conserve energy → hunger improves
-          if (baseHM > 0) es.hungerMax = clamp(es.hungerMax + 0.5, baseHM, baseHM * 2);
-        }
-        if (trait === 'camouflage' && trend > 0 && baseMR > 0) {
-          // Camo working, surviving → can afford to slow down, breed more
-          es.breedRate = clamp(es.breedRate + baseBR * mut * 0.15, baseBR * 0.5, baseBR * 3.0);
-        }
-        if ((trait === 'thorns' || trait === 'deeproot') && trend >= -0.05) {
-          // Defensive traits working → lean into breeding harder
-          es.breedRate = clamp(es.breedRate + baseBR * mut * 0.2, baseBR * 0.5, baseBR * 4.0);
-        }
-        if (trait === 'regrowth' && trend >= 0) {
-          // Regrowth compensating → double down on breed rate
-          es.breedRate = clamp(es.breedRate + baseBR * mut * 0.25, baseBR * 0.5, baseBR * 4.0);
-        }
-        // New trait stat drift
-        if (trait === 'stalker' && baseMR > 0 && trend >= -0.05) {
-          // Stalker succeeding → get even faster
-          es.moveRate = clamp(es.moveRate + baseMR * mut * 0.15, baseMR * 0.5, 0.98);
-        }
-        if (trait === 'packhunter' && trend >= 0) {
-          // Pack works → breed more to maintain packs
-          es.breedRate = clamp(es.breedRate + baseBR * mut * 0.15, baseBR * 0.5, baseBR * 3.0);
-        }
-        if (trait === 'regen' && trend >= 0) {
-          // Regen working → invest in slower metabolism (hunger tolerance)
-          if (baseHM > 0) es.hungerMax = clamp(es.hungerMax + 0.3, baseHM, baseHM * 1.5);
-        }
-        if (trait === 'parasite' && trend >= 0) {
-          // Parasitism successful → slow down, specialize
-          if (baseMR > 0) es.moveRate = clamp(es.moveRate - baseMR * mut * 0.1, baseMR * 0.3, baseMR * 1.5);
-        }
-        if (trait === 'maternal' && trend >= 0) {
-          // Maternal care working → breed less but better
-          es.breedRate = clamp(es.breedRate - baseBR * mut * 0.1, baseBR * 0.3, baseBR * 2.0);
-          if (baseHM > 0) es.hungerMax = clamp(es.hungerMax + 0.4, baseHM, baseHM * 1.8);
-        }
-        if (trait === 'territorial' && trend >= 0 && baseMR > 0) {
-          // Territorial working → faster, more aggressive
-          es.moveRate = clamp(es.moveRate + baseMR * mut * 0.1, baseMR * 0.5, 0.98);
-        }
-        if (trait === 'allelopathy' && trend >= -0.05) {
-          // Chemical warfare working → breed harder
-          es.breedRate = clamp(es.breedRate + baseBR * mut * 0.2, baseBR * 0.5, baseBR * 3.5);
-        }
-        if (trait === 'nitrofix' && trend >= 0) {
-          // Nitrogen cycling efficient → breed faster
-          es.breedRate = clamp(es.breedRate + baseBR * mut * 0.15, baseBR * 0.5, baseBR * 3.0);
-        }
+      for (const g of GENE_KEYS) {
+        genes[g] += (0.5 - genes[g]) * 0.015;
       }
     }
+
+    // Gene variance: large populations gain diversity, small ones bottleneck
+    const popRatio = popNow / Math.max(1, avgPop);
+    for (const g of GENE_KEYS) {
+      if (popRatio > 1.5 && popNow > 30) {
+        gv[g] = Math.min(0.3, gv[g] + 0.003);
+      } else if (popNow < 10) {
+        gv[g] = Math.max(0.02, gv[g] - 0.008);
+      }
+    }
+
+    deriveStats(id);
+    expressTraits(id);
   }
 
-  // --- TRAIT DEGRADATION: unused traits fade over time ---
-  for (const id of LIVING_IDS) {
-    const sp = SPECIES[id];
-    const es = evoStats[id];
-    if (!es.traits || es.traits.length === 0) continue;
-    if (!es.traitAge) es.traitAge = {};
-    const popNow = now[id] || 0;
-    const popPrev = prev[id] || 0;
-    const trend = popPrev > 0 ? (popNow - popPrev) / popPrev : 0;
-
-    // Determine which traits are "in use" based on current pressures
-    let hasPredators = false, hasScarcity = false;
-    if (predators[id] && predators[id].length > 0) {
-      let predPop = 0;
-      for (const pid of predators[id]) predPop += (now[pid] || 0);
-      hasPredators = popNow > 0 && predPop / popNow > 0.3;
-    }
-    if (preyOf[id] && preyOf[id].length > 0) {
-      let preyPop = 0;
-      for (const prey of preyOf[id]) preyPop += (now[prey] || 0);
-      hasScarcity = popNow > 0 && preyPop < popNow * 1.5;
-    }
-
-    const toRemove = [];
-    for (const trait of es.traits) {
-      let useful = false;
-      if (trait === 'camouflage' || trait === 'toxic' || trait === 'shell' || trait === 'thorns' || trait === 'deeproot' || trait === 'regrowth') useful = hasPredators;
-      else if (trait === 'ambush' || trait === 'bioluminesc' || trait === 'lithivore') useful = hasScarcity;
-      else if (trait === 'schooling') useful = popNow > 20;
-      else if (trait === 'symbiosis') useful = hasScarcity || trend < -0.1;
-      else if (trait === 'spore') useful = trend < 0;
-      else if (trait === 'softshell') useful = false; // softshell always degrades (it's a vulnerability)
-      else if (trait === 'coldadapt') useful = currentSeason === 'Winter' || currentSeason === 'Autumn';
-      else if (trait === 'warmadapt') useful = currentSeason === 'Summer' || currentSeason === 'Spring';
-      else if (trait === 'migratory' || trait === 'bulkfeeder' || trait === 'echoloc' || trait === 'poddefense') useful = true;
-      // New traits
-      else if (trait === 'packhunter') useful = hasScarcity || popNow > 10;
-      else if (trait === 'venomous') useful = hasScarcity || hasPredators;
-      else if (trait === 'stalker') useful = hasScarcity;
-      else if (trait === 'trapjaw') useful = hasScarcity;
-      else if (trait === 'armored' || trait === 'inkcloud' || trait === 'mimicry') useful = hasPredators;
-      else if (trait === 'regen') useful = true; // always useful
-      else if (trait === 'nocturnal') useful = currentSeason === 'Winter' || currentSeason === 'Autumn';
-      else if (trait === 'diurnal') useful = currentSeason === 'Summer' || currentSeason === 'Spring';
-      else if (trait === 'parasite' || trait === 'filterfeeder' || trait === 'photosyn') useful = hasScarcity || trend < -0.05;
-      else if (trait === 'scavenger') useful = hasScarcity;
-      else if (trait === 'nitrofix') useful = true; // producer always benefits
-      else if (trait === 'dwarfism' || trait === 'gigantism') useful = true; // body plan is permanent
-      else if (trait === 'colonial' || trait === 'biofilm') useful = popNow > 15;
-      else if (trait === 'territorial') useful = popNow > 30; // useful when crowded
-      else if (trait === 'maternal') useful = true; // always useful
-      else if (trait === 'allelopathy') useful = popNow > 10;
-      else useful = true;
-
-      if (useful) {
-        es.traitAge[trait] = 0;
-      } else {
-        es.traitAge[trait] = (es.traitAge[trait] || 0) + 1;
-        if (es.traitAge[trait] >= TRAIT_DEGRADE_GENS) {
-          toRemove.push(trait);
-        }
-      }
-    }
-    for (const t of toRemove) {
-      es.traits.splice(es.traits.indexOf(t), 1);
-      delete es.traitAge[t];
-      // Revert shell stat changes
-      if (t === 'shell') {
-        const baseMR = sp.moveRate || 0;
-        const baseHM = sp.hungerMax || 0;
-        if (baseMR > 0) es.moveRate = clamp(es.moveRate / 0.7, baseMR * 0.5, Math.min(0.98, baseMR * 2.0));
-        if (baseHM > 0) es.hungerMax = clamp(Math.round(es.hungerMax / 1.4), 8, 64);
-      }
-      // Revert dwarfism stat changes
-      if (t === 'dwarfism') {
-        const baseHM = sp.hungerMax || 0;
-        if (baseHM > 0) es.hungerMax = clamp(Math.round(es.hungerMax / 0.65), 8, 64);
-      }
-      // Revert gigantism stat changes
-      if (t === 'gigantism') {
-        const baseHM = sp.hungerMax || 0;
-        if (baseHM > 0) es.hungerMax = clamp(Math.round(es.hungerMax / 1.4), 8, 64);
-      }
-      addEvoEvent(sp.name + ' lost ' + TRAITS[t].name + ' (unused)');
-    }
-  }
-
-  // --- OVERPOPULATION: a booming species may gain a new predator ---
+  // Phase 2: Overpopulation predation
   for (const id of LIVING_IDS) {
     const popNow = now[id] || 0;
     if (popNow < avgPop * OVERPOP_THRESHOLD) continue;
-
     const sp = SPECIES[id];
-    // Find candidate predators: species in same or higher tier that don't already eat this
     const tierRank = { producer: 0, herbivore: 1, consumer: 2, apex: 3, megafauna: 4, decomposer: 1 };
     const myRank = tierRank[sp.tier] ?? -1;
-
     const candidates = [];
     for (const cid of LIVING_IDS) {
       if (cid === id) continue;
       const csp = SPECIES[cid];
       const cRank = tierRank[csp.tier] ?? -1;
-      if (cRank <= myRank || !csp.hungerMax) continue; // must be higher tier & an animal
+      if (cRank <= myRank || !csp.hungerMax) continue;
       const ces = evoStats[cid];
-      if (ces.eats.indexOf(id) !== -1) continue; // already eats it
+      if (ces.eats.indexOf(id) !== -1) continue;
       candidates.push(cid);
     }
-
     if (candidates.length > 0 && Math.random() < 0.25) {
       const winner = candidates[(Math.random() * candidates.length) | 0];
       evoStats[winner].eats.push(id);
@@ -985,17 +1095,14 @@ function evolve() {
     }
   }
 
-  // --- SELF-PREDATION: evolved variants can prey on siblings/parent in same lineage ---
+  // Phase 3: Self-predation among lineage relatives
   for (const id of LIVING_IDS) {
     const sp = SPECIES[id];
     const es = evoStats[id];
-    if (!sp.hungerMax || !sp.parentId) continue; // must be an animal & an evolved variant
+    if (!sp.hungerMax || !sp.parentId) continue;
     const popNow = now[id] || 0;
     if (popNow < 10) continue;
-
     if (Math.random() > SELF_PREDATION_CHANCE) continue;
-
-    // Find lineage relatives (same root ancestor) that this species doesn't already eat
     const rootId = sp.rootAncestor || id;
     const relatives = LIVING_IDS.filter(rid => {
       if (rid === id) return false;
@@ -1005,23 +1112,18 @@ function evolve() {
       return (rRoot === rootId || rid === rootId) && es.eats.indexOf(rid) === -1;
     });
     if (relatives.length === 0) continue;
-
-    // Prefer preying on relatives that are overpopulated or weaker (lower tier rank)
     const tierRank = { producer: 0, herbivore: 1, consumer: 2, apex: 3, megafauna: 4, decomposer: 1 };
     const myRank = tierRank[sp.tier] ?? 1;
     const scored = relatives.map(rid => {
       const rsp = SPECIES[rid];
       const rRank = tierRank[rsp.tier] ?? 1;
       const rPop = now[rid] || 0;
-      // Higher score = more likely target: prefer lower tier and higher population
       let score = 1;
-      if (rRank < myRank) score += 2;       // prey on lower tier relatives
-      if (rRank === myRank) score += 0.5;    // same tier: competition
-      if (rPop > avgPop) score += 1.5;       // target abundant relatives
+      if (rRank < myRank) score += 2;
+      if (rRank === myRank) score += 0.5;
+      if (rPop > avgPop) score += 1.5;
       return { id: rid, score };
     });
-
-    // Weighted random pick
     const totalS = scored.reduce((a, s) => a + s.score, 0);
     let r = Math.random() * totalS;
     let target = scored[scored.length - 1].id;
@@ -1029,338 +1131,52 @@ function evolve() {
       r -= s.score;
       if (r <= 0) { target = s.id; break; }
     }
-
     es.eats.push(target);
     addEvoEvent(sp.name + ' now preys on ' + SPECIES[target].name + ' (lineage rivalry)!');
   }
-
-  // --- PRESSURE-DRIVEN TRAIT ACQUISITION ---
-  for (const id of LIVING_IDS) {
-    const sp = SPECIES[id];
-    const es = evoStats[id];
-    if (!es.traits) es.traits = [];
-    if (es.traits.length >= MAX_TRAITS_PER_SPECIES) continue;
-    const popNow = now[id] || 0;
-    if (popNow < 15) continue; // need viable population
-
-    if (Math.random() > TRAIT_ACQUIRE_CHANCE) continue;
-
-    // Compute survival pressures to weight trait selection
-    let predationPressure = 0; // how much this species is being hunted
-    let foodScarcity = 0;      // how hard it is to find food
-    let crowding = 0;          // is this species very abundant?
-
-    if (predators[id]) {
-      let predPop = 0;
-      for (const pid of predators[id]) predPop += (now[pid] || 0);
-      predationPressure = popNow > 0 ? predPop / popNow : 0;
-    }
-    if (preyOf[id] && preyOf[id].length > 0) {
-      let totalPreyPop = 0;
-      for (const prey of preyOf[id]) totalPreyPop += (now[prey] || 0);
-      foodScarcity = popNow > 0 ? 1 - Math.min(1, totalPreyPop / (popNow * 2)) : 0;
-    }
-    crowding = popNow / Math.max(1, avgPop);
-
-    // Score each eligible trait by how much it helps current survival needs
-    // Filter available traits: must be eligible, not already owned, and not excluded by existing trait
-    const available = TRAIT_KEYS.filter(k => {
-      if (!TRAITS[k].eligible(sp.tier)) return false;
-      if (es.traits.indexOf(k) !== -1) return false;
-      // Exclude if mutually exclusive conflict exists
-      if (getExclusiveConflict(k, es.traits)) return false;
-      return true;
-    });
-
-    // Divergent speciation: if there are exclusive pairs where neither is owned yet,
-    // and population is large enough, fork into two variants with opposing traits
-    if (available.length === 0 && nextSpeciesId <= 253 && dynamicSpeciesIds.length < MAX_DYNAMIC_SPECIES - 1 && popNow >= 40) {
-      for (const group of EXCLUSIVE_TRAIT_GROUPS) {
-        const eligible = group.filter(k => TRAITS[k].eligible(sp.tier) && es.traits.indexOf(k) === -1);
-        if (eligible.length >= 2 && Math.random() < 0.15) {
-          // Fork: create two new species, each with one of the exclusive traits
-          const traitA = eligible[0], traitB = eligible[1];
-          const forkTraits = [traitA, traitB];
-          let forked = false;
-          for (let fi = 0; fi < 2 && nextSpeciesId <= 254 && dynamicSpeciesIds.length < MAX_DYNAMIC_SPECIES; fi++) {
-            const fTrait = forkTraits[fi];
-            const varId = nextSpeciesId++;
-            const rootId = sp.rootAncestor || id;
-            const rootName = SPECIES[rootId] ? SPECIES[rootId].name : sp.name;
-            // Divergent names use trait icon/short-name to clearly show the split
-            const traitShort = TRAITS[fTrait].name.split(' ')[0]; // e.g. "Cold", "Warm", "Dwarf"
-            const varName = sp.name + ' [' + traitShort + ']';
-            const baseRGB = COLOR_RGB[id];
-            const sft = () => Math.round((Math.random() - 0.5) * 50);
-            const vr = clamp(baseRGB[0] + sft(), 20, 255), vg = clamp(baseRGB[1] + sft(), 20, 255), vb = clamp(baseRGB[2] + sft(), 20, 255);
-            const vHex = '#' + ((1 << 24) + (vr << 16) + (vg << 8) + vb).toString(16).slice(1).toUpperCase();
-            const varTraits = (es.traits ? es.traits.slice() : []);
-            varTraits.push(fTrait);
-            SPECIES[varId] = {
-              name: varName, color: vHex, tier: sp.tier, layer: sp.layer,
-              breedRate: es.breedRate, moveRate: es.moveRate || undefined,
-              hungerMax: es.hungerMax || undefined, eats: es.eats.length ? es.eats.slice() : undefined,
-              desc: sp.name + ' diverged with ' + TRAITS[fTrait].name + ' (gen ' + generation + ')',
-              parentId: id, rootAncestor: rootId, lineageDepth: (sp.lineageDepth || 0) + 1,
-              isDivergent: true,
-            };
-            COLOR_RGB[varId] = [vr, vg, vb];
-            LIVING_IDS.push(varId);
-            dynamicSpeciesIds.push(varId);
-            evoStats[varId] = { breedRate: es.breedRate, moveRate: es.moveRate, hungerMax: es.hungerMax, eats: es.eats.slice(), traits: varTraits, traitAge: {} };
-            let evT = TIER_ORDER.find(t2 => t2.label === 'EVOLVED');
-            if (!evT) { evT = { label: 'EVOLVED', ids: [] }; TIER_ORDER.push(evT); }
-            evT.ids.push(varId);
-            for (const oid of LIVING_IDS) { if (oid === varId) continue; const oe = evoStats[oid]; if (oe && oe.eats && oe.eats.indexOf(id) !== -1 && oe.eats.indexOf(varId) === -1) oe.eats.push(varId); }
-            // Convert a fraction of parent cells
-            const convertFrac = 0.2;
-            const parentCells = [];
-            for (let ci = 0; ci < total; ci++) { if (species[ci] === id) parentCells.push(ci); }
-            for (let ci = parentCells.length - 1; ci > 0; ci--) { const cj = (Math.random() * (ci + 1)) | 0; const tmp = parentCells[ci]; parentCells[ci] = parentCells[cj]; parentCells[cj] = tmp; }
-            const convertTarget = (parentCells.length * convertFrac) | 0;
-            for (let ci = 0; ci < convertTarget; ci++) species[parentCells[ci]] = varId;
-            addEvoEvent('DIVERGENCE: ' + sp.name + ' split → ' + varName);
-            forked = true;
-          }
-          if (forked) break; // only one divergent split per species per cycle
-        }
-      }
-      continue; // skip normal trait acquisition
-    }
-    if (available.length === 0) continue;
-
-    const weights = available.map(k => {
-      let w = 1; // baseline weight
-      switch (k) {
-        case 'camouflage': w += predationPressure * 4; break;
-        case 'toxic':      w += predationPressure * 3; break;
-        case 'shell':      w += predationPressure * 2.5 + foodScarcity * 1; break;
-        case 'schooling':  w += crowding * 1.5 + predationPressure * 1; break;
-        case 'ambush':     w += foodScarcity * 4; break;
-        case 'bioluminesc':w += foodScarcity * 3.5; break;
-        case 'lithivore':  w += foodScarcity * 3; break;
-        case 'symbiosis':  w += foodScarcity * 2 + predationPressure * 1; break;
-        case 'spore':      w += predationPressure * 2 + crowding * 1; break;
-        case 'thorns':     w += predationPressure * 4; break;
-        case 'deeproot':   w += predationPressure * 3.5; break;
-        case 'regrowth':   w += predationPressure * 3 + foodScarcity * 1; break;
-        case 'softshell':  w += crowding * 3 + 0.5; break; // more likely when overpopulated
-        case 'coldadapt':  w += (currentSeason === 'Winter' || currentSeason === 'Autumn') ? 4 : 0.5; break;
-        case 'warmadapt':  w += (currentSeason === 'Summer' || currentSeason === 'Spring') ? 4 : 0.5; break;
-        case 'migratory':  w += foodScarcity * 3; break;
-        case 'bulkfeeder': w += foodScarcity * 4 + crowding * 1; break;
-        case 'echoloc':    w += foodScarcity * 4; break;
-        case 'poddefense': w += predationPressure * 3; break;
-        // New predator/hunting traits
-        case 'packhunter': w += foodScarcity * 3 + crowding * 2; break;
-        case 'venomous':   w += foodScarcity * 2.5 + predationPressure * 1.5; break;
-        case 'stalker':    w += foodScarcity * 3.5; break;
-        case 'trapjaw':    w += foodScarcity * 4.5; break;
-        // New defensive traits
-        case 'armored':    w += predationPressure * 3.5; break;
-        case 'inkcloud':   w += predationPressure * 3; break;
-        case 'mimicry':    w += predationPressure * 3.5; break;
-        case 'regen':      w += foodScarcity * 2 + predationPressure * 1.5; break;
-        case 'nocturnal':  w += (currentSeason === 'Winter' || currentSeason === 'Autumn') ? 3.5 : 0.5; break;
-        case 'diurnal':    w += (currentSeason === 'Summer' || currentSeason === 'Spring') ? 3.5 : 0.5; break;
-        // New resource/feeding traits
-        case 'parasite':   w += foodScarcity * 3.5 + crowding * 1; break;
-        case 'scavenger':  w += foodScarcity * 3; break;
-        case 'photosyn':   w += foodScarcity * 4; break;
-        case 'nitrofix':   w += crowding * 2 + foodScarcity * 2; break;
-        case 'filterfeeder': w += foodScarcity * 3.5; break;
-        // New body plan traits
-        case 'dwarfism':   w += foodScarcity * 3 + 1; break;
-        case 'gigantism':  w += predationPressure * 3 + 1; break;
-        case 'colonial':   w += foodScarcity * 2 + crowding * 1.5; break;
-        // New social/behavioral traits
-        case 'territorial': w += crowding * 4; break;
-        case 'maternal':   w += predationPressure * 2 + foodScarcity * 2; break;
-        case 'biofilm':    w += predationPressure * 2.5 + crowding * 1; break;
-        case 'allelopathy': w += crowding * 3.5; break;
-      }
-      return Math.max(0.1, w);
-    });
-
-    // Weighted random selection
-    const totalW = weights.reduce((a, b) => a + b, 0);
-    let r = Math.random() * totalW;
-    let trait = available[available.length - 1];
-    for (let i = 0; i < available.length; i++) {
-      r -= weights[i];
-      if (r <= 0) { trait = available[i]; break; }
-    }
-
-    // Localized trait: if we can speciate, create a local variant with this trait
-    // instead of applying it globally to the whole species
-    if (nextSpeciesId <= 254 && dynamicSpeciesIds.length < MAX_DYNAMIC_SPECIES && popNow >= 20) {
-      // Find a random cell of this species to use as epicenter
-      const total = gridW * gridH;
-      let epicenter = -1;
-      for (let attempt = 0; attempt < 50; attempt++) {
-        const ri = (Math.random() * total) | 0;
-        if (species[ri] === id) { epicenter = ri; break; }
-      }
-      if (epicenter >= 0) {
-        const ecx = epicenter % gridW, ecy = (epicenter / gridW) | 0;
-        // Create a variant species with this trait
-        const varId = nextSpeciesId++;
-        const rootId = sp.rootAncestor || id;
-        const rootName = SPECIES[rootId] ? SPECIES[rootId].name : sp.name;
-        const lc = dynamicSpeciesIds.filter(d => {
-          const dsp = SPECIES[d];
-          return dsp && (dsp.rootAncestor === rootId || dsp.parentId === rootId);
-        }).length;
-        const varName = rootName + ' ' + toRoman(lc + 2);
-        const baseRGB = COLOR_RGB[id];
-        const sft = () => Math.round((Math.random() - 0.5) * 50);
-        const vr = clamp(baseRGB[0] + sft(), 20, 255);
-        const vg = clamp(baseRGB[1] + sft(), 20, 255);
-        const vb = clamp(baseRGB[2] + sft(), 20, 255);
-        const vHex = '#' + ((1 << 24) + (vr << 16) + (vg << 8) + vb).toString(16).slice(1).toUpperCase();
-
-        const varTraits = (es.traits ? es.traits.slice() : []);
-        varTraits.push(trait);
-
-        let varMR = es.moveRate, varHM = es.hungerMax;
-        if (trait === 'shell') {
-          if (sp.moveRate) varMR = clamp(varMR * 0.7, 0.05, 0.98);
-          if (sp.hungerMax) varHM = clamp(Math.round(varHM * 1.4), 8, 64);
-        }
-        if (trait === 'dwarfism') {
-          if (sp.hungerMax) varHM = clamp(Math.round(varHM * 0.65), 6, 64);
-        }
-        if (trait === 'gigantism') {
-          if (sp.hungerMax) varHM = clamp(Math.round(varHM * 1.4), 8, 80);
-        }
-
-        SPECIES[varId] = {
-          name: varName, color: vHex, tier: sp.tier, layer: sp.layer,
-          breedRate: es.breedRate, moveRate: varMR || undefined,
-          hungerMax: varHM || undefined, eats: es.eats.length ? es.eats.slice() : undefined,
-          desc: sp.name + ' with ' + TRAITS[trait].name + ' (gen ' + generation + ')',
-          parentId: id, rootAncestor: rootId,
-          lineageDepth: (sp.lineageDepth || 0) + 1,
-        };
-        COLOR_RGB[varId] = [vr, vg, vb];
-        LIVING_IDS.push(varId);
-        dynamicSpeciesIds.push(varId);
-        evoStats[varId] = {
-          breedRate: es.breedRate, moveRate: varMR, hungerMax: varHM,
-          eats: es.eats.slice(), traits: varTraits, traitAge: {},
-        };
-        let evT = TIER_ORDER.find(t2 => t2.label === 'EVOLVED');
-        if (!evT) { evT = { label: 'EVOLVED', ids: [] }; TIER_ORDER.push(evT); }
-        evT.ids.push(varId);
-        // Predators of parent also eat new variant
-        for (const oid of LIVING_IDS) {
-          if (oid === varId) continue;
-          const oe = evoStats[oid];
-          if (oe && oe.eats && oe.eats.indexOf(id) !== -1 && oe.eats.indexOf(varId) === -1) {
-            oe.eats.push(varId);
-          }
-        }
-        // Convert only cells within radius of epicenter
-        let converted = 0;
-        const r2 = TRAIT_LOCAL_RADIUS * TRAIT_LOCAL_RADIUS;
-        for (let dy = -TRAIT_LOCAL_RADIUS; dy <= TRAIT_LOCAL_RADIUS; dy++) {
-          for (let dx = -TRAIT_LOCAL_RADIUS; dx <= TRAIT_LOCAL_RADIUS; dx++) {
-            if (dx * dx + dy * dy > r2) continue;
-            const nx = wrapX(ecx + dx), ny = wrapY(ecy + dy);
-            const ni = ny * gridW + nx;
-            if (species[ni] === id) { species[ni] = varId; converted++; }
-          }
-        }
-        addEvoEvent(varName + ' evolved ' + TRAITS[trait].name + ' (local, ' + converted + ' cells)!');
-        continue; // skip the global fallback
-      }
-    }
-
-    // Fallback: apply trait globally if can't speciate
-    es.traits.push(trait);
-    if (!es.traitAge) es.traitAge = {};
-    es.traitAge[trait] = 0;
-
-    if (trait === 'shell') {
-      const baseMR = sp.moveRate || 0;
-      const baseHM = sp.hungerMax || 0;
-      if (baseMR > 0) es.moveRate = clamp(es.moveRate * 0.7, 0.05, 0.98);
-      if (baseHM > 0) es.hungerMax = clamp(Math.round(es.hungerMax * 1.4), 8, 64);
-    }
-    if (trait === 'dwarfism') {
-      const baseHM = sp.hungerMax || 0;
-      if (baseHM > 0) es.hungerMax = clamp(Math.round(es.hungerMax * 0.65), 6, 64);
-    }
-    if (trait === 'gigantism') {
-      const baseHM = sp.hungerMax || 0;
-      if (baseHM > 0) es.hungerMax = clamp(Math.round(es.hungerMax * 1.4), 8, 80);
-    }
-
-    addEvoEvent(sp.name + ' evolved ' + TRAITS[trait].name + '!');
-  }
 }
 
-// --- SPECIATION: fork a thriving, highly-drifted species into a new variant ---
+// --- SPECIATION: fork via gene divergence ---
 function speciate() {
   if (dynamicSpeciesIds.length >= MAX_DYNAMIC_SPECIES) return;
-  if (nextSpeciesId > 254) return; // Uint8Array ceiling
+  if (nextSpeciesId > 254) return;
   if (popHistory.length < 3) return;
 
   const now = popHistory[popHistory.length - 1];
+  const total = gridW * gridH;
 
   for (const id of LIVING_IDS) {
     if (dynamicSpeciesIds.length >= MAX_DYNAMIC_SPECIES || nextSpeciesId > 254) break;
     const popNow = now[id] || 0;
     const sp = SPECIES[id];
-    if (!sp.breedRate) continue; // skip non-living
-    // Branched species need less population to re-fork
+    if (!sp.breedRate) continue;
     const depth = sp.lineageDepth || 0;
     const minPop = Math.max(25, SPECIATION_MIN_POP - depth * 15);
     if (popNow < minPop) continue;
 
     const es = evoStats[id];
-    // Measure drift: how far have stats moved from the original baseline?
-    let drift = 0, driftCount = 0;
-    if (sp.breedRate) {
-      drift += Math.abs(es.breedRate - sp.breedRate) / sp.breedRate;
-      driftCount++;
-    }
-    if (sp.moveRate) {
-      drift += Math.abs(es.moveRate - sp.moveRate) / sp.moveRate;
-      driftCount++;
-    }
-    if (sp.hungerMax) {
-      drift += Math.abs(es.hungerMax - sp.hungerMax) / sp.hungerMax;
-      driftCount++;
-    }
-    // Diet drift: gained new food sources?
-    const origEatsLen = sp.eats ? sp.eats.length : 0;
-    if (es.eats.length > origEatsLen) {
-      drift += (es.eats.length - origEatsLen) * 0.3;
-      driftCount++;
-    }
-    if (driftCount === 0) continue;
-    drift /= driftCount;
+    if (!es.genes || !es.baseGenes) continue;
 
-    // Deeper lineages speciate more easily (already adapted to change)
-    const driftThreshold = SPECIATION_DRIFT * Math.max(0.4, 1 - depth * 0.15);
+    const divergence = geneDivergence(es.genes, es.baseGenes);
+    const driftThreshold = 0.15 * Math.max(0.4, 1 - depth * 0.15);
+    if (divergence < driftThreshold) continue;
+
     const speciationChance = Math.min(0.5, SPECIATION_CHANCE + depth * 0.05);
-    if (drift < driftThreshold) continue;
     if (Math.random() > speciationChance) continue;
 
-    // --- Fork! Create a new species ---
     const newId = nextSpeciesId++;
-    // Name from root ancestor + count of all descendants in that lineage
     const rootId = sp.rootAncestor || id;
-    const rootName = SPECIES[rootId] ? SPECIES[rootId].name : sp.name;
-    const lineageCount = dynamicSpeciesIds.filter(d => {
-      const dsp = SPECIES[d];
-      return dsp && (dsp.rootAncestor === rootId || dsp.parentId === rootId || d === rootId);
-    }).length;
-    const roman = toRoman(lineageCount + 2);
-    const newName = rootName + ' ' + roman;
 
-    // Mutate colour: shift each RGB channel ±20-50
+    const vigour = 1.05 + Math.random() * 0.1;
+    const newGenes = {};
+    const newGeneVar = {};
+    for (const g of GENE_KEYS) {
+      newGenes[g] = clamp(es.genes[g] + gaussRandom() * 0.04, 0, 1);
+      newGeneVar[g] = Math.max(0.02, (es.geneVar[g] || 0.1) * 0.7);
+    }
+
+    const newName = generateSpeciesName(id, newGenes, 'speciation');
+
     const baseRGB = COLOR_RGB[id];
     const shift = () => Math.round((Math.random() - 0.5) * 70);
     const nr = clamp(baseRGB[0] + shift(), 20, 255);
@@ -1368,65 +1184,40 @@ function speciate() {
     const nb = clamp(baseRGB[2] + shift(), 20, 255);
     const newHex = '#' + ((1 << 24) + (nr << 16) + (ng << 8) + nb).toString(16).slice(1).toUpperCase();
 
-    // Mutate stats with hybrid vigor — new species get a competitive edge
-    const mutRange = 0.15;
-    const vigor = 1.12 + Math.random() * 0.08; // 12-20% bonus
-    const randMut = (v) => v * vigor * (1 + (Math.random() - 0.5) * 2 * mutRange);
-    const newBreedRate = clamp(randMut(es.breedRate), sp.breedRate * 0.3, sp.breedRate * 4.0);
-    const newMoveRate  = sp.moveRate ? clamp(randMut(es.moveRate), 0.05, 0.98) : 0;
-    const newHungerMax = sp.hungerMax ? clamp(Math.round(es.hungerMax * (vigor + Math.random() * 0.1)), 8, 80) : 0;
+    const tmpBR = sp.breedRate * (0.5 + newGenes.v) * vigour;
+    const tmpMR = sp.moveRate ? clamp(sp.moveRate * (0.5 + newGenes.s) * vigour, 0.02, 0.98) : 0;
+    const tmpHM = sp.hungerMax ? clamp(Math.round(sp.hungerMax * (0.5 + newGenes.f) * vigour), 6, 80) : 0;
 
-    // Diet: inherit parent's evolved diet, possibly gain one item instead of losing
     const newEats = es.eats.slice();
     if (newEats.length > 1 && Math.random() < 0.15) {
-      // Occasionally drop a food source (specialization) — less likely now
       newEats.splice((Math.random() * newEats.length) | 0, 1);
     }
-    // New species can prey on parent (competitive displacement)
     if (sp.hungerMax && newEats.indexOf(id) === -1 && Math.random() < 0.35) {
       newEats.push(id);
     }
 
-    // Track lineage depth (how many speciations deep)
-    const parentDepth = depth;
-
-    // Register the new species globally
     SPECIES[newId] = {
-      name: newName,
-      color: newHex,
-      tier: sp.tier,
-      layer: sp.layer,
-      breedRate: newBreedRate,
-      moveRate: newMoveRate || undefined,
-      hungerMax: newHungerMax || undefined,
-      eats: newEats.length ? newEats : undefined,
+      name: newName, color: newHex, tier: sp.tier, layer: sp.layer,
+      breedRate: sp.breedRate, moveRate: sp.moveRate || undefined,
+      hungerMax: sp.hungerMax || undefined, eats: newEats.length ? newEats : undefined,
       desc: 'Evolved from ' + sp.name + ' at gen ' + generation,
-      parentId: id,
-      rootAncestor: sp.rootAncestor || id,
-      lineageDepth: parentDepth + 1,
+      parentId: id, rootAncestor: rootId,
+      lineageDepth: depth + 1,
     };
     COLOR_RGB[newId] = [nr, ng, nb];
     LIVING_IDS.push(newId);
     dynamicSpeciesIds.push(newId);
-
-    // Add evoStats entry (starts at its own baseline, inherits traits)
     evoStats[newId] = {
-      breedRate: newBreedRate,
-      moveRate: newMoveRate,
-      hungerMax: newHungerMax,
-      eats: newEats.slice(),
-      traits: es.traits ? es.traits.slice() : [],
+      breedRate: tmpBR, moveRate: tmpMR, hungerMax: tmpHM,
+      eats: newEats.slice(), traits: [], traitStrengths: {},
+      genes: newGenes, geneVar: newGeneVar, baseGenes: { ...newGenes },
     };
+    expressTraits(newId);
 
-    // Add to TIER_ORDER so it appears in stats
     let evoTier = TIER_ORDER.find(t => t.label === 'EVOLVED');
-    if (!evoTier) {
-      evoTier = { label: 'EVOLVED', ids: [] };
-      TIER_ORDER.push(evoTier);
-    }
+    if (!evoTier) { evoTier = { label: 'EVOLVED', ids: [] }; TIER_ORDER.push(evoTier); }
     evoTier.ids.push(newId);
 
-    // Predators of the parent also eat the new species
     for (const oid of LIVING_IDS) {
       if (oid === newId) continue;
       const oe = evoStats[oid];
@@ -1435,15 +1226,10 @@ function speciate() {
       }
     }
 
-    // Convert a fraction of parent cells to the new species
-    const total = gridW * gridH;
     const convertTarget = (popNow * SPECIATION_CONVERT) | 0;
     let converted = 0;
-    // Build list of parent cell indices and shuffle
     const parentCells = [];
-    for (let i = 0; i < total; i++) {
-      if (species[i] === id) parentCells.push(i);
-    }
+    for (let i = 0; i < total; i++) { if (species[i] === id) parentCells.push(i); }
     for (let i = parentCells.length - 1; i > 0; i--) {
       const j = (Math.random() * (i + 1)) | 0;
       const tmp = parentCells[i]; parentCells[i] = parentCells[j]; parentCells[j] = tmp;
@@ -1453,11 +1239,11 @@ function speciate() {
       converted++;
     }
 
-    addEvoEvent(newName + ' split from ' + sp.name + '!');
+    addEvoEvent(newName + ' diverged from ' + sp.name + '!');
   }
 }
 
-// --- NICHE SHIFT: under sustained pressure, animals can jump ecological tier ---
+// --- NICHE SHIFT: animals can change ecological tier under sustained pressure ---
 function nicheShift() {
   if (dynamicSpeciesIds.length >= MAX_DYNAMIC_SPECIES || nextSpeciesId > 254) return;
   if (popHistory.length < 3) return;
@@ -1465,34 +1251,26 @@ function nicheShift() {
   const now = popHistory[popHistory.length - 1];
   const prev = popHistory[popHistory.length - 3];
   const { predators, preyOf } = buildFoodWeb();
+  const total = gridW * gridH;
 
   for (const id of LIVING_IDS) {
     if (dynamicSpeciesIds.length >= MAX_DYNAMIC_SPECIES || nextSpeciesId > 254) break;
     const sp = SPECIES[id];
-    if (!sp.hungerMax) continue; // must be an animal (not producer)
-    if (sp.tier === 'producer' || sp.tier === 'megafauna') continue; // producers can't shift, megafauna already at top
+    if (!sp.hungerMax) continue;
+    if (sp.tier === 'producer' || sp.tier === 'megafauna') continue;
 
     const depth = sp.lineageDepth || 0;
-    if (depth < NICHE_SHIFT_MIN_DEPTH) continue; // need evolutionary history
+    if (depth < NICHE_SHIFT_MIN_DEPTH) continue;
 
     const es = evoStats[id];
     const popNow = now[id] || 0;
     if (popNow < 30) continue;
+    if (!es.genes || !es.baseGenes) continue;
 
-    // Measure drift from baseline
-    let drift = 0, driftCount = 0;
-    if (sp.breedRate) { drift += Math.abs(es.breedRate - sp.breedRate) / sp.breedRate; driftCount++; }
-    if (sp.moveRate) { drift += Math.abs(es.moveRate - sp.moveRate) / sp.moveRate; driftCount++; }
-    if (sp.hungerMax) { drift += Math.abs(es.hungerMax - sp.hungerMax) / sp.hungerMax; driftCount++; }
-    const origEatsLen = sp.eats ? sp.eats.length : 0;
-    if (es.eats.length > origEatsLen) { drift += (es.eats.length - origEatsLen) * 0.3; driftCount++; }
-    if (driftCount === 0) continue;
-    drift /= driftCount;
-
-    if (drift < NICHE_SHIFT_MIN_DRIFT) continue;
+    const divergence = geneDivergence(es.genes, es.baseGenes);
+    if (divergence < NICHE_SHIFT_MIN_DRIFT * 0.4) continue;
     if (Math.random() > NICHE_SHIFT_CHANCE) continue;
 
-    // Check if there's pressure driving the shift — food scarcity or heavy predation
     let underPressure = false;
     if (predators[id]) {
       let predPop = 0;
@@ -1507,115 +1285,71 @@ function nicheShift() {
     const popPrev = prev[id] || 0;
     const trend = popPrev > 0 ? (popNow - popPrev) / popPrev : 0;
     if (trend < -0.15) underPressure = true;
-
     if (!underPressure) continue;
 
-    // Shift tier!
     const newTier = TIER_PROMOTE[sp.tier];
     if (!newTier) continue;
 
-    // Create a new niche-shifted species
     const newId = nextSpeciesId++;
     const rootId = sp.rootAncestor || id;
-    const rootName = SPECIES[rootId] ? SPECIES[rootId].name : sp.name;
-    const lc = dynamicSpeciesIds.filter(d => {
-      const dsp = SPECIES[d];
-      return dsp && (dsp.rootAncestor === rootId || dsp.parentId === rootId || d === rootId);
-    }).length;
-    const newName = rootName + ' ' + toRoman(lc + 2);
+    const newName = generateSpeciesName(id, es.genes, 'niche', newTier);
 
-    // Color shift — larger shift to signal niche change
     const baseRGB = COLOR_RGB[id];
-    const shift = () => Math.round((Math.random() - 0.5) * 100);
-    const nr = clamp(baseRGB[0] + shift(), 20, 255);
-    const ng = clamp(baseRGB[1] + shift(), 20, 255);
-    const nb = clamp(baseRGB[2] + shift(), 20, 255);
+    const shiftC = () => Math.round((Math.random() - 0.5) * 100);
+    const nr = clamp(baseRGB[0] + shiftC(), 20, 255);
+    const ng = clamp(baseRGB[1] + shiftC(), 20, 255);
+    const nb = clamp(baseRGB[2] + shiftC(), 20, 255);
     const newHex = '#' + ((1 << 24) + (nr << 16) + (ng << 8) + nb).toString(16).slice(1).toUpperCase();
 
-    // Adapt stats to new niche
-    let newBR = es.breedRate;
-    let newMR = es.moveRate;
-    let newHM = es.hungerMax;
-    let newEats = es.eats.slice();
-
-    if (newTier === 'consumer') {
-      // Herbivore→Consumer: faster, hunts other herbivores instead of plants
-      newMR = clamp(newMR * 1.3, 0.3, 0.95);
-      newBR = clamp(newBR * 0.7, 0.01, 0.1);
-      newHM = clamp(Math.round(newHM * 1.2), 12, 48);
-      // Diet: drop plants, gain herbivores it used to compete with
-      const herbivores = LIVING_IDS.filter(hid => {
-        const hsp = SPECIES[hid];
-        return hsp && hsp.tier === 'herbivore' && hid !== id;
-      });
-      newEats = [];
-      // Pick 1-3 herbivore prey
-      const shuffled = herbivores.slice();
-      for (let i = shuffled.length - 1; i > 0; i--) {
-        const j = (Math.random() * (i + 1)) | 0;
-        const tmp = shuffled[i]; shuffled[i] = shuffled[j]; shuffled[j] = tmp;
-      }
-      const preyCount = Math.min(shuffled.length, 1 + ((Math.random() * 2) | 0));
-      for (let i = 0; i < preyCount; i++) newEats.push(shuffled[i]);
-    } else if (newTier === 'apex') {
-      // Consumer→Apex: even faster, hunts consumers
-      newMR = clamp(newMR * 1.2, 0.5, 0.98);
-      newBR = clamp(newBR * 0.5, 0.005, 0.05);
-      newHM = clamp(Math.round(newHM * 1.3), 16, 64);
-      const consumers = LIVING_IDS.filter(cid => {
-        const csp = SPECIES[cid];
-        return csp && csp.tier === 'consumer' && cid !== id;
-      });
-      newEats = [];
-      const shuffled = consumers.slice();
-      for (let i = shuffled.length - 1; i > 0; i--) {
-        const j = (Math.random() * (i + 1)) | 0;
-        const tmp = shuffled[i]; shuffled[i] = shuffled[j]; shuffled[j] = tmp;
-      }
-      const preyCount = Math.min(shuffled.length, 1 + ((Math.random() * 3) | 0));
-      for (let i = 0; i < preyCount; i++) newEats.push(shuffled[i]);
-    } else if (newTier === 'megafauna') {
-      // Apex→Megafauna: slower breeding, huge hunger tolerance, filter-feeds broadly
-      newMR = clamp(newMR * 0.7, 0.25, 0.85);
-      newBR = clamp(newBR * 0.4, 0.002, 0.01);
-      newHM = clamp(Math.round(newHM * 1.8), 40, 80);
-      // Diet: eats consumers and herbivores
-      const prey = LIVING_IDS.filter(pid => {
-        const psp = SPECIES[pid];
-        return psp && (psp.tier === 'consumer' || psp.tier === 'herbivore') && pid !== id;
-      });
-      newEats = [];
-      const shuffled = prey.slice();
-      for (let i = shuffled.length - 1; i > 0; i--) {
-        const j = (Math.random() * (i + 1)) | 0;
-        const tmp = shuffled[i]; shuffled[i] = shuffled[j]; shuffled[j] = tmp;
-      }
-      const preyCount = Math.min(shuffled.length, 2 + ((Math.random() * 3) | 0));
-      for (let i = 0; i < preyCount; i++) newEats.push(shuffled[i]);
-    } else if (newTier === 'herbivore') {
-      // Decomposer→Herbivore: start eating plants instead of dead
-      newMR = clamp(newMR * 1.1, 0.15, 0.7);
-      const producers = LIVING_IDS.filter(pid => {
-        const psp = SPECIES[pid];
-        return psp && psp.tier === 'producer';
-      });
-      newEats = [];
-      const shuffled = producers.slice();
-      for (let i = shuffled.length - 1; i > 0; i--) {
-        const j = (Math.random() * (i + 1)) | 0;
-        const tmp = shuffled[i]; shuffled[i] = shuffled[j]; shuffled[j] = tmp;
-      }
-      const preyCount = Math.min(shuffled.length, 1 + ((Math.random() * 2) | 0));
-      for (let i = 0; i < preyCount; i++) newEats.push(shuffled[i]);
+    const newGenes = {};
+    const newGeneVar = {};
+    for (const g of GENE_KEYS) {
+      newGenes[g] = es.genes[g];
+      newGeneVar[g] = Math.max(0.02, (es.geneVar[g] || 0.1) * 0.7);
     }
 
-    // Assign layer based on new tier
+    let newEats = [];
+    if (newTier === 'consumer') {
+      newGenes.s = clamp(newGenes.s * 1.3, 0, 1);
+      newGenes.v = clamp(newGenes.v * 0.7, 0, 1);
+      newGenes.p = clamp(newGenes.p + 0.2, 0, 1);
+      const targets = LIVING_IDS.filter(hid => { const hsp = SPECIES[hid]; return hsp && hsp.tier === 'herbivore' && hid !== id; });
+      const sh = targets.slice(); for (let i = sh.length - 1; i > 0; i--) { const j = (Math.random() * (i + 1)) | 0; const t = sh[i]; sh[i] = sh[j]; sh[j] = t; }
+      for (let i = 0; i < Math.min(sh.length, 1 + ((Math.random() * 2) | 0)); i++) newEats.push(sh[i]);
+    } else if (newTier === 'apex') {
+      newGenes.s = clamp(newGenes.s * 1.2, 0, 1);
+      newGenes.v = clamp(newGenes.v * 0.5, 0, 1);
+      newGenes.p = clamp(newGenes.p + 0.15, 0, 1);
+      newGenes.f = clamp(newGenes.f * 1.2, 0, 1);
+      const targets = LIVING_IDS.filter(cid => { const csp = SPECIES[cid]; return csp && csp.tier === 'consumer' && cid !== id; });
+      const sh = targets.slice(); for (let i = sh.length - 1; i > 0; i--) { const j = (Math.random() * (i + 1)) | 0; const t = sh[i]; sh[i] = sh[j]; sh[j] = t; }
+      for (let i = 0; i < Math.min(sh.length, 1 + ((Math.random() * 3) | 0)); i++) newEats.push(sh[i]);
+    } else if (newTier === 'megafauna') {
+      newGenes.s = clamp(newGenes.s * 0.7, 0, 1);
+      newGenes.v = clamp(newGenes.v * 0.4, 0, 1);
+      newGenes.f = clamp(newGenes.f + 0.2, 0, 1);
+      newGenes.p = clamp(newGenes.p + 0.1, 0, 1);
+      const targets = LIVING_IDS.filter(pid => { const psp = SPECIES[pid]; return psp && (psp.tier === 'consumer' || psp.tier === 'herbivore') && pid !== id; });
+      const sh = targets.slice(); for (let i = sh.length - 1; i > 0; i--) { const j = (Math.random() * (i + 1)) | 0; const t = sh[i]; sh[i] = sh[j]; sh[j] = t; }
+      for (let i = 0; i < Math.min(sh.length, 2 + ((Math.random() * 3) | 0)); i++) newEats.push(sh[i]);
+    } else if (newTier === 'herbivore') {
+      newGenes.s = clamp(newGenes.s * 1.1, 0, 1);
+      newGenes.p = clamp(newGenes.p * 0.5, 0, 1);
+      const targets = LIVING_IDS.filter(pid => { const psp = SPECIES[pid]; return psp && psp.tier === 'producer'; });
+      const sh = targets.slice(); for (let i = sh.length - 1; i > 0; i--) { const j = (Math.random() * (i + 1)) | 0; const t = sh[i]; sh[i] = sh[j]; sh[j] = t; }
+      for (let i = 0; i < Math.min(sh.length, 1 + ((Math.random() * 2) | 0)); i++) newEats.push(sh[i]);
+    }
+
+    const tmpBR = sp.breedRate * (0.5 + newGenes.v);
+    const tmpMR = sp.moveRate ? clamp(sp.moveRate * (0.5 + newGenes.s), 0.02, 0.98) : 0;
+    const tmpHM = sp.hungerMax ? clamp(Math.round(sp.hungerMax * (0.5 + newGenes.f)), 6, 80) : 0;
+
     const tierLayerMap = { herbivore: 1, consumer: 2, apex: 3, megafauna: 3 };
     const newLayer = tierLayerMap[newTier] !== undefined ? tierLayerMap[newTier] : sp.layer;
     SPECIES[newId] = {
       name: newName, color: newHex, tier: newTier, layer: newLayer,
-      breedRate: newBR, moveRate: newMR || undefined,
-      hungerMax: newHM || undefined, eats: newEats.length ? newEats : undefined,
+      breedRate: sp.breedRate, moveRate: sp.moveRate || undefined,
+      hungerMax: sp.hungerMax || undefined, eats: newEats.length ? newEats : undefined,
       desc: sp.name + ' shifted to ' + newTier + ' niche (gen ' + generation + ')',
       parentId: id, rootAncestor: rootId,
       lineageDepth: (sp.lineageDepth || 0) + 1,
@@ -1624,15 +1358,16 @@ function nicheShift() {
     LIVING_IDS.push(newId);
     dynamicSpeciesIds.push(newId);
     evoStats[newId] = {
-      breedRate: newBR, moveRate: newMR, hungerMax: newHM,
-      eats: newEats.slice(), traits: es.traits ? es.traits.slice() : [], traitAge: {},
+      breedRate: tmpBR, moveRate: tmpMR, hungerMax: tmpHM,
+      eats: newEats.slice(), traits: [], traitStrengths: {},
+      genes: newGenes, geneVar: newGeneVar, baseGenes: { ...newGenes },
     };
+    expressTraits(newId);
+
     let evoTier = TIER_ORDER.find(t => t.label === 'EVOLVED');
     if (!evoTier) { evoTier = { label: 'EVOLVED', ids: [] }; TIER_ORDER.push(evoTier); }
     evoTier.ids.push(newId);
 
-    // Convert a portion of parent cells
-    const total = gridW * gridH;
     const convertTarget = (popNow * 0.25) | 0;
     const parentCells = [];
     for (let i = 0; i < total; i++) { if (species[i] === id) parentCells.push(i); }
@@ -1648,16 +1383,6 @@ function nicheShift() {
 
     addEvoEvent(newName + ' shifted niche: ' + sp.tier + ' → ' + newTier + '!');
   }
-}
-
-// Roman numeral helper for species naming
-function toRoman(n) {
-  const numerals = [['X',10],['IX',9],['V',5],['IV',4],['III',3],['II',2],['I',1]];
-  let s = '';
-  for (const [sym, val] of numerals) {
-    while (n >= val) { s += sym; n -= val; }
-  }
-  return s || 'I';
 }
 
 // ============================================================
@@ -1699,6 +1424,7 @@ function clearGrid() {
   currentSeason = 'Spring';
   seasonTick = 0;
   graphHistory = [];
+  for (const k in _creatureCache) delete _creatureCache[k];
   initEvoStats();
 }
 
@@ -2505,10 +2231,10 @@ function step() {
             trapJawUsed = true;
             // Skip all defensive checks — instant kill
           } else {
-            // Mimicry: 45% chance predator avoids this prey
-            if (preyTraits.indexOf('mimicry') !== -1 && !packActive && Math.random() < 0.45) continue;
+            // Mimicry: 45% chance predator avoids this prey (scaled by gene strength)
+            if (preyTraits.indexOf('mimicry') !== -1 && !packActive && Math.random() < 0.45 * traitStr(foodId, 'mimicry')) continue;
             // Camouflage: prey has 40% chance to evade (pack hunters ignore)
-            if (preyTraits.indexOf('camouflage') !== -1 && !packActive && Math.random() < 0.4) continue;
+            if (preyTraits.indexOf('camouflage') !== -1 && !packActive && Math.random() < 0.4 * traitStr(foodId, 'camouflage')) continue;
             // Pod Defense: 50% miss if 2+ same species nearby (pack hunters ignore)
             if (preyTraits.indexOf('poddefense') !== -1 && !packActive) {
               let podCount = 0;
@@ -2517,12 +2243,12 @@ function step() {
                 const pni = wrapY(ny + pdir[1]) * cw + wrapX(nx + pdir[0]);
                 if (species[pni] === foodId) podCount++;
               }
-              if (podCount >= 2 && Math.random() < 0.5) continue;
+              if (podCount >= 2 && Math.random() < 0.5 * traitStr(foodId, 'poddefense')) continue;
             }
             // Gigantism: 30% miss chance
-            if (preyTraits.indexOf('gigantism') !== -1 && Math.random() < 0.3) continue;
+            if (preyTraits.indexOf('gigantism') !== -1 && Math.random() < 0.3 * traitStr(foodId, 'gigantism')) continue;
             // Ink Cloud: 50% dodge + teleport 2 tiles
-            if (preyTraits.indexOf('inkcloud') !== -1 && Math.random() < 0.5) {
+            if (preyTraits.indexOf('inkcloud') !== -1 && Math.random() < 0.5 * traitStr(foodId, 'inkcloud')) {
               // Teleport prey 2 tiles in random direction
               const tDir = CARDINAL[(Math.random() * 4) | 0];
               const tnx = wrapX(nx + tDir[0] * 2), tny = wrapY(ny + tDir[1] * 2);
@@ -2541,17 +2267,17 @@ function step() {
                 const bdir = NEIGHBOURS_8[bn];
                 if (species[wrapY(ny + bdir[1]) * cw + wrapX(nx + bdir[0])] === foodId) bfCount++;
               }
-              if (bfCount >= 3 && Math.random() < 0.35) continue;
+              if (bfCount >= 3 && Math.random() < 0.35 * traitStr(foodId, 'biofilm')) continue;
             }
           }
 
           // Toxic: predator takes hunger damage
           if (preyTraits.indexOf('toxic') !== -1) {
-            hunger[idx] += 4;
+            hunger[idx] += Math.round(4 * traitStr(foodId, 'toxic'));
           }
           // Thorns: predator takes heavy hunger penalty
           if (preyTraits.indexOf('thorns') !== -1) {
-            hunger[idx] += 7;
+            hunger[idx] += Math.round(7 * traitStr(foodId, 'thorns'));
           }
           // Venomous predator: extra damage to prey's neighbors (area denial)
           if (isVenomous) {
@@ -2565,13 +2291,13 @@ function step() {
             }
           }
           // Deep Root: producer has 35% chance to survive being eaten
-          if (preyTraits.indexOf('deeproot') !== -1 && Math.random() < 0.35) {
+          if (preyTraits.indexOf('deeproot') !== -1 && Math.random() < 0.35 * traitStr(foodId, 'deeproot')) {
             hunger[idx] = Math.max(0, hunger[idx] - ((es.hungerMax * restoreFrac * 0.4) | 0));
             ate = true;
             break;
           }
           // Armored: animal has 30% chance to survive being eaten
-          if (preyTraits.indexOf('armored') !== -1 && Math.random() < 0.3) {
+          if (preyTraits.indexOf('armored') !== -1 && Math.random() < 0.3 * traitStr(foodId, 'armored')) {
             hunger[idx] = Math.max(0, hunger[idx] - ((es.hungerMax * restoreFrac * 0.4) | 0));
             ate = true;
             break;
@@ -2866,7 +2592,7 @@ function step() {
       const ni = wrapY(cy + dir[1]) * cw + wrapX(cx + dir[0]);
       if (species[ni] === sid) sameAdjacentCount++;
     }
-    if (hasTrait('schooling') && sameAdjacentCount >= 3) breedRate *= 1.5;
+    if (hasTrait('schooling') && sameAdjacentCount >= 3) breedRate *= 1 + 0.5 * traitStr(sid, 'schooling');
 
     // Territorial: kill adjacent same-species when crowded, breed faster when alone
     if (hasTrait('territorial')) {
@@ -2883,7 +2609,7 @@ function step() {
           }
         }
       } else if (sameAdjacentCount <= 1) {
-        breedRate *= 1.6; // alone — breed faster to claim territory
+        breedRate *= 1 + 0.6 * traitStr(sid, 'territorial');
       }
     }
 
@@ -2944,6 +2670,7 @@ function step() {
       evolve();
       speciate();
       nicheShift();
+      for (const k in _creatureCache) delete _creatureCache[k];
       lastEvoGen = generation;
       evoCooldown = EVO_COOLDOWN_MIN + ((Math.random() * (EVO_COOLDOWN_MAX - EVO_COOLDOWN_MIN)) | 0);
     }
@@ -3175,9 +2902,19 @@ function updateStats() {
       if (id === 0) continue;
       const c = counts[id] || 0;
       if (c > 0) {
-        parts.push('<div class="stat-row" data-sid="' + id + '"><span class="stat-name" style="color:' +
+        let geneBar = '';
+        const sEs = evoStats[id];
+        if (evolveEnabled && sEs && sEs.genes) {
+          geneBar = '<div style="display:flex;gap:1px;height:3px;margin-top:1px;">';
+          for (const g of GENE_KEYS) {
+            const v = sEs.genes[g] || 0;
+            geneBar += '<div style="flex:1;background:' + GENE_COLORS[g] + ';opacity:' + (0.3 + v * 0.7).toFixed(2) + ';height:' + Math.round(v * 3) + 'px;align-self:flex-end;border-radius:1px;"></div>';
+          }
+          geneBar += '</div>';
+        }
+        parts.push('<div class="stat-row" data-sid="' + id + '" style="cursor:pointer;"><span class="stat-name" style="color:' +
           SPECIES[id].color + '">' + SPECIES[id].name +
-          '</span><span class="stat-count">' + c + '</span></div>');
+          '</span><span class="stat-count">' + c + '</span>' + geneBar + '</div>');
       }
     }
   }
@@ -3231,6 +2968,265 @@ statsEl.addEventListener('mouseleave', function(e) {
     render();
   }
 }, true);
+
+// ============================================================
+// 5b. SPECIES INFO PANEL + CREATURE PORTRAITS
+// ============================================================
+const _creatureCache = {};
+
+function generateCreaturePortrait(sid) {
+  if (_creatureCache[sid]) return _creatureCache[sid];
+  const sp = SPECIES[sid];
+  if (!sp) return null;
+  const es = evoStats[sid];
+  const rgb = COLOR_RGB[sid] || [128, 128, 128];
+  const size = 32;
+  const cv = document.createElement('canvas');
+  cv.width = size; cv.height = size;
+  const cx = cv.getContext('2d');
+
+  const dark = [Math.max(0, rgb[0] - 60), Math.max(0, rgb[1] - 60), Math.max(0, rgb[2] - 60)];
+  const light = [Math.min(255, rgb[0] + 40), Math.min(255, rgb[1] + 40), Math.min(255, rgb[2] + 40)];
+
+  const genes = es && es.genes ? es.genes : { v: 0.5, s: 0.5, f: 0.5, a: 0.5, p: 0.5, o: 0.5 };
+
+  const bodyW = 5 + Math.round(genes.f * 4);
+  const bodyH = 4 + Math.round(genes.f * 3);
+  const midY = size / 2;
+  const midX = size / 2;
+
+  const isProducer = sp.tier === 'producer' || sp.tier === 'decomposer';
+
+  if (isProducer) {
+    const stemH = 8 + Math.round(genes.v * 8);
+    const leafW = 3 + Math.round(genes.v * 3);
+    cx.fillStyle = 'rgb(' + dark[0] + ',' + dark[1] + ',' + dark[2] + ')';
+    cx.fillRect(midX - 1, midY - stemH / 2, 2, stemH);
+    cx.fillStyle = 'rgb(' + rgb[0] + ',' + rgb[1] + ',' + rgb[2] + ')';
+    for (let ly = -2; ly <= 2; ly++) {
+      const lw = leafW - Math.abs(ly);
+      if (lw > 0) cx.fillRect(midX - lw, midY - stemH / 2 + 2 + ly, lw * 2, 2);
+    }
+    if (genes.a > 0.5) {
+      cx.fillStyle = 'rgb(' + dark[0] + ',' + dark[1] + ',' + dark[2] + ')';
+      for (let s = 0; s < 3; s++) {
+        const sy = midY - stemH / 2 + 4 + s * 3;
+        cx.fillRect(midX - leafW - 1, sy, 1, 1);
+        cx.fillRect(midX + leafW, sy, 1, 1);
+      }
+    }
+    if (genes.o > 0.5) {
+      cx.fillStyle = 'rgba(' + light[0] + ',' + light[1] + ',' + light[2] + ',0.6)';
+      cx.fillRect(midX - 1, midY - stemH / 2, 1, 1);
+      cx.fillRect(midX + 1, midY - stemH / 2 + 1, 1, 1);
+    }
+  } else {
+    const half = [];
+    for (let y = 0; y < bodyH; y++) {
+      const t = y / (bodyH - 1);
+      const w = Math.round(bodyW * Math.sin(t * Math.PI));
+      half.push(Math.max(1, w));
+    }
+    const tailLen = 2 + Math.round(genes.s * 4);
+    const finH = 1 + Math.round(genes.s * 2);
+
+    for (let y = 0; y < bodyH; y++) {
+      const w = half[y];
+      const py = midY - bodyH / 2 + y;
+      cx.fillStyle = 'rgb(' + dark[0] + ',' + dark[1] + ',' + dark[2] + ')';
+      cx.fillRect(midX - w - 1, py, 1, 1);
+      cx.fillRect(midX + w, py, 1, 1);
+      cx.fillStyle = 'rgb(' + rgb[0] + ',' + rgb[1] + ',' + rgb[2] + ')';
+      cx.fillRect(midX - w, py, w * 2, 1);
+      if (genes.o > 0.5 && y % 2 === 0) {
+        cx.fillStyle = 'rgb(' + light[0] + ',' + light[1] + ',' + light[2] + ')';
+        cx.fillRect(midX - w + 1, py, w * 2 - 2, 1);
+      }
+    }
+
+    cx.fillStyle = 'rgb(' + dark[0] + ',' + dark[1] + ',' + dark[2] + ')';
+    for (let t = 0; t < tailLen; t++) {
+      const tw = Math.max(1, Math.round((1 - t / tailLen) * 2));
+      cx.fillRect(midX - bodyW - t - 2, midY - tw, tw * 2, tw * 2);
+    }
+
+    if (finH > 1) {
+      cx.fillStyle = 'rgba(' + rgb[0] + ',' + rgb[1] + ',' + rgb[2] + ',0.7)';
+      cx.fillRect(midX, midY - bodyH / 2 - finH, 3, finH);
+      cx.fillRect(midX, midY + bodyH / 2, 3, finH);
+    }
+
+    if (genes.a > 0.5) {
+      cx.fillStyle = 'rgb(' + light[0] + ',' + light[1] + ',' + light[2] + ')';
+      const spikeCount = 2 + Math.round(genes.a * 3);
+      for (let s = 0; s < spikeCount; s++) {
+        const sy = midY - bodyH / 2 + 1 + Math.round(s * (bodyH - 2) / Math.max(1, spikeCount - 1));
+        cx.fillRect(midX + half[Math.min(s, half.length - 1)] + 1, sy, 2, 1);
+      }
+    }
+
+    if (genes.p > 0.4) {
+      const jawLen = 1 + Math.round(genes.p * 2);
+      cx.fillStyle = 'rgb(' + dark[0] + ',' + dark[1] + ',' + dark[2] + ')';
+      cx.fillRect(midX + bodyW, midY - 1, jawLen, 2);
+      cx.fillRect(midX + bodyW + jawLen, midY, 1, 1);
+    }
+
+    const eyeSize = 1 + (genes.p > 0.6 ? 1 : 0);
+    cx.fillStyle = '#FFFFFF';
+    cx.fillRect(midX + bodyW - 3, midY - bodyH / 2 + 2, eyeSize, eyeSize);
+    cx.fillStyle = '#000000';
+    cx.fillRect(midX + bodyW - 3 + eyeSize - 1, midY - bodyH / 2 + 2 + eyeSize - 1, 1, 1);
+  }
+
+  const dataUrl = cv.toDataURL();
+  _creatureCache[sid] = dataUrl;
+  return dataUrl;
+}
+
+function buildLineageChain(sid) {
+  const chain = [];
+  let current = sid;
+  const visited = new Set();
+  while (current !== undefined && SPECIES[current] && !visited.has(current)) {
+    visited.add(current);
+    chain.unshift(current);
+    current = SPECIES[current].parentId;
+  }
+  return chain;
+}
+
+function openSpeciesInfo(sid) {
+  const sp = SPECIES[sid];
+  if (!sp) return;
+  const es = evoStats[sid];
+  const panel = document.getElementById('species-info-panel');
+  const body = document.getElementById('sip-body');
+  const portrait = generateCreaturePortrait(sid);
+  const genes = es && es.genes ? es.genes : null;
+  const traits = es && es.traits ? es.traits : [];
+  const strengths = es && es.traitStrengths ? es.traitStrengths : {};
+  const eats = es ? es.eats : (sp.eats || []);
+  const total = gridW * gridH;
+  let popCount = 0;
+  for (let i = 0; i < total; i++) { if (species[i] === sid) popCount++; }
+
+  let html = '<div class="sip-header">';
+  if (portrait) html += '<img class="sip-portrait" src="' + portrait + '" alt="' + sp.name + '">';
+  html += '<div class="sip-title-area">';
+  html += '<div class="sip-name" style="color:' + sp.color + ';">' + sp.name + '</div>';
+  html += '<div class="sip-tier">' + sp.tier + (sp.lineageDepth ? ' (depth ' + sp.lineageDepth + ')' : '') + '</div>';
+  html += '<div class="sip-pop">Population: ' + popCount + '</div>';
+  html += '</div></div>';
+
+  if (genes) {
+    html += '<div class="sip-section"><div class="sip-section-title">GENOME</div>';
+    for (const g of GENE_KEYS) {
+      const val = genes[g] || 0;
+      const pct = (val * 100).toFixed(0);
+      const col = GENE_COLORS[g];
+      const variance = es.geneVar ? es.geneVar[g] : 0;
+      const varLabel = variance > 0.2 ? ' (diverse)' : variance < 0.05 ? ' (bottleneck)' : '';
+      html += '<div class="sip-gene-row">';
+      html += '<span class="sip-gene-label" style="color:' + col + ';">' + GENE_NAMES[g] + '</span>';
+      html += '<div class="sip-gene-bar"><div class="sip-gene-fill" style="width:' + pct + '%;background:' + col + ';"></div></div>';
+      html += '<span class="sip-gene-val">' + val.toFixed(2) + varLabel + '</span>';
+      html += '</div>';
+    }
+    html += '</div>';
+  }
+
+  if (traits.length > 0) {
+    html += '<div class="sip-section"><div class="sip-section-title">ACTIVE TRAITS</div>';
+    html += '<div class="sip-traits">';
+    for (const t of traits) {
+      const tr = TRAITS[t];
+      if (!tr) continue;
+      const str = strengths[t] ? strengths[t].toFixed(2) : '1.00';
+      html += '<span class="sip-trait-badge" title="' + tr.desc + '">' + tr.icon + ' ' + tr.name;
+      html += '<span class="sip-trait-strength"> x' + str + '</span></span>';
+    }
+    html += '</div></div>';
+  }
+
+  html += '<div class="sip-section"><div class="sip-section-title">STATS</div>';
+  html += '<div class="sip-stats-grid">';
+  html += '<span class="sip-stat-label">Breed Rate</span><span class="sip-stat-val">' + (es ? es.breedRate.toFixed(4) : sp.breedRate.toFixed(4)) + '</span>';
+  if (sp.moveRate !== undefined) html += '<span class="sip-stat-label">Move Rate</span><span class="sip-stat-val">' + (es ? es.moveRate.toFixed(3) : sp.moveRate.toFixed(3)) + '</span>';
+  if (sp.hungerMax !== undefined) html += '<span class="sip-stat-label">Hunger Max</span><span class="sip-stat-val">' + (es ? es.hungerMax : sp.hungerMax) + '</span>';
+  html += '</div></div>';
+
+  if (eats && eats.length > 0) {
+    html += '<div class="sip-section"><div class="sip-section-title">DIET</div>';
+    html += '<div class="sip-diet-list"><strong>Eats:</strong> ';
+    for (const eid of eats) {
+      const esp = SPECIES[eid];
+      if (!esp) continue;
+      html += '<span class="sip-diet-item"><span class="sip-diet-dot" style="background:' + esp.color + ';"></span>' + esp.name + '</span>';
+    }
+    html += '</div>';
+    const predatorList = [];
+    for (const oid of LIVING_IDS) {
+      const oe = evoStats[oid];
+      if (oe && oe.eats && oe.eats.indexOf(sid) !== -1) predatorList.push(oid);
+    }
+    if (predatorList.length > 0) {
+      html += '<div class="sip-diet-list" style="margin-top:4px;"><strong>Eaten by:</strong> ';
+      for (const pid of predatorList) {
+        const psp = SPECIES[pid];
+        if (!psp) continue;
+        html += '<span class="sip-diet-item"><span class="sip-diet-dot" style="background:' + psp.color + ';"></span>' + psp.name + '</span>';
+      }
+      html += '</div>';
+    }
+    html += '</div>';
+  }
+
+  const chain = buildLineageChain(sid);
+  if (chain.length > 1) {
+    html += '<div class="sip-section"><div class="sip-section-title">LINEAGE</div>';
+    html += '<div class="sip-lineage">';
+    for (let i = 0; i < chain.length; i++) {
+      const cid = chain[i];
+      const csp = SPECIES[cid];
+      if (!csp) continue;
+      const isCurrent = cid === sid;
+      const indent = '&mdash;'.repeat(i);
+      html += '<div class="sip-lineage-node' + (isCurrent ? ' sip-current' : '') + '">';
+      if (i > 0) html += '<span class="sip-lineage-indent">' + indent + '</span>';
+      html += '<span class="sip-lineage-swatch" style="background:' + csp.color + ';"></span> ';
+      html += csp.name;
+      if (csp.tier && i > 0 && csp.tier !== SPECIES[chain[i - 1]].tier) html += ' <span style="color:#DDBB44;">(' + csp.tier + ')</span>';
+      html += '</div>';
+    }
+    html += '</div></div>';
+  }
+
+  if (sp.desc) html += '<div class="sip-desc">' + sp.desc + '</div>';
+
+  body.innerHTML = html;
+  panel.classList.add('visible');
+}
+
+document.getElementById('sip-close-btn').addEventListener('click', function() {
+  document.getElementById('species-info-panel').classList.remove('visible');
+});
+document.getElementById('species-info-panel').addEventListener('click', function(e) {
+  if (e.target === this) this.classList.remove('visible');
+});
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Escape') document.getElementById('species-info-panel').classList.remove('visible');
+});
+
+statsEl.addEventListener('click', function(e) {
+  const row = e.target.closest('.stat-row[data-sid]');
+  if (row) {
+    const sid = parseInt(row.dataset.sid);
+    if (SPECIES[sid] && SPECIES[sid].breedRate !== undefined) {
+      openSpeciesInfo(sid);
+    }
+  }
+});
 
 // ============================================================
 // 6. UI CONTROLS
@@ -3326,6 +3322,7 @@ document.getElementById('btn-mutate').addEventListener('click', function() {
   evolve();
   speciate();
   nicheShift();
+  for (const k in _creatureCache) delete _creatureCache[k];
   evoCooldown = 0;
   render();
   updateStats();
@@ -4378,8 +4375,17 @@ canvas.addEventListener('mouseleave', function() {
       }
       // Traits line
       if (es.traits && es.traits.length > 0) {
-        const traitStr = es.traits.map(function(t) { return TRAITS[t] ? TRAITS[t].icon + ' ' + TRAITS[t].name : t; }).join(', ');
-        html += '<div class="etp-traits">' + indent.replace(/[├─│]/g, ' ') + traitStr + '</div>';
+        const tStr = es.traits.map(function(t) { return TRAITS[t] ? TRAITS[t].icon + ' ' + TRAITS[t].name : t; }).join(', ');
+        html += '<div class="etp-traits">' + indent.replace(/[├─│]/g, ' ') + tStr + '</div>';
+      }
+      // Gene bar
+      if (es.genes) {
+        html += '<div style="display:flex;gap:1px;height:4px;margin:1px 0 2px 18px;">';
+        for (const g of GENE_KEYS) {
+          const gv = es.genes[g] || 0;
+          html += '<div style="flex:1;background:' + GENE_COLORS[g] + ';opacity:' + (0.3 + gv * 0.7).toFixed(2) + ';height:' + Math.round(gv * 4) + 'px;align-self:flex-end;border-radius:1px;" title="' + GENE_NAMES[g] + ': ' + gv.toFixed(2) + '"></div>';
+        }
+        html += '</div>';
       }
     }
 
