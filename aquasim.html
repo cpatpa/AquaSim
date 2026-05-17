@@ -539,9 +539,9 @@ const DISASTERS = {
 // ============================================================
 // 1b. EVOLUTION STATE
 // ============================================================
-const EVO_CHANCE_PER_GEN  = 0.08; // 8% per gen (~once every 12 gens on avg)
-const EVO_COOLDOWN_MIN    = 8;    // minimum gens between evo events
-const EVO_COOLDOWN_MAX    = 25;   // max cooldown (randomized each time)
+const EVO_CHANCE_PER_GEN  = 0.14; // 14% per gen (~once every 7 gens on avg)
+const EVO_COOLDOWN_MIN    = 4;    // minimum gens between evo events
+const EVO_COOLDOWN_MAX    = 12;   // max cooldown (randomized each time)
 const EVO_MUTATION_RATE  = 0.12; // max % change per cycle
 const EVO_HISTORY_LEN    = 10;   // snapshots to track trends
 const OVERPOP_THRESHOLD  = 2.5;  // × average = "overpopulated"
@@ -549,9 +549,9 @@ const PRESSURE_HIGH      = 1.5;  // predator:prey ratio that triggers adaptation
 const POP_SNAPSHOT_INTERVAL = 10; // record population every N gens
 
 // Speciation constants
-const SPECIATION_MIN_POP   = 40;   // species must have this many cells to fork
+const SPECIATION_MIN_POP   = 30;   // species must have this many cells to fork
 const SPECIATION_DRIFT     = 0.18; // stats must have drifted 18%+ from baseline
-const SPECIATION_CHANCE    = 0.30; // probability per eligible species per evo cycle
+const SPECIATION_CHANCE    = 0.40; // probability per eligible species per evo cycle
 const SPECIATION_CONVERT   = 0.40; // fraction of parent cells converted to new species
 const MAX_DYNAMIC_SPECIES  = 20;   // cap on total new species
 let nextSpeciesId = 100;           // dynamic IDs start at 100 (Uint8Array max = 255)
@@ -646,7 +646,7 @@ const TRAIT_LOCAL_RADIUS = 8;     // trait acquisition only converts cells withi
 const GENE_KEYS = ['v', 's', 'f', 'a', 'p', 'o'];
 const GENE_NAMES = { v: 'Vigour', s: 'Speed', f: 'Fortitude', a: 'Armour', p: 'Predation', o: 'Sociality' };
 const GENE_COLORS = { v: '#44FF88', s: '#44CCFF', f: '#FFAA44', a: '#AAAACC', p: '#FF4466', o: '#CC88FF' };
-const GENE_MUTATION_SD = 0.035;
+const GENE_MUTATION_SD = 0.045;
 
 const TIER_DEFAULT_GENES = {
   producer:   { v: 0.50, s: 0.10, f: 0.45, a: 0.32, p: 0.08, o: 0.28 },
@@ -771,6 +771,8 @@ let evoLog = [];       // recent evolution event strings
 const EVO_LOG_MAX = 30;
 let evoCooldown = 0;   // gens remaining before next evo can fire
 let lastEvoGen  = 0;   // generation of last evo event
+let radiationBoost = 0; // evo events remaining with boosted mutation (post-disaster adaptive radiation)
+let prevLivingCount = 0; // living cell count last gen, for detecting mass death
 
 function initEvoStats() {
   for (const did of dynamicSpeciesIds) {
@@ -806,7 +808,7 @@ function initEvoStats() {
     for (let gi = 0; gi < GENE_KEYS.length; gi++) {
       const g = GENE_KEYS[gi];
       genes[g] = clamp(tierGenes[g] + noise(gi + 1), 0.05, 0.95);
-      geneVar[g] = 0.1;
+      geneVar[g] = 0.14;
     }
     evoStats[id] = {
       breedRate: sp.breedRate,
@@ -825,6 +827,8 @@ function initEvoStats() {
   evoLog = [];
   evoCooldown = 0;
   lastEvoGen = 0;
+  radiationBoost = 0;
+  prevLivingCount = 0;
 }
 
 // Get effective stat for a species (evolved if evo enabled, else base)
@@ -1014,8 +1018,9 @@ function evolve() {
     const gv = es.geneVar;
 
     // Random mutation: gaussian shift per gene, scaled by genetic variance
+    const radMul = radiationBoost > 0 ? 2.0 : 1.0;
     for (const g of GENE_KEYS) {
-      const sd = GENE_MUTATION_SD * (0.5 + gv[g] * 3);
+      const sd = GENE_MUTATION_SD * (0.5 + gv[g] * 3) * radMul;
       genes[g] = clamp(genes[g] + gaussRandom() * sd, 0, 1);
     }
 
@@ -1050,18 +1055,18 @@ function evolve() {
       }
     }
 
-    // Abundance decay: thriving species drift genes toward neutral
-    if (trend > 0.15 && popNow > avgPop) {
-      for (const g of GENE_KEYS) {
-        genes[g] += (0.5 - genes[g]) * 0.015;
-      }
+    // Stabilising selection: only pull back extreme gene values
+    for (const g of GENE_KEYS) {
+      if (genes[g] > 0.85) genes[g] -= (genes[g] - 0.85) * 0.06;
+      else if (genes[g] < 0.15) genes[g] += (0.15 - genes[g]) * 0.06;
     }
 
-    // Gene variance: large populations gain diversity, small ones bottleneck
+    // Gene variance: larger populations generate more variation (population genetics)
     const popRatio = popNow / Math.max(1, avgPop);
     for (const g of GENE_KEYS) {
-      if (popRatio > 1.5 && popNow > 30) {
-        gv[g] = Math.min(0.3, gv[g] + 0.003);
+      if (popRatio > 1.0 && popNow > 15) {
+        const gain = 0.002 + 0.004 * Math.min(1, popNow / (avgPop * 3));
+        gv[g] = Math.min(0.35, gv[g] + gain);
       } else if (popNow < 10) {
         gv[g] = Math.max(0.02, gv[g] - 0.008);
       }
@@ -1070,6 +1075,40 @@ function evolve() {
     deriveStats(id);
     expressTraits(id);
   }
+
+  // Phase 1b: Competitive exclusion (character displacement)
+  // Same-tier species sharing diet overlap have genes pushed apart
+  for (let i = 0; i < LIVING_IDS.length; i++) {
+    const idA = LIVING_IDS[i];
+    const spA = SPECIES[idA];
+    const esA = evoStats[idA];
+    if (!esA.genes || !esA.eats || (now[idA] || 0) < 5) continue;
+    for (let j = i + 1; j < LIVING_IDS.length; j++) {
+      const idB = LIVING_IDS[j];
+      const spB = SPECIES[idB];
+      const esB = evoStats[idB];
+      if (!esB.genes || !esB.eats || (now[idB] || 0) < 5) continue;
+      if (spA.tier !== spB.tier) continue;
+      const shared = esA.eats.filter(e => esB.eats.indexOf(e) !== -1).length;
+      const minLen = Math.min(esA.eats.length, esB.eats.length);
+      if (minLen === 0 || shared / minLen < 0.5) continue;
+      let maxDiffGene = GENE_KEYS[0], maxDiff = 0;
+      for (const g of GENE_KEYS) {
+        const d = Math.abs(esA.genes[g] - esB.genes[g]);
+        if (d > maxDiff) { maxDiff = d; maxDiffGene = g; }
+      }
+      const nudge = 0.012;
+      if (esA.genes[maxDiffGene] > esB.genes[maxDiffGene]) {
+        esA.genes[maxDiffGene] = clamp(esA.genes[maxDiffGene] + nudge, 0, 1);
+        esB.genes[maxDiffGene] = clamp(esB.genes[maxDiffGene] - nudge, 0, 1);
+      } else {
+        esA.genes[maxDiffGene] = clamp(esA.genes[maxDiffGene] - nudge, 0, 1);
+        esB.genes[maxDiffGene] = clamp(esB.genes[maxDiffGene] + nudge, 0, 1);
+      }
+    }
+  }
+
+  if (radiationBoost > 0) radiationBoost--;
 
   // Phase 2: Overpopulation predation
   for (const id of LIVING_IDS) {
@@ -1158,10 +1197,11 @@ function speciate() {
     if (!es.genes || !es.baseGenes) continue;
 
     const divergence = geneDivergence(es.genes, es.baseGenes);
-    const driftThreshold = 0.15 * Math.max(0.4, 1 - depth * 0.15);
+    const radDiv = radiationBoost > 0 ? 0.5 : 1.0;
+    const driftThreshold = 0.15 * Math.max(0.4, 1 - depth * 0.15) * radDiv;
     if (divergence < driftThreshold) continue;
 
-    const speciationChance = Math.min(0.5, SPECIATION_CHANCE + depth * 0.05);
+    const speciationChance = Math.min(0.6, SPECIATION_CHANCE + depth * 0.05);
     if (Math.random() > speciationChance) continue;
 
     const newId = nextSpeciesId++;
@@ -1172,7 +1212,7 @@ function speciate() {
     const newGeneVar = {};
     for (const g of GENE_KEYS) {
       newGenes[g] = clamp(es.genes[g] + gaussRandom() * 0.04, 0, 1);
-      newGeneVar[g] = Math.max(0.02, (es.geneVar[g] || 0.1) * 0.7);
+      newGeneVar[g] = Math.max(0.04, (es.geneVar[g] || 0.14) * 0.85);
     }
 
     const newName = generateSpeciesName(id, newGenes, 'speciation');
@@ -1305,7 +1345,7 @@ function nicheShift() {
     const newGeneVar = {};
     for (const g of GENE_KEYS) {
       newGenes[g] = es.genes[g];
-      newGeneVar[g] = Math.max(0.02, (es.geneVar[g] || 0.1) * 0.7);
+      newGeneVar[g] = Math.max(0.04, (es.geneVar[g] || 0.14) * 0.85);
     }
 
     let newEats = [];
@@ -2656,6 +2696,18 @@ function step() {
   }
 
   generation++;
+
+  // Adaptive radiation: detect mass death events (>15% population loss in one gen)
+  if (evolveEnabled) {
+    let livingNow = 0;
+    const total = gridW * gridH;
+    for (let i = 0; i < total; i++) { if (species[i] >= 10) livingNow++; }
+    if (prevLivingCount > 0 && livingNow < prevLivingCount * 0.85) {
+      radiationBoost = 5;
+      addEvoEvent('Mass extinction detected — adaptive radiation triggered!');
+    }
+    prevLivingCount = livingNow;
+  }
 
   // Evolution: record population snapshots periodically
   if (evolveEnabled && generation % POP_SNAPSHOT_INTERVAL === 0) {
