@@ -254,11 +254,16 @@ canvas { cursor: crosshair; display: block; }
 .sip-stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 12px; font-size: 0.6rem; }
 .sip-stat-label { color: #4A7A8A; }
 .sip-stat-val { color: #00E5FF; text-align: right; }
-.sip-lineage { font-size: 0.6rem; }
-.sip-lineage-node { display: flex; align-items: center; gap: 4px; padding: 2px 0; color: #7EE8FA; }
-.sip-lineage-node.sip-current { color: #00FF88; font-weight: bold; }
-.sip-lineage-indent { color: #0C2D40; margin-right: 2px; }
-.sip-lineage-swatch { width: 8px; height: 8px; border-radius: 2px; display: inline-block; border: 1px solid rgba(255,255,255,0.15); }
+.sip-lineage { font-size: 0.6rem; overflow-x: auto; max-height: 300px; overflow-y: auto; }
+.sip-tree-node { display: flex; align-items: center; gap: 3px; padding: 1px 0; color: #7EE8FA; white-space: nowrap; cursor: pointer; }
+.sip-tree-node:hover { color: #FFFFFF; }
+.sip-tree-node.sip-current { color: #00FF88; font-weight: bold; }
+.sip-tree-node.sip-extinct { color: #4A6A7A; font-style: italic; }
+.sip-tree-node.sip-extinct:hover { color: #7A9AAA; }
+.sip-tree-prefix { color: #0E4A5A; font-family: monospace; user-select: none; }
+.sip-lineage-swatch { width: 8px; height: 8px; border-radius: 2px; display: inline-block; border: 1px solid rgba(255,255,255,0.15); flex-shrink: 0; }
+.sip-tree-pop { color: #4A7A8A; font-size: 0.5rem; margin-left: 2px; }
+.sip-tree-tier { color: #DDBB44; font-size: 0.5rem; margin-left: 2px; }
 .sip-desc { font-size: 0.55rem; color: #4A7A8A; font-style: italic; padding: 8px 16px; }
 </style>
 </head>
@@ -4067,16 +4072,26 @@ function generateCreaturePortrait(sid) {
   return dataUrl;
 }
 
-function buildLineageChain(sid) {
-  const chain = [];
-  let current = sid;
-  const visited = new Set();
-  while (current !== undefined && SPECIES[current] && !visited.has(current)) {
-    visited.add(current);
-    chain.unshift(current);
-    current = SPECIES[current].parentId;
+function buildFamilyTree(sid) {
+  const sp = SPECIES[sid];
+  if (!sp) return null;
+  const rootId = sp.rootAncestor || sid;
+  const members = [];
+  for (const id in SPECIES) {
+    const s = SPECIES[id];
+    if (!s || s.tier === 'transient') continue;
+    const numId = parseInt(id);
+    if (numId === rootId || s.rootAncestor === rootId) members.push(numId);
   }
-  return chain;
+  if (members.length <= 1 && members[0] === sid) return null;
+  const childMap = {};
+  for (const m of members) childMap[m] = [];
+  for (const m of members) {
+    const p = SPECIES[m].parentId;
+    if (p !== undefined && childMap[p]) childMap[p].push(m);
+  }
+  for (const k in childMap) childMap[k].sort((a, b) => a - b);
+  return { rootId, members, childMap };
 }
 
 function openSpeciesInfo(sid) {
@@ -4165,22 +4180,45 @@ function openSpeciesInfo(sid) {
     html += '</div>';
   }
 
-  const chain = buildLineageChain(sid);
-  if (chain.length > 1) {
-    html += '<div class="sip-section"><div class="sip-section-title">LINEAGE</div>';
+  const tree = buildFamilyTree(sid);
+  if (tree && tree.members.length > 1) {
+    html += '<div class="sip-section"><div class="sip-section-title">FAMILY TREE</div>';
     html += '<div class="sip-lineage">';
-    for (let i = 0; i < chain.length; i++) {
-      const cid = chain[i];
-      const csp = SPECIES[cid];
-      if (!csp) continue;
-      const isCurrent = cid === sid;
-      const indent = '&mdash;'.repeat(i);
-      html += '<div class="sip-lineage-node' + (isCurrent ? ' sip-current' : '') + '">';
-      if (i > 0) html += '<span class="sip-lineage-indent">' + indent + '</span>';
-      html += '<span class="sip-lineage-swatch" style="background:' + csp.color + ';"></span> ';
-      html += csp.name;
-      if (csp.tier && i > 0 && csp.tier !== SPECIES[chain[i - 1]].tier) html += ' <span style="color:#DDBB44;">(' + csp.tier + ')</span>';
-      html += '</div>';
+    const total = gridW * gridH;
+    function popOf(id) { let c = 0; for (let i = 0; i < total; i++) { if (species[i] === id) c++; } return c; }
+    function renderNode(id, prefix, isLast, depth) {
+      const nsp = SPECIES[id];
+      if (!nsp) return '';
+      const pop = popOf(id);
+      const isCurrent = id === sid;
+      const isExtinct = pop === 0 && id >= 100;
+      const cls = 'sip-tree-node' + (isCurrent ? ' sip-current' : '') + (isExtinct ? ' sip-extinct' : '');
+      let h = '<div class="' + cls + '" data-sid="' + id + '">';
+      h += '<span class="sip-tree-prefix">' + prefix + (isLast ? '&#x2514;' : '&#x251C;') + '&#x2500;' + '</span>';
+      h += '<span class="sip-lineage-swatch" style="background:' + nsp.color + ';"></span> ';
+      h += nsp.name;
+      if (nsp.tier !== SPECIES[tree.rootId].tier) h += '<span class="sip-tree-tier">[' + nsp.tier + ']</span>';
+      if (pop > 0) h += '<span class="sip-tree-pop">(' + pop + ')</span>';
+      else if (id >= 100) h += '<span class="sip-tree-pop">(extinct)</span>';
+      h += '</div>';
+      const children = tree.childMap[id] || [];
+      const nextPrefix = prefix + (isLast ? '&nbsp;&nbsp;' : '&#x2502;&nbsp;');
+      for (let i = 0; i < children.length; i++) {
+        h += renderNode(children[i], nextPrefix, i === children.length - 1, depth + 1);
+      }
+      return h;
+    }
+    const rootChildren = tree.childMap[tree.rootId] || [];
+    const rootSp = SPECIES[tree.rootId];
+    const rootPop = popOf(tree.rootId);
+    const rootCls = 'sip-tree-node' + (tree.rootId === sid ? ' sip-current' : '') + (rootPop === 0 && tree.rootId >= 100 ? ' sip-extinct' : '');
+    html += '<div class="' + rootCls + '" data-sid="' + tree.rootId + '">';
+    html += '<span class="sip-lineage-swatch" style="background:' + rootSp.color + ';"></span> ';
+    html += rootSp.name;
+    if (rootPop > 0) html += '<span class="sip-tree-pop">(' + rootPop + ')</span>';
+    html += '</div>';
+    for (let i = 0; i < rootChildren.length; i++) {
+      html += renderNode(rootChildren[i], '', i === rootChildren.length - 1, 1);
     }
     html += '</div></div>';
   }
@@ -4196,6 +4234,13 @@ document.getElementById('sip-close-btn').addEventListener('click', function() {
 });
 document.getElementById('species-info-panel').addEventListener('click', function(e) {
   if (e.target === this) this.classList.remove('visible');
+});
+document.getElementById('sip-body').addEventListener('mousedown', function(e) {
+  const node = e.target.closest('.sip-tree-node[data-sid]');
+  if (node) {
+    const nodeSid = parseInt(node.getAttribute('data-sid'));
+    if (nodeSid && SPECIES[nodeSid]) { e.stopPropagation(); openSpeciesInfo(nodeSid); }
+  }
 });
 document.addEventListener('keydown', function(e) {
   if (e.key === 'Escape') document.getElementById('species-info-panel').classList.remove('visible');
