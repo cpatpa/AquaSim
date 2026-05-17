@@ -121,6 +121,8 @@ canvas { cursor: crosshair; display: block; }
 #btn-evo { color: #DDBB44 !important; border-color: #DDBB44 !important; }
 #btn-evo:hover { background: rgba(221,187,68,0.12) !important; }
 #btn-evo.evo-active { border-color: #00FF88 !important; color: #00FF88 !important; background: rgba(0,255,136,0.12) !important; }
+#btn-mutate { color: #FF44FF !important; border-color: #FF44FF !important; }
+#btn-mutate:hover { background: rgba(255,68,255,0.12) !important; }
 #evo-log { padding: 0 8px 8px; overflow-y: auto; min-height: 60px; height: 220px; flex-shrink: 0; }
 #evo-log::-webkit-scrollbar { width: 4px; }
 #evo-log::-webkit-scrollbar-thumb { background: #0C2D40; border-radius: 2px; }
@@ -239,6 +241,7 @@ canvas { cursor: crosshair; display: block; }
       <button class="speed-btn" data-speed="8">MAX</button>
       <div class="divider"></div>
       <button id="btn-evo">⧬ EVO</button>
+      <button id="btn-mutate">☢ MUTATE</button>
       <div class="divider"></div>
       <button id="btn-seed">⚡ SEED</button>
       <button id="btn-balance">☯ BALANCE</button>
@@ -1714,6 +1717,51 @@ const ctx = canvas.getContext('2d', { willReadFrequently: true });
 let imgData, imgPixels;
 let highlightSpecies = -1; // -1 = no highlight, otherwise species ID to highlight
 
+// Death particle system
+const MAX_PARTICLES = 300;
+const particles = [];
+function spawnDeathParticles(idx, sid) {
+  if (particles.length >= MAX_PARTICLES) return;
+  const cw = gridW;
+  const cx = (idx % cw) * CELL_SIZE + 3;
+  const cy = ((idx / cw) | 0) * CELL_SIZE + 3;
+  const rgb = COLOR_RGB[sid];
+  if (!rgb) return;
+  const count = 3 + ((Math.random() * 3) | 0);
+  for (let i = 0; i < count && particles.length < MAX_PARTICLES; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const speed = 0.4 + Math.random() * 1.2;
+    particles.push({
+      x: cx, y: cy,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed,
+      r: rgb[0], g: rgb[1], b: rgb[2],
+      life: 8 + ((Math.random() * 8) | 0)
+    });
+  }
+}
+
+function tickParticles() {
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    p.x += p.vx;
+    p.y += p.vy;
+    p.vy += 0.04;
+    p.life--;
+    if (p.life <= 0) { particles.splice(i, 1); }
+  }
+}
+
+function drawParticles() {
+  if (particles.length === 0) return;
+  for (let i = 0; i < particles.length; i++) {
+    const p = particles[i];
+    const alpha = Math.min(1, p.life / 6);
+    ctx.fillStyle = 'rgba(' + p.r + ',' + p.g + ',' + p.b + ',' + alpha.toFixed(2) + ')';
+    ctx.fillRect(p.x | 0, p.y | 0, 2, 2);
+  }
+}
+
 function initCanvas() {
   canvas.width = canvasW;
   canvas.height = canvasH;
@@ -2161,6 +2209,7 @@ function step() {
         if (nTraits.indexOf('warmadapt') !== -1 && Math.random() < 0.6) continue;
         if (nTraits.indexOf('shell') !== -1 && Math.random() < 0.3) continue;
         if (nTraits.indexOf('armored') !== -1 && Math.random() < 0.25) continue;
+        spawnDeathParticles(ni, nSid);
         species[ni] = 3; hunger[ni] = 0; age[ni] = 0;
       }
       // Spread only while young — trail-like: pick ONE random open neighbour
@@ -2410,6 +2459,7 @@ function step() {
 
     // 2. Starvation check
     if (hunger[idx] >= es.hungerMax) {
+      spawnDeathParticles(idx, sid);
       species[idx] = 3; hunger[idx] = 0; age[idx] = 0; // become Dead
       continue;
     }
@@ -2539,6 +2589,7 @@ function step() {
               }
             }
           }
+          spawnDeathParticles(ni, foodId);
           species[ni] = 0; hunger[ni] = 0; age[ni] = 0;
           hunger[idx] = Math.max(0, hunger[idx] - ((es.hungerMax * restoreFrac) | 0));
           processed[ni] = 1;
@@ -2669,6 +2720,7 @@ function step() {
               if (species[ri] === 0) { species[ri] = foodId; hunger[ri] = 0; age[ri] = 0; processed[ri] = 1; rg++; }
             }
           }
+          spawnDeathParticles(ni, foodId);
           species[ni] = 0; hunger[ni] = 0; age[ni] = 0;
           hunger[idx] = Math.max(0, hunger[idx] - ((es.hungerMax * restoreFrac) | 0));
           processed[ni] = 1;
@@ -2932,6 +2984,8 @@ function step() {
 function tick() {
   step();
   render();
+  tickParticles();
+  drawParticles();
   updateStats();
 }
 
@@ -3258,6 +3312,25 @@ document.getElementById('btn-evo').addEventListener('click', function() {
   this.textContent = evolveEnabled ? '⧬ EVO ON' : '⧬ EVO';
   this.classList.toggle('evo-active', evolveEnabled);
   if (evolveEnabled && !evoStats[10]) initEvoStats();
+});
+
+// Mutation Storm
+document.getElementById('btn-mutate').addEventListener('click', function() {
+  if (!evolveEnabled) {
+    evolveEnabled = true;
+    document.getElementById('btn-evo').textContent = '⧬ EVO ON';
+    document.getElementById('btn-evo').classList.add('evo-active');
+    if (!evoStats[10]) initEvoStats();
+  }
+  while (popHistory.length < 3) recordPopSnapshot();
+  evolve();
+  speciate();
+  nicheShift();
+  evoCooldown = 0;
+  render();
+  updateStats();
+  canvas.style.filter = 'brightness(1.8) hue-rotate(30deg)';
+  setTimeout(() => { canvas.style.filter = ''; }, 150);
 });
 
 // Seed
