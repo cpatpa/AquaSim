@@ -37,7 +37,7 @@ import { showAuthModal } from './ui/auth';
 import { openDashboard } from './ui/dashboard';
 import { openLeaderboard } from './ui/leaderboard';
 import { openAccount } from './ui/account';
-import { initMobile, isMobile, setMobileCallbacks, updateMobileBar } from './ui/mobile';
+import { initMobile, initMobileUI, isMobile, setMobileCallbacks, updateMobileBar } from './ui/mobile';
 import {
   isLoggedIn, getUser, tryRestoreSession,
   saveSimulation, loadSimulation, updateSimulation,
@@ -145,6 +145,8 @@ app.innerHTML = `
     <canvas id="phylo-canvas"></canvas>
   </div>
 </div>`;
+
+initMobileUI();
 
 const canvasEl = document.getElementById('grid-canvas') as HTMLCanvasElement;
 const rs: RendererState = createRenderer(canvasEl);

@@ -99,15 +99,17 @@ export function initMobile(): void {
     }
   });
 
-  if (_isMobile) {
-    buildMobileUI();
-  }
-
   MQ.addEventListener('change', (e) => {
     if (e.matches && !document.getElementById('mobile-tabs')) {
       buildMobileUI();
     }
   });
+}
+
+export function initMobileUI(): void {
+  if (_isMobile) {
+    buildMobileUI();
+  }
 }
 
 function buildMobileUI(): void {
