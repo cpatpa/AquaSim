@@ -36,15 +36,18 @@ import { showAuthModal } from './ui/auth';
 import { openDashboard } from './ui/dashboard';
 import { openLeaderboard } from './ui/leaderboard';
 import { openAccount } from './ui/account';
+import { initMobile, isMobile, setMobileCallbacks, updateMobileBar } from './ui/mobile';
 import {
   isLoggedIn, getUser, tryRestoreSession,
   saveSimulation, loadSimulation, updateSimulation,
 } from './api/client';
 
 noiseSeed(Date.now());
+initMobile();
 
-const viewW = Math.min(window.innerWidth - 400, MAX_GRID_PX);
-const viewH = Math.min(window.innerHeight - 60, MAX_GRID_PX);
+const mobileView = isMobile();
+const viewW = Math.min(mobileView ? window.innerWidth : window.innerWidth - 400, MAX_GRID_PX);
+const viewH = Math.min(mobileView ? window.innerHeight - 76 : window.innerHeight - 60, MAX_GRID_PX);
 const gridW = Math.max(Math.floor(Math.max(viewW, MIN_GRID_PX) / CELL_SIZE), 60);
 const gridH = Math.max(Math.floor(Math.max(viewH, MIN_GRID_PX) / CELL_SIZE), 60);
 
@@ -154,6 +157,18 @@ canvasEl.style.width = canvasWrap.clientWidth + 'px';
 canvasEl.style.height = canvasWrap.clientHeight + 'px';
 
 setupCameraHandlers(canvasEl, cam, () => renderFrame());
+
+window.addEventListener('resize', () => {
+  const w = canvasWrap.clientWidth;
+  const h = canvasWrap.clientHeight;
+  if (w > 0 && h > 0) {
+    canvasEl.style.width = w + 'px';
+    canvasEl.style.height = h + 'px';
+    cam.viewW = w;
+    cam.viewH = h;
+    renderFrame();
+  }
+});
 
 const paint = createPaintState();
 const palette = createPaletteState();
@@ -316,6 +331,7 @@ function updateUI(): void {
   }
 
   updateEvoLog(evoEntriesEl, sim.history.evoLog, sim.evolveEnabled);
+  updateMobileBar(sim.generation, sim.season.current, sim.running);
 }
 
 function tick(): void {
@@ -629,6 +645,39 @@ document.addEventListener('keydown', (e) => {
     closePhyloTree();
     closeHelp();
   }
+});
+
+setMobileCallbacks({
+  onPlay: togglePlay,
+  onStep: () => { if (!sim.running) tick(); },
+  onSpeed: (v) => { setSpeed(sim, v, tick); speedSelect.value = String(v); },
+  onAction: (action) => {
+    switch (action) {
+      case 'seed': btnSeed.click(); break;
+      case 'balance': btnBalance.click(); break;
+      case 'biome': btnBiome.click(); break;
+      case 'clear': btnClear.click(); break;
+      case 'save': btnSave.click(); break;
+      case 'load': btnLoad.click(); break;
+      case 'dashboard': btnDashboard.click(); break;
+      case 'leaderboard': btnLeaderboard.click(); break;
+      case 'export': btnExport.click(); break;
+      case 'tree': btnTree.click(); break;
+      case 'settings': btnSettings.click(); break;
+      case 'help': btnHelp.click(); break;
+      case 'account': btnAccount.click(); break;
+    }
+  },
+  onEvoToggle: (v) => {
+    evoToggle.checked = v;
+    sim.evolveEnabled = v;
+    sim.config.evolveEnabled = v;
+  },
+  getPaletteClickHandler: () => (id: number) => {
+    palette.selectedType = id;
+    paint.selectedType = id;
+    selectType(palette, id, speciesInfoEl);
+  },
 });
 
 renderFrame();

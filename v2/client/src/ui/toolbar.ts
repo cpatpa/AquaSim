@@ -1,6 +1,7 @@
 import type { GridState } from '../types';
 import { CELL_SIZE } from '../constants';
 import { wrapX, wrapY } from '../core/grid';
+import { isMobile, isPaintMode } from './mobile';
 
 export interface PaintState {
   painting: boolean;
@@ -108,6 +109,7 @@ export function setupPaintHandlers(
   window.addEventListener('mouseup', () => { state.painting = false; });
 
   canvas.addEventListener('touchstart', (e) => {
+    if (isMobile() && !isPaintMode()) return;
     e.preventDefault();
     state.painting = true;
     state.lastPaintX = -1;
@@ -123,6 +125,7 @@ export function setupPaintHandlers(
   }, { passive: false });
 
   canvas.addEventListener('touchmove', (e) => {
+    if (isMobile() && !isPaintMode()) return;
     e.preventDefault();
     if (!state.painting || state.selectedType < 0) return;
     const touch = e.touches[0];

@@ -113,6 +113,9 @@ export function createCamera(
  * - Middle-mouse or right-click drag: pan.
  * - Pinch-to-zoom on touch devices.
  */
+let singleFingerPanEnabled = false;
+export function setSingleFingerPan(v: boolean): void { singleFingerPanEnabled = v; }
+
 export function setupCameraHandlers(
   canvas: HTMLCanvasElement,
   cam: CameraState,
@@ -186,21 +189,32 @@ export function setupCameraHandlers(
   // Suppress context menu so right-click drag works.
   canvas.addEventListener('contextmenu', (e) => e.preventDefault());
 
-  // ---- Touch: pinch-to-zoom + two-finger pan ----------------------------
+  // ---- Touch: pinch-to-zoom + two-finger pan + single-finger pan --------
   let lastTouchDist = 0;
   let lastTouchMidX = 0;
   let lastTouchMidY = 0;
   let isTouchPanning = false;
+  let singleFingerPanX = 0;
+  let singleFingerPanY = 0;
+  let isSinglePanning = false;
 
   canvas.addEventListener('touchstart', (e: TouchEvent) => {
     if (e.touches.length === 2) {
       e.preventDefault();
+      isSinglePanning = false;
       const t0 = e.touches[0];
       const t1 = e.touches[1];
       lastTouchDist = Math.hypot(t1.clientX - t0.clientX, t1.clientY - t0.clientY);
       lastTouchMidX = (t0.clientX + t1.clientX) / 2;
       lastTouchMidY = (t0.clientY + t1.clientY) / 2;
       isTouchPanning = true;
+    } else if (e.touches.length === 1 && singleFingerPanEnabled) {
+      e.preventDefault();
+      isSinglePanning = true;
+      singleFingerPanX = e.touches[0].clientX;
+      singleFingerPanY = e.touches[0].clientY;
+      cam.dragStartCamX = cam.targetX;
+      cam.dragStartCamY = cam.targetY;
     }
   }, { passive: false });
 
@@ -246,6 +260,14 @@ export function setupCameraHandlers(
       lastTouchMidY = midY;
 
       onUpdate();
+    } else if (e.touches.length === 1 && isSinglePanning) {
+      e.preventDefault();
+      const dx = (e.touches[0].clientX - singleFingerPanX) / cam.zoom;
+      const dy = (e.touches[0].clientY - singleFingerPanY) / cam.zoom;
+      const [cx, cy] = clampPosition(cam, cam.dragStartCamX - dx, cam.dragStartCamY - dy);
+      cam.targetX = cx;
+      cam.targetY = cy;
+      onUpdate();
     }
   }, { passive: false });
 
@@ -253,6 +275,9 @@ export function setupCameraHandlers(
     if (e.touches.length < 2) {
       isTouchPanning = false;
       lastTouchDist = 0;
+    }
+    if (e.touches.length === 0) {
+      isSinglePanning = false;
     }
   });
 }

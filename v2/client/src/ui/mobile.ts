@@ -1,0 +1,346 @@
+import { setSingleFingerPan } from './camera';
+
+let _paintMode = false;
+let _isMobile = false;
+
+const MQ = window.matchMedia('(max-width: 768px)');
+
+export function isMobile(): boolean {
+  return _isMobile;
+}
+
+export function isPaintMode(): boolean {
+  return _paintMode;
+}
+
+export function setPaintMode(v: boolean): void {
+  _paintMode = v;
+  setSingleFingerPan(_isMobile && !v);
+  const fab = document.getElementById('paint-fab');
+  if (fab) {
+    fab.classList.toggle('active', v);
+    fab.textContent = v ? 'Pan' : 'Paint';
+  }
+}
+
+const MOBILE_STYLES = `
+  @media (max-width: 768px) {
+    #left-panel, #right-panel { display: none !important; }
+    #bottom-bar { display: none !important; }
+
+    #centre { width: 100%; }
+
+    #mobile-tabs {
+      display: flex; height: 36px; background: #04090F; border-bottom: 1px solid #0C2D40;
+      flex-shrink: 0;
+    }
+    .mob-tab {
+      flex: 1; display: flex; align-items: center; justify-content: center;
+      color: #4A7A8A; font-size: 0.7rem; cursor: pointer; border-bottom: 2px solid transparent;
+      font-family: 'Share Tech Mono', monospace;
+    }
+    .mob-tab.active { color: #00E5FF; border-color: #00E5FF; }
+
+    #mobile-bar {
+      display: flex; height: 40px; align-items: center; padding: 0 6px; gap: 4px;
+      background: #04090F; border-top: 1px solid #0C2D40; flex-shrink: 0;
+    }
+    #mobile-bar button, #mobile-bar select {
+      font-family: 'Share Tech Mono', monospace; font-size: 0.65rem;
+      padding: 4px 8px; border: 1px solid #0C2D40; background: #0A1622; color: #7EE8FA;
+      cursor: pointer; border-radius: 3px; white-space: nowrap;
+    }
+    #mobile-bar select { padding: 3px 5px; }
+    #mobile-bar .bar-spacer { flex: 1; }
+    #mobile-bar .mob-season { color: #88FF88; font-size: 0.65rem; }
+    #mobile-bar .mob-gen { color: #00E5FF; font-size: 0.65rem; }
+
+    #mobile-drawer {
+      position: fixed; bottom: 40px; left: 0; right: 0;
+      height: 50vh; background: #04090F; border-top: 1px solid #0C2D40;
+      transform: translateY(100%); transition: transform 0.25s ease;
+      z-index: 800; overflow-y: auto; padding: 8px;
+    }
+    #mobile-drawer.open { transform: translateY(0); }
+    #mobile-drawer::-webkit-scrollbar { width: 4px; }
+    #mobile-drawer::-webkit-scrollbar-thumb { background: #0C2D40; border-radius: 2px; }
+
+    #paint-fab {
+      position: fixed; bottom: 52px; right: 12px; z-index: 810;
+      width: 52px; height: 52px; border-radius: 50%;
+      background: #0A1622; border: 2px solid #0C2D40; color: #7EE8FA;
+      font-family: 'Share Tech Mono', monospace; font-size: 0.6rem;
+      cursor: pointer; display: flex; align-items: center; justify-content: center;
+    }
+    #paint-fab.active { background: #0D2438; border-color: #00E5FF; color: #00E5FF; }
+  }
+
+  @media (min-width: 769px) {
+    #mobile-tabs, #mobile-bar, #mobile-drawer, #paint-fab { display: none !important; }
+  }
+`;
+
+let drawerOpen = false;
+let activeTab: 'species' | 'stats' | 'menu' | null = null;
+
+export function initMobile(): void {
+  const style = document.createElement('style');
+  style.textContent = MOBILE_STYLES;
+  document.head.appendChild(style);
+
+  _isMobile = MQ.matches;
+  setSingleFingerPan(_isMobile && !_paintMode);
+  MQ.addEventListener('change', (e) => {
+    _isMobile = e.matches;
+    setSingleFingerPan(_isMobile && !_paintMode);
+    if (!_isMobile) {
+      closeDrawer();
+      restorePanels();
+    }
+  });
+
+  if (_isMobile) {
+    buildMobileUI();
+  }
+
+  MQ.addEventListener('change', (e) => {
+    if (e.matches && !document.getElementById('mobile-tabs')) {
+      buildMobileUI();
+    }
+  });
+}
+
+function buildMobileUI(): void {
+  const centre = document.getElementById('centre');
+  if (!centre) return;
+
+  const tabs = document.createElement('div');
+  tabs.id = 'mobile-tabs';
+  tabs.innerHTML = `
+    <div class="mob-tab" data-tab="species">Species</div>
+    <div class="mob-tab" data-tab="stats">Stats</div>
+    <div class="mob-tab" data-tab="menu">Menu</div>
+  `;
+  centre.insertBefore(tabs, centre.firstChild);
+
+  const bar = document.createElement('div');
+  bar.id = 'mobile-bar';
+  bar.innerHTML = `
+    <button id="mob-play">Play</button>
+    <button id="mob-step">Step</button>
+    <select id="mob-speed">
+      <option value="500">0.5x</option>
+      <option value="100" selected>1x</option>
+      <option value="50">2x</option>
+      <option value="25">4x</option>
+      <option value="8">MAX</option>
+    </select>
+    <div class="bar-spacer"></div>
+    <span class="mob-season" id="mob-season">Spring</span>
+    <span class="mob-gen" id="mob-gen">GEN 0</span>
+  `;
+  centre.appendChild(bar);
+
+  const drawer = document.createElement('div');
+  drawer.id = 'mobile-drawer';
+  document.body.appendChild(drawer);
+
+  const fab = document.createElement('button');
+  fab.id = 'paint-fab';
+  fab.textContent = 'Paint';
+  document.body.appendChild(fab);
+
+  fab.addEventListener('click', () => {
+    setPaintMode(!_paintMode);
+  });
+
+  for (const tab of tabs.querySelectorAll('.mob-tab')) {
+    tab.addEventListener('click', () => {
+      const t = (tab as HTMLElement).dataset.tab as 'species' | 'stats' | 'menu';
+      if (activeTab === t && drawerOpen) {
+        closeDrawer();
+      } else {
+        openDrawer(t);
+      }
+    });
+  }
+}
+
+function openDrawer(tab: 'species' | 'stats' | 'menu'): void {
+  const drawer = document.getElementById('mobile-drawer');
+  const tabs = document.getElementById('mobile-tabs');
+  if (!drawer || !tabs) return;
+
+  activeTab = tab;
+  drawerOpen = true;
+
+  for (const t of tabs.querySelectorAll('.mob-tab')) {
+    t.classList.toggle('active', (t as HTMLElement).dataset.tab === tab);
+  }
+
+  drawer.innerHTML = '';
+
+  if (tab === 'species') {
+    const palette = document.getElementById('palette-list');
+    const heatmap = document.getElementById('heatmap-bar');
+    const scenario = document.getElementById('scenario-bar');
+    if (palette) drawer.appendChild(palette.cloneNode(true));
+    if (heatmap) drawer.appendChild(heatmap.cloneNode(true));
+    if (scenario) drawer.appendChild(scenario.cloneNode(true));
+    wireClonedPalette(drawer);
+    wireClonedSelects(drawer);
+  } else if (tab === 'stats') {
+    const bio = document.getElementById('bio-score');
+    const stats = document.getElementById('stats-list');
+    const graph = document.getElementById('pop-graph-wrap');
+    const evo = document.getElementById('evo-log');
+    if (bio) drawer.appendChild(bio.cloneNode(true));
+    if (stats) drawer.appendChild(stats.cloneNode(true));
+    if (graph) drawer.appendChild(graph.cloneNode(true));
+    if (evo) drawer.appendChild(evo.cloneNode(true));
+  } else if (tab === 'menu') {
+    drawer.innerHTML = buildMenuDrawer();
+    wireMenuButtons(drawer);
+  }
+
+  drawer.classList.add('open');
+}
+
+function closeDrawer(): void {
+  const drawer = document.getElementById('mobile-drawer');
+  const tabs = document.getElementById('mobile-tabs');
+  if (drawer) drawer.classList.remove('open');
+  if (tabs) {
+    for (const t of tabs.querySelectorAll('.mob-tab')) t.classList.remove('active');
+  }
+  drawerOpen = false;
+  activeTab = null;
+}
+
+function restorePanels(): void {
+  // Panels are still in the DOM (hidden by CSS on mobile, shown on desktop).
+  // Cloned nodes in the drawer don't affect originals.
+}
+
+function buildMenuDrawer(): string {
+  return `
+    <div style="display:flex;flex-wrap:wrap;gap:6px;padding:4px 0;">
+      <button class="mob-menu-btn" data-action="seed">Seed</button>
+      <button class="mob-menu-btn" data-action="balance">Balance</button>
+      <button class="mob-menu-btn" data-action="biome">Biome</button>
+      <button class="mob-menu-btn" data-action="clear" style="color:#FF6B6B;">Clear</button>
+    </div>
+    <div style="display:flex;flex-wrap:wrap;gap:6px;padding:8px 0;border-top:1px solid #0C2D40;margin-top:8px;">
+      <button class="mob-menu-btn" data-action="save">Save</button>
+      <button class="mob-menu-btn" data-action="load">Load</button>
+      <button class="mob-menu-btn" data-action="dashboard">My Sims</button>
+      <button class="mob-menu-btn" data-action="leaderboard">Ranks</button>
+      <button class="mob-menu-btn" data-action="export">Export</button>
+    </div>
+    <div style="display:flex;flex-wrap:wrap;gap:6px;padding:8px 0;border-top:1px solid #0C2D40;margin-top:8px;">
+      <button class="mob-menu-btn" data-action="tree">Tree</button>
+      <button class="mob-menu-btn" data-action="settings">Settings</button>
+      <button class="mob-menu-btn" data-action="help">Help</button>
+      <button class="mob-menu-btn" data-action="account">Account</button>
+    </div>
+    <div style="display:flex;align-items:center;gap:6px;padding:8px 0;border-top:1px solid #0C2D40;margin-top:8px;">
+      <label style="color:#4A7A8A;font-size:0.7rem;display:flex;align-items:center;gap:4px;">
+        <input type="checkbox" id="mob-evo" style="accent-color:#00E5FF;"> Evolution
+      </label>
+    </div>
+    <style>
+      .mob-menu-btn {
+        font-family: 'Share Tech Mono', monospace; font-size: 0.7rem;
+        padding: 6px 14px; border: 1px solid #0C2D40; background: #0A1622; color: #7EE8FA;
+        cursor: pointer; border-radius: 3px;
+      }
+      .mob-menu-btn:active { background: #1B3A4B; }
+    </style>
+  `;
+}
+
+type MobileCallbacks = {
+  onPlay: () => void;
+  onStep: () => void;
+  onSpeed: (v: number) => void;
+  onAction: (action: string) => void;
+  onEvoToggle: (v: boolean) => void;
+  getPaletteClickHandler: () => ((id: number) => void) | null;
+};
+
+let _callbacks: MobileCallbacks | null = null;
+
+export function setMobileCallbacks(cb: MobileCallbacks): void {
+  _callbacks = cb;
+
+  const playBtn = document.getElementById('mob-play');
+  const stepBtn = document.getElementById('mob-step');
+  const speedSel = document.getElementById('mob-speed') as HTMLSelectElement | null;
+
+  if (playBtn) playBtn.addEventListener('click', () => cb.onPlay());
+  if (stepBtn) stepBtn.addEventListener('click', () => cb.onStep());
+  if (speedSel) speedSel.addEventListener('change', () => cb.onSpeed(parseInt(speedSel.value)));
+}
+
+export function updateMobileBar(gen: number, season: string, playing: boolean): void {
+  const genEl = document.getElementById('mob-gen');
+  const seasonEl = document.getElementById('mob-season');
+  const playBtn = document.getElementById('mob-play');
+  if (genEl) genEl.textContent = `GEN ${gen}`;
+  if (seasonEl) seasonEl.textContent = season;
+  if (playBtn) playBtn.textContent = playing ? 'Pause' : 'Play';
+}
+
+function wireClonedPalette(container: HTMLElement): void {
+  for (const btn of container.querySelectorAll('.sp-btn')) {
+    btn.addEventListener('click', () => {
+      const sid = parseInt((btn as HTMLElement).dataset.sid || '0');
+      if (!isNaN(sid) && _callbacks?.getPaletteClickHandler()) {
+        _callbacks.getPaletteClickHandler()!(sid);
+      }
+    });
+  }
+}
+
+function wireClonedSelects(container: HTMLElement): void {
+  const heatmapSel = container.querySelector('#heatmap-bar select') as HTMLSelectElement | null;
+  const scenarioSel = container.querySelector('#scenario-bar select') as HTMLSelectElement | null;
+  const origHeatmap = document.querySelector('#left-panel #heatmap-bar select') as HTMLSelectElement | null;
+  const origScenario = document.querySelector('#left-panel #scenario-bar select') as HTMLSelectElement | null;
+
+  if (heatmapSel && origHeatmap) {
+    heatmapSel.value = origHeatmap.value;
+    heatmapSel.addEventListener('change', () => {
+      origHeatmap.value = heatmapSel.value;
+      origHeatmap.dispatchEvent(new Event('change'));
+    });
+  }
+  if (scenarioSel && origScenario) {
+    scenarioSel.value = origScenario.value;
+    scenarioSel.addEventListener('change', () => {
+      origScenario.value = scenarioSel.value;
+      origScenario.dispatchEvent(new Event('change'));
+    });
+  }
+}
+
+function wireMenuButtons(container: HTMLElement): void {
+  for (const btn of container.querySelectorAll('.mob-menu-btn')) {
+    btn.addEventListener('click', () => {
+      const action = (btn as HTMLElement).dataset.action;
+      if (action && _callbacks) {
+        closeDrawer();
+        _callbacks.onAction(action);
+      }
+    });
+  }
+
+  const evoCheck = container.querySelector('#mob-evo') as HTMLInputElement | null;
+  const origEvo = document.getElementById('evo-toggle') as HTMLInputElement | null;
+  if (evoCheck && origEvo) {
+    evoCheck.checked = origEvo.checked;
+    evoCheck.addEventListener('change', () => {
+      if (_callbacks) _callbacks.onEvoToggle(evoCheck.checked);
+    });
+  }
+}
