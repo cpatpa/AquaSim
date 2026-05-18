@@ -1532,12 +1532,12 @@ function evolve() {
       const cRank = tierRank[csp.tier] ?? -1;
       if (cRank <= myRank || !csp.hungerMax) continue;
       const ces = evoStats[cid];
-      if (ces.eats.indexOf(id) !== -1) continue;
+      if (!ces || !ces.eats || ces.eats.indexOf(id) !== -1) continue;
       candidates.push(cid);
     }
     if (candidates.length > 0 && Math.random() < 0.25) {
       const winner = candidates[(Math.random() * candidates.length) | 0];
-      evoStats[winner].eats.push(id);
+      if (evoStats[winner] && evoStats[winner].eats) evoStats[winner].eats.push(id);
       addEvoEvent(SPECIES[winner].name + ' adapted to eat ' + sp.name + '!');
     }
   }
@@ -1547,6 +1547,7 @@ function evolve() {
     const sp = SPECIES[id];
     const es = evoStats[id];
     if (!sp.hungerMax || !sp.parentId) continue;
+    if (!es || !es.eats) continue;
     const popNow = now[id] || 0;
     if (popNow < 10) continue;
     if (Math.random() > SELF_PREDATION_CHANCE) continue;
@@ -1684,7 +1685,7 @@ function speciate() {
     const tmpMR = sp.moveRate ? clamp(sp.moveRate * (0.3 + newExp.bodyShape * 0.25 + newExp.curiosity * 0.20 + (1 - newExp.bodySize) * 0.15 + (1 - newExp.bodyArmour) * 0.10) * vigour, 0.02, 0.98) : 0;
     const tmpHM = sp.hungerMax ? clamp(Math.round(sp.hungerMax * (0.2 + newExp.bodySize * 0.25 + newExp.hungerEfficiency * 0.25 + (1 - newExp.metabolicRate) * 0.20 + 0.10) * vigour), 6, 80) : 0;
 
-    const newEats = es.eats.slice();
+    const newEats = (es.eats || []).slice();
     if (newEats.length > 1 && Math.random() < 0.15) {
       newEats.splice((Math.random() * newEats.length) | 0, 1);
     }
