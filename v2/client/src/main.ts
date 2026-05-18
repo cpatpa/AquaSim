@@ -690,11 +690,20 @@ renderFrame();
 updateUI();
 
 (async () => {
-  const restored = await tryRestoreSession();
+  let restored = false;
+  try {
+    restored = await tryRestoreSession();
+  } catch {
+    // session restore failed, show login
+  }
   if (!restored) {
-    const result = await showAuthModal();
-    if (result.action === 'skip') {
-      // continue without login
+    try {
+      const result = await showAuthModal();
+      if (result.action === 'skip') {
+        // continue without login
+      }
+    } catch {
+      // auth modal error, continue as guest
     }
   }
   updateUserBar();

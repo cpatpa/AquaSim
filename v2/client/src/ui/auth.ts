@@ -104,7 +104,7 @@ export function showAuthModal(): Promise<AuthResult> {
             </div>
             <div class="auth-field">
               <label class="auth-label">Password</label>
-              <input type="password" id="auth-pass" placeholder="Minimum 8 characters" autocomplete="new-password">
+              <input type="password" id="auth-pass" placeholder="Minimum 12 characters" autocomplete="new-password">
             </div>
           ` : `
             <div class="auth-field">
@@ -161,8 +161,8 @@ export function showAuthModal(): Promise<AuthResult> {
             errEl.textContent = 'All fields are required';
             return;
           }
-          if (passEl.value.length < 8) {
-            errEl.textContent = 'Password must be at least 8 characters';
+          if (passEl.value.length < 12) {
+            errEl.textContent = 'Password must be at least 12 characters';
             return;
           }
           try {

@@ -16,7 +16,7 @@ import { TOTP, Secret } from 'otpauth';
 const registerSchema = z.object({
   username: z.string().min(3).max(32).regex(/^[a-zA-Z0-9_-]+$/),
   email: z.string().email(),
-  password: z.string().min(8).max(128),
+  password: z.string().min(12).max(128),
   _bootstrapAdmin: z.boolean().optional(),
 });
 
@@ -29,7 +29,7 @@ const loginSchema = z.object({
 const promoteSchema = z.object({
   username: z.string().min(3).max(32).regex(/^[a-zA-Z0-9_-]+$/),
   email: z.string().email(),
-  password: z.string().min(8).max(128),
+  password: z.string().min(12).max(128),
 });
 
 const forgotPasswordSchema = z.object({
@@ -38,7 +38,7 @@ const forgotPasswordSchema = z.object({
 
 const resetPasswordSchema = z.object({
   token: z.string(),
-  password: z.string().min(8).max(128),
+  password: z.string().min(12).max(128),
 });
 
 const mfaVerifySchema = z.object({

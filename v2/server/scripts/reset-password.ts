@@ -90,8 +90,8 @@ async function main() {
 
   const password = await askHidden('  New password:     ');
 
-  if (password.length < 8) {
-    console.error('\n  Password must be at least 8 characters.');
+  if (password.length < 12) {
+    console.error('\n  Password must be at least 12 characters.');
     rl.close();
     await client.end();
     process.exit(1);

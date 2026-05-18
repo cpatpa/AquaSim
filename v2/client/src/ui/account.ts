@@ -88,7 +88,7 @@ export function openAccount(callbacks: AccountCallbacks): void {
               <div class="acct-msg" id="acct-promote-msg"></div>
               <input class="acct-input" id="acct-promote-user" placeholder="Username">
               <input class="acct-input" id="acct-promote-email" type="email" placeholder="Email">
-              <input class="acct-input" id="acct-promote-pass" type="password" placeholder="Password (min 8 chars)">
+              <input class="acct-input" id="acct-promote-pass" type="password" placeholder="Password (min 12 chars)">
               <button class="acct-btn acct-btn-primary" id="acct-promote-btn">Create Account</button>
             </div>
           ` : `
@@ -114,7 +114,7 @@ export function openAccount(callbacks: AccountCallbacks): void {
             <div class="acct-section">
               <div class="acct-section-title">Change Password</div>
               <div class="acct-msg" id="acct-pass-msg"></div>
-              <input class="acct-input" id="acct-new-pass" type="password" placeholder="New password (min 8 chars)">
+              <input class="acct-input" id="acct-new-pass" type="password" placeholder="New password (min 12 chars)">
               <input class="acct-input" id="acct-confirm-pass" type="password" placeholder="Confirm new password">
               <button class="acct-btn acct-btn-secondary" id="acct-change-pass">Update Password</button>
             </div>
@@ -156,7 +156,7 @@ export function openAccount(callbacks: AccountCallbacks): void {
       msg.className = 'acct-msg';
       msg.textContent = '';
       if (!u || !e || !p) { msg.className = 'acct-msg acct-msg-err'; msg.textContent = 'All fields required'; return; }
-      if (p.length < 8) { msg.className = 'acct-msg acct-msg-err'; msg.textContent = 'Password must be at least 8 characters'; return; }
+      if (p.length < 12) { msg.className = 'acct-msg acct-msg-err'; msg.textContent = 'Password must be at least 12 characters'; return; }
       try {
         await promoteGuest(u, e, p);
         msg.className = 'acct-msg acct-msg-ok';
@@ -232,7 +232,7 @@ export function openAccount(callbacks: AccountCallbacks): void {
       msg.className = 'acct-msg';
       msg.textContent = '';
       if (!newPass) { msg.className = 'acct-msg acct-msg-err'; msg.textContent = 'Enter a new password'; return; }
-      if (newPass.length < 8) { msg.className = 'acct-msg acct-msg-err'; msg.textContent = 'Password must be at least 8 characters'; return; }
+      if (newPass.length < 12) { msg.className = 'acct-msg acct-msg-err'; msg.textContent = 'Password must be at least 12 characters'; return; }
       if (newPass !== confirm) { msg.className = 'acct-msg acct-msg-err'; msg.textContent = 'Passwords do not match'; return; }
       try {
         await resetPassword('', newPass);
