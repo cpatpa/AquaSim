@@ -11,6 +11,8 @@
     "dev": "npm run dev --workspace=client",
     "dev:server": "npm run dev --workspace=server",
     "build": "npm run build --workspaces",
-    "typecheck": "npm run typecheck --workspaces --if-present"
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "create-admin": "npm run create-admin --workspace=server",
+    "reset-password": "npm run reset-password --workspace=server"
   }
 }
