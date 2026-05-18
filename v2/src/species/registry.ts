@@ -89,6 +89,11 @@ export function removeFromTierGroups(speciesId: number): void {
   }
 }
 
+export function removeDynamicSpeciesId(speciesId: number): void {
+  const idx = dynamicSpeciesIds.indexOf(speciesId);
+  if (idx !== -1) dynamicSpeciesIds.splice(idx, 1);
+}
+
 export function resetDynamicSpecies(): void {
   for (const did of dynamicSpeciesIds) {
     delete SPECIES[did];

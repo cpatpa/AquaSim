@@ -45,6 +45,7 @@ import {
   layerOf,
   layersCanReach,
   removeFromTierGroups,
+  removeDynamicSpeciesId,
 } from '../species/registry';
 
 import { getSpeciesSynergies, hasSynergy } from '../evolution/traits';
@@ -1787,7 +1788,7 @@ export function step(ctx: StepContext): StepResult {
           }
           const li = LIVING_IDS.indexOf(did);
           if (li !== -1) LIVING_IDS.splice(li, 1);
-          // Remove from dynamic IDs through the registry
+          removeDynamicSpeciesId(did);
           removeFromTierGroups(did);
           // Remove from all species' eats lists
           for (const oid of getLivingIds()) {

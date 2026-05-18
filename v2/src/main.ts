@@ -29,6 +29,8 @@ import { openHelp, closeHelp, injectHelpStyles } from './ui/help';
 import { SCENARIOS, getScenario } from './environment/scenarios';
 import { drawHeatmapOverlay, HEATMAP_MODES } from './renderer/heatmap';
 import type { HeatmapMode } from './renderer/heatmap';
+import { tierImmigration } from './evolution/immigration';
+import type { ImmigrationContext } from './evolution/immigration';
 
 noiseSeed(Date.now());
 
@@ -207,6 +209,21 @@ function buildEvoContext(): EvoContext {
   };
 }
 
+function buildImmigrationContext(): ImmigrationContext {
+  return {
+    evoStats: sim.evoStats,
+    popHistory: sim.history.popHistory,
+    species: sim.grid.species,
+    hunger: sim.grid.hunger,
+    age: sim.grid.age,
+    gridW: sim.grid.width,
+    gridH: sim.grid.height,
+    generation: sim.generation,
+    maxTraitsPerSpecies: sim.maxTraitsPerSpecies,
+    history: sim.history,
+  };
+}
+
 function doStep(): void {
   const ctx: StepContext = {
     grid: sim.grid,
@@ -231,6 +248,7 @@ function doStep(): void {
     },
     onSpeciate: () => { speciate(buildEvoContext()); },
     onNicheShift: () => { nicheShift(buildEvoContext()); },
+    onTierImmigration: () => { tierImmigration(buildImmigrationContext()); },
   };
 
   const result: StepResult = step(ctx);
