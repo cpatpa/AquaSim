@@ -632,30 +632,43 @@ const TRAITS = {
   // --- Body plan traits ---
   dwarfism:    { name: 'Dwarfism',    icon: 'd', desc: '-35% hunger needed but can be eaten by same tier',                    eligible: t => t !== 'producer' && t !== 'decomposer' },
   gigantism:   { name: 'Gigantism',   icon: 'G', desc: '+40% hunger needed but 30% chance predators miss',                    eligible: t => t !== 'producer' && t !== 'decomposer' },
-  colonial:    { name: 'Colonial',    icon: 'C', desc: 'Adjacent same-species share hunger — averages across cluster',         eligible: t => t === 'producer' || t === 'decomposer' || t === 'herbivore' },
+  colonial:    { name: 'Colonial',    icon: 'C', desc: 'Adjacent same-species share hunger, averages across cluster',         eligible: t => t === 'producer' || t === 'decomposer' || t === 'herbivore' },
 
-  // --- Social / behavioral traits ---
+  // --- Social / behavioural traits ---
   territorial: { name: 'Territorial', icon: 'T', desc: 'Kills same-species neighbours when crowded, but +60% breed when alone', eligible: t => t === 'apex' || t === 'consumer' },
   maternal:    { name: 'Maternal',    icon: '♀', desc: 'Offspring start well-fed (0 hunger) and get +15% stats',               eligible: t => t !== 'producer' },
-  biofilm:     { name: 'Biofilm',     icon: 'b', desc: 'Forms protective clusters — 35% damage reduction when 3+ adjacent',    eligible: t => t === 'decomposer' || t === 'producer' },
+  biofilm:     { name: 'Biofilm',     icon: 'b', desc: 'Forms protective clusters, 35% damage reduction when 3+ adjacent',    eligible: t => t === 'decomposer' || t === 'producer' },
   allelopathy: { name: 'Allelopathy', icon: 'X', desc: 'Inhibits other producer species growth within 2 tiles',                eligible: t => t === 'producer' },
+
+  // --- New traits (Phase 4) ---
+  streamlined: { name: 'Streamlined', icon: '»', desc: '+30% speed, +15% hunt success, -20% armour',                          eligible: t => t === 'consumer' || t === 'apex' || t === 'megafauna' },
+  chromatophores:{ name: 'Chromatophores', icon: '◈', desc: 'Active camouflage, better than static camo',                     eligible: t => t !== 'producer' },
+  torpor:      { name: 'Torpor',      icon: '◌', desc: 'Low-metabolism state when starving, survives longer',                  eligible: t => t !== 'producer' },
+  hypermetabolism:{ name: 'Hypermetabolism', icon: '⚡', desc: '2x breed rate but 2x hunger rate',                             eligible: t => t !== 'producer' && t !== 'decomposer' },
+  cooperativehunt:{ name: 'Co-op Hunt', icon: '⊕', desc: 'Group feeds entire pack on successful kill',                        eligible: t => t === 'consumer' || t === 'apex' },
+  parentalinvest:{ name: 'Parental', icon: '◇', desc: 'Offspring start at 0 hunger with +20% stats',                           eligible: t => t !== 'producer' },
+  thermosensing:{ name: 'Thermosense', icon: '◎', desc: 'Detects warm-blooded prey, immune to temperature events',             eligible: t => t === 'apex' || t === 'consumer' },
+  lateralline: { name: 'Lateral Line', icon: '≈', desc: 'Detects movement within 3 tiles',                                    eligible: t => t !== 'producer' && t !== 'decomposer' },
 };
 const TRAIT_KEYS = Object.keys(TRAITS);
-const TRAIT_ACQUIRE_CHANCE = 0.12; // chance per evo cycle per eligible species
-const MAX_TRAITS_PER_SPECIES = 3;
+const TRAIT_ACQUIRE_CHANCE = 0.12;
+const MAX_TRAITS_PER_SPECIES = 5;
 
-// Mutually exclusive trait groups — a species can only have one trait from each group
 const EXCLUSIVE_TRAIT_GROUPS = [
-  ['coldadapt', 'warmadapt'],       // temperature specialization
-  ['nocturnal', 'diurnal'],         // activity cycle
-  ['camouflage', 'bioluminesc', 'mimicry'], // visibility strategy
-  ['shell', 'softshell', 'armored'],// body protection
-  ['dwarfism', 'gigantism'],        // body size
-  ['ambush', 'stalker'],            // hunting strategy
-  ['thorns', 'allelopathy'],        // producer competition strategy
-  ['deeproot', 'regrowth', 'nitrofix'], // producer survival strategy
-  ['packhunter', 'trapjaw'],        // attack specialization
-  ['inkcloud', 'poddefense'],       // evasion strategy
+  ['coldadapt', 'warmadapt'],
+  ['nocturnal', 'diurnal'],
+  ['camouflage', 'bioluminesc', 'mimicry', 'chromatophores'],
+  ['shell', 'softshell', 'armored'],
+  ['dwarfism', 'gigantism'],
+  ['ambush', 'stalker'],
+  ['thorns', 'allelopathy'],
+  ['deeproot', 'regrowth', 'nitrofix'],
+  ['packhunter', 'trapjaw', 'cooperativehunt'],
+  ['inkcloud', 'poddefense'],
+  ['maternal', 'parentalinvest'],
+  ['torpor', 'hypermetabolism'],
+  ['echoloc', 'lateralline', 'thermosensing'],
+  ['regen', 'photosyn'],
 ];
 const PRODUCER_DEFENCE_TRAITS = ['thorns', 'toxic', 'deeproot', 'allelopathy', 'biofilm'];
 const MAX_PRODUCER_DEFENCE_TRAITS = 2;
@@ -672,68 +685,140 @@ const TRAIT_DEGRADE_GENS = 4;     // evo cycles of non-use before trait degrades
 const TRAIT_LOCAL_RADIUS = 8;     // trait acquisition only converts cells within this radius
 
 // ============================================================
-// 1c. GENE POOL SYSTEM
+// 1c. GENE POOL SYSTEM — 16 diploid genes in 4 clusters
 // ============================================================
-const GENE_KEYS = ['v', 's', 'f', 'a', 'p', 'o'];
-const GENE_NAMES = { v: 'Vigour', s: 'Speed', f: 'Fortitude', a: 'Armour', p: 'Predation', o: 'Sociality' };
-const TIER_GENE_NAMES = {
-  producer:   { s: 'Dispersal', p: 'Toxicity',  a: 'Toughness' },
-  decomposer: { s: 'Motility',  p: 'Digestion',  a: 'Resistance' },
+const GENE_KEYS = [
+  'bodySize', 'bodyArmour', 'bodyShape', 'pigment',
+  'metabolicRate', 'fertility', 'hungerEfficiency', 'growthRate',
+  'aggression', 'sociality', 'curiosity', 'flightResponse',
+  'visionRange', 'chemosensory', 'thermalAdapt', 'pressureAdapt',
+];
+const GENE_CLUSTERS = {
+  Morphology: ['bodySize', 'bodyArmour', 'bodyShape', 'pigment'],
+  Metabolism: ['metabolicRate', 'fertility', 'hungerEfficiency', 'growthRate'],
+  Behaviour:  ['aggression', 'sociality', 'curiosity', 'flightResponse'],
+  Sensory:    ['visionRange', 'chemosensory', 'thermalAdapt', 'pressureAdapt'],
 };
-const GENE_COLORS = { v: '#44FF88', s: '#44CCFF', f: '#FFAA44', a: '#AAAACC', p: '#FF4466', o: '#CC88FF' };
-const GENE_MUTATION_SD = 0.06;
+const GENE_CLUSTER_OF = {};
+for (const cl in GENE_CLUSTERS) for (const g of GENE_CLUSTERS[cl]) GENE_CLUSTER_OF[g] = cl;
+const GENE_NAMES = {
+  bodySize: 'Body Size', bodyArmour: 'Armour', bodyShape: 'Streamline', pigment: 'Pigment',
+  metabolicRate: 'Metabolism', fertility: 'Fertility', hungerEfficiency: 'Efficiency', growthRate: 'Growth',
+  aggression: 'Aggression', sociality: 'Sociality', curiosity: 'Curiosity', flightResponse: 'Flight Resp.',
+  visionRange: 'Vision', chemosensory: 'Chemosense', thermalAdapt: 'Thermal', pressureAdapt: 'Pressure',
+};
+const GENE_COLORS = {
+  bodySize: '#AACCEE', bodyArmour: '#AAAACC', bodyShape: '#44CCFF', pigment: '#FFAACC',
+  metabolicRate: '#FF8844', fertility: '#44FF88', hungerEfficiency: '#FFAA44', growthRate: '#88FF44',
+  aggression: '#FF4466', sociality: '#CC88FF', curiosity: '#44DDFF', flightResponse: '#FFDD44',
+  visionRange: '#88EEFF', chemosensory: '#88FFCC', thermalAdapt: '#FF8866', pressureAdapt: '#6688CC',
+};
+const GENE_MUTATION_SD = 0.05;
 
 const TIER_DEFAULT_GENES = {
-  producer:   { v: 0.50, s: 0.10, f: 0.45, a: 0.32, p: 0.08, o: 0.28 },
-  herbivore:  { v: 0.42, s: 0.38, f: 0.38, a: 0.28, p: 0.18, o: 0.36 },
-  consumer:   { v: 0.32, s: 0.45, f: 0.40, a: 0.24, p: 0.48, o: 0.28 },
-  apex:       { v: 0.22, s: 0.48, f: 0.45, a: 0.28, p: 0.52, o: 0.18 },
-  megafauna:  { v: 0.18, s: 0.32, f: 0.58, a: 0.35, p: 0.48, o: 0.42 },
-  decomposer: { v: 0.42, s: 0.28, f: 0.42, a: 0.18, p: 0.12, o: 0.32 },
+  producer:   { bodySize:0.35, bodyArmour:0.25, bodyShape:0.20, pigment:0.50, metabolicRate:0.30, fertility:0.55, hungerEfficiency:0.50, growthRate:0.60, aggression:0.05, sociality:0.30, curiosity:0.10, flightResponse:0.10, visionRange:0.05, chemosensory:0.40, thermalAdapt:0.40, pressureAdapt:0.40 },
+  herbivore:  { bodySize:0.35, bodyArmour:0.30, bodyShape:0.45, pigment:0.40, metabolicRate:0.45, fertility:0.42, hungerEfficiency:0.42, growthRate:0.45, aggression:0.15, sociality:0.40, curiosity:0.40, flightResponse:0.45, visionRange:0.30, chemosensory:0.35, thermalAdapt:0.40, pressureAdapt:0.35 },
+  consumer:   { bodySize:0.40, bodyArmour:0.22, bodyShape:0.55, pigment:0.35, metabolicRate:0.50, fertility:0.32, hungerEfficiency:0.40, growthRate:0.40, aggression:0.50, sociality:0.28, curiosity:0.50, flightResponse:0.30, visionRange:0.45, chemosensory:0.30, thermalAdapt:0.40, pressureAdapt:0.40 },
+  apex:       { bodySize:0.55, bodyArmour:0.30, bodyShape:0.60, pigment:0.30, metabolicRate:0.45, fertility:0.20, hungerEfficiency:0.45, growthRate:0.30, aggression:0.60, sociality:0.18, curiosity:0.45, flightResponse:0.20, visionRange:0.55, chemosensory:0.35, thermalAdapt:0.40, pressureAdapt:0.45 },
+  megafauna:  { bodySize:0.75, bodyArmour:0.35, bodyShape:0.45, pigment:0.30, metabolicRate:0.35, fertility:0.15, hungerEfficiency:0.55, growthRate:0.20, aggression:0.45, sociality:0.45, curiosity:0.35, flightResponse:0.15, visionRange:0.50, chemosensory:0.40, thermalAdapt:0.45, pressureAdapt:0.50 },
+  decomposer: { bodySize:0.25, bodyArmour:0.15, bodyShape:0.30, pigment:0.30, metabolicRate:0.55, fertility:0.50, hungerEfficiency:0.45, growthRate:0.55, aggression:0.10, sociality:0.35, curiosity:0.30, flightResponse:0.20, visionRange:0.15, chemosensory:0.50, thermalAdapt:0.40, pressureAdapt:0.35 },
 };
 
-const TRAIT_GENE_REQS = {
-  camouflage:  { genes: { a: 0.50 }, anti: { p: 0.35 } },
-  toxic:       { genes: { a: 0.55, f: 0.45 } },
-  shell:       { genes: { a: 0.70 }, anti: { s: 0.40 } },
-  thorns:      { genes: { a: 0.60 } },
-  deeproot:    { genes: { f: 0.65 } },
-  regrowth:    { genes: { v: 0.70 }, anti: { f: 0.55, o: 0.40 } },
-  softshell:   { genes: { s: 0.50 }, anti: { a: 0.20 } },
-  armored:     { genes: { a: 0.60, s: 0.45, f: 0.45 } },
-  inkcloud:    { genes: { s: 0.55, a: 0.35 }, anti: { o: 0.40 } },
-  mimicry:     { genes: { a: 0.45, p: 0.40 } },
-  regen:       { genes: { f: 0.65, v: 0.45 } },
-  ambush:      { genes: { p: 0.65 }, anti: { s: 0.40 } },
-  bioluminesc: { genes: { p: 0.55, o: 0.35 }, anti: { a: 0.40 } },
-  echoloc:     { genes: { p: 0.60, s: 0.40 } },
-  packhunter:  { genes: { p: 0.55, o: 0.60 } },
-  venomous:    { genes: { p: 0.60, a: 0.35 } },
-  stalker:     { genes: { p: 0.70, s: 0.65 } },
-  trapjaw:     { genes: { p: 0.85 }, anti: { o: 0.40 } },
-  bulkfeeder:  { genes: { p: 0.60, f: 0.55 } },
-  symbiosis:   { genes: { o: 0.50, f: 0.40 } },
-  lithivore:   { genes: { f: 0.55, p: 0.30 } },
-  parasite:    { genes: { p: 0.45 }, anti: { o: 0.30 } },
-  scavenger:   { genes: { f: 0.50 } },
-  photosyn:    { genes: { f: 0.55 } },
-  nitrofix:    { genes: { v: 0.60, o: 0.45 }, anti: { f: 0.60 } },
-  filterfeeder:{ genes: { f: 0.50, o: 0.30 } },
-  coldadapt:   { genes: { f: 0.55 }, anti: { v: 0.45 } },
-  warmadapt:   { genes: { v: 0.55 }, anti: { f: 0.45 } },
-  nocturnal:   { genes: { p: 0.40 }, anti: { s: 0.45 } },
-  diurnal:     { genes: { v: 0.45, s: 0.50 } },
-  migratory:   { genes: { s: 0.65, f: 0.50 } },
-  dwarfism:    { genes: { s: 0.55 }, anti: { f: 0.35 } },
-  gigantism:   { genes: { f: 0.75 }, anti: { v: 0.35 } },
-  colonial:    { genes: { o: 0.60, v: 0.35 } },
-  schooling:   { genes: { o: 0.65, v: 0.40 } },
-  territorial: { genes: { p: 0.55 }, anti: { o: 0.30 } },
-  maternal:    { genes: { o: 0.50, v: 0.45 } },
-  biofilm:     { genes: { o: 0.50, a: 0.35 } },
-  allelopathy: { genes: { p: 0.45 }, anti: { a: 0.50 } },
-  spore:       { genes: { v: 0.60, s: 0.30 } },
-  poddefense:  { genes: { o: 0.65, a: 0.45 } },
+// Epistasis rules: gene interactions that modify expression
+const EPISTASIS = [
+  { from: 'bodySize', to: 'bodyArmour', fn: function(s, a) { return a * (0.7 + s * 0.6); } },
+  { from: 'bodySize', to: 'curiosity', fn: function(s, c) { return c * (1.3 - s * 0.6); } },
+  { from: 'metabolicRate', to: 'fertility', fn: function(m, f) { return f * (0.5 + m * 0.8); } },
+  { from: 'aggression', to: 'sociality', fn: function(a, s) { return s * (1.2 - a * 0.5); } },
+  { from: 'bodyShape', to: 'bodyArmour', fn: function(sh, a) { return a * (0.5 + sh * 0.8); } },
+];
+
+function expressGene(gene) {
+  if (typeof gene === 'number') return gene;
+  var stronger = gene.a1 > gene.a2 ? gene.a1 : gene.a2;
+  var weaker = gene.a1 > gene.a2 ? gene.a2 : gene.a1;
+  return stronger * gene.dom + weaker * (1 - gene.dom);
+}
+
+function expressAllGenes(genes) {
+  var exp = {};
+  for (var i = 0; i < GENE_KEYS.length; i++) {
+    exp[GENE_KEYS[i]] = expressGene(genes[GENE_KEYS[i]]);
+  }
+  for (var ei = 0; ei < EPISTASIS.length; ei++) {
+    var rule = EPISTASIS[ei];
+    exp[rule.to] = clamp(rule.fn(exp[rule.from], exp[rule.to]), 0, 1);
+  }
+  return exp;
+}
+
+function geneHeterozygosity(gene) {
+  if (typeof gene === 'number') return 0;
+  return Math.abs(gene.a1 - gene.a2);
+}
+
+function speciesGeneticDiversity(sid) {
+  var es = evoStats[sid];
+  if (!es || !es.genes) return 0;
+  var sum = 0;
+  for (var i = 0; i < GENE_KEYS.length; i++) {
+    sum += geneHeterozygosity(es.genes[GENE_KEYS[i]]);
+  }
+  return sum / GENE_KEYS.length;
+}
+
+// Polygenic trait requirements: each trait needs multiple genes above thresholds
+const TRAIT_POLYGENIC = {
+  camouflage:   { requires: [{g:'pigment',min:0.50},{g:'flightResponse',min:0.35}], inhibits: [{g:'aggression',max:0.40}], strength: function(e){return 0.6*e.pigment+0.4*e.flightResponse;} },
+  toxic:        { requires: [{g:'chemosensory',min:0.45},{g:'bodyArmour',min:0.35}], inhibits: [], strength: function(e){return 0.5*e.chemosensory+0.5*e.bodyArmour;} },
+  shell:        { requires: [{g:'bodyArmour',min:0.60},{g:'bodySize',min:0.30}], inhibits: [{g:'bodyShape',max:0.55}], strength: function(e){return 0.8*e.bodyArmour+0.2*e.bodySize;} },
+  thorns:       { requires: [{g:'bodyArmour',min:0.50},{g:'chemosensory',min:0.30}], inhibits: [], strength: function(e){return 0.7*e.bodyArmour+0.3*e.chemosensory;} },
+  deeproot:     { requires: [{g:'pressureAdapt',min:0.50},{g:'hungerEfficiency',min:0.40}], inhibits: [], strength: function(e){return 0.6*e.pressureAdapt+0.4*e.hungerEfficiency;} },
+  regrowth:     { requires: [{g:'fertility',min:0.60},{g:'growthRate',min:0.50}], inhibits: [{g:'bodyArmour',max:0.45}], strength: function(e){return 0.5*e.fertility+0.5*e.growthRate;} },
+  softshell:    { requires: [{g:'bodyShape',min:0.45},{g:'curiosity',min:0.35}], inhibits: [{g:'bodyArmour',max:0.25}], strength: function(e){return 0.5*e.bodyShape+0.5*e.curiosity;} },
+  armored:      { requires: [{g:'bodyArmour',min:0.55},{g:'bodySize',min:0.35},{g:'bodyShape',min:0.30}], inhibits: [], strength: function(e){return 0.6*e.bodyArmour+0.2*e.bodySize+0.2*e.bodyShape;} },
+  inkcloud:     { requires: [{g:'flightResponse',min:0.50},{g:'bodyShape',min:0.40}], inhibits: [{g:'sociality',max:0.45}], strength: function(e){return 0.6*e.flightResponse+0.4*e.bodyShape;} },
+  mimicry:      { requires: [{g:'pigment',min:0.45},{g:'aggression',min:0.30}], inhibits: [], strength: function(e){return 0.6*e.pigment+0.4*e.aggression;} },
+  regen:        { requires: [{g:'hungerEfficiency',min:0.55},{g:'fertility',min:0.40}], inhibits: [], strength: function(e){return 0.6*e.hungerEfficiency+0.4*e.fertility;} },
+  ambush:       { requires: [{g:'aggression',min:0.55},{g:'visionRange',min:0.35}], inhibits: [{g:'curiosity',max:0.40}], strength: function(e){return 0.6*e.aggression+0.4*e.visionRange;} },
+  bioluminesc:  { requires: [{g:'pigment',min:0.50},{g:'visionRange',min:0.35}], inhibits: [{g:'bodyArmour',max:0.45}], strength: function(e){return 0.5*e.pigment+0.5*e.visionRange;} },
+  echoloc:      { requires: [{g:'visionRange',min:0.55},{g:'curiosity',min:0.35}], inhibits: [], strength: function(e){return 0.7*e.visionRange+0.3*e.curiosity;} },
+  packhunter:   { requires: [{g:'aggression',min:0.45},{g:'sociality',min:0.50},{g:'visionRange',min:0.30}], inhibits: [], strength: function(e){return 0.4*e.aggression+0.4*e.sociality+0.2*e.visionRange;} },
+  venomous:     { requires: [{g:'chemosensory',min:0.50},{g:'aggression',min:0.40}], inhibits: [], strength: function(e){return 0.5*e.chemosensory+0.5*e.aggression;} },
+  stalker:      { requires: [{g:'aggression',min:0.55},{g:'curiosity',min:0.50},{g:'bodyShape',min:0.45}], inhibits: [], strength: function(e){return 0.4*e.aggression+0.3*e.curiosity+0.3*e.bodyShape;} },
+  trapjaw:      { requires: [{g:'aggression',min:0.75},{g:'bodySize',min:0.40}], inhibits: [{g:'sociality',max:0.35}], strength: function(e){return 0.8*e.aggression+0.2*e.bodySize;} },
+  bulkfeeder:   { requires: [{g:'bodySize',min:0.55},{g:'hungerEfficiency',min:0.45}], inhibits: [], strength: function(e){return 0.5*e.bodySize+0.5*e.hungerEfficiency;} },
+  symbiosis:    { requires: [{g:'sociality',min:0.45},{g:'chemosensory',min:0.35}], inhibits: [], strength: function(e){return 0.5*e.sociality+0.5*e.chemosensory;} },
+  lithivore:    { requires: [{g:'pressureAdapt',min:0.45},{g:'hungerEfficiency',min:0.35}], inhibits: [], strength: function(e){return 0.5*e.pressureAdapt+0.5*e.hungerEfficiency;} },
+  parasite:     { requires: [{g:'chemosensory',min:0.40},{g:'aggression',min:0.30}], inhibits: [{g:'sociality',max:0.35}], strength: function(e){return 0.5*e.chemosensory+0.5*e.aggression;} },
+  scavenger:    { requires: [{g:'chemosensory',min:0.40},{g:'hungerEfficiency',min:0.35}], inhibits: [], strength: function(e){return 0.5*e.chemosensory+0.5*e.hungerEfficiency;} },
+  photosyn:     { requires: [{g:'hungerEfficiency',min:0.50},{g:'pigment',min:0.35}], inhibits: [], strength: function(e){return 0.5*e.hungerEfficiency+0.5*e.pigment;} },
+  nitrofix:     { requires: [{g:'fertility',min:0.55},{g:'chemosensory',min:0.40}], inhibits: [{g:'bodyArmour',max:0.50}], strength: function(e){return 0.5*e.fertility+0.5*e.chemosensory;} },
+  filterfeeder: { requires: [{g:'hungerEfficiency',min:0.45},{g:'sociality',min:0.30}], inhibits: [], strength: function(e){return 0.6*e.hungerEfficiency+0.4*e.sociality;} },
+  coldadapt:    { requires: [{g:'thermalAdapt',min:0.55},{g:'hungerEfficiency',min:0.35}], inhibits: [{g:'metabolicRate',max:0.55}], strength: function(e){return 0.7*e.thermalAdapt+0.3*e.hungerEfficiency;} },
+  warmadapt:    { requires: [{g:'metabolicRate',min:0.50},{g:'thermalAdapt',min:0.35}], inhibits: [{g:'hungerEfficiency',max:0.55}], strength: function(e){return 0.5*e.metabolicRate+0.5*e.thermalAdapt;} },
+  nocturnal:    { requires: [{g:'visionRange',min:0.40},{g:'flightResponse',min:0.30}], inhibits: [{g:'curiosity',max:0.50}], strength: function(e){return 0.6*e.visionRange+0.4*e.flightResponse;} },
+  diurnal:      { requires: [{g:'fertility',min:0.40},{g:'curiosity',min:0.40}], inhibits: [], strength: function(e){return 0.5*e.fertility+0.5*e.curiosity;} },
+  migratory:    { requires: [{g:'curiosity',min:0.55},{g:'bodyShape',min:0.45}], inhibits: [], strength: function(e){return 0.5*e.curiosity+0.5*e.bodyShape;} },
+  dwarfism:     { requires: [{g:'bodyShape',min:0.50}], inhibits: [{g:'bodySize',max:0.35}], strength: function(e){return 0.6*e.bodyShape+0.4*(1-e.bodySize);} },
+  gigantism:    { requires: [{g:'bodySize',min:0.65},{g:'hungerEfficiency',min:0.40}], inhibits: [{g:'fertility',max:0.40}], strength: function(e){return 0.7*e.bodySize+0.3*e.hungerEfficiency;} },
+  colonial:     { requires: [{g:'sociality',min:0.50},{g:'growthRate',min:0.35}], inhibits: [], strength: function(e){return 0.6*e.sociality+0.4*e.growthRate;} },
+  schooling:    { requires: [{g:'sociality',min:0.55},{g:'flightResponse',min:0.30}], inhibits: [], strength: function(e){return 0.6*e.sociality+0.4*e.flightResponse;} },
+  territorial:  { requires: [{g:'aggression',min:0.50},{g:'bodySize',min:0.35}], inhibits: [{g:'sociality',max:0.35}], strength: function(e){return 0.6*e.aggression+0.4*e.bodySize;} },
+  maternal:     { requires: [{g:'sociality',min:0.45},{g:'fertility',min:0.35}], inhibits: [], strength: function(e){return 0.5*e.sociality+0.5*e.fertility;} },
+  biofilm:      { requires: [{g:'sociality',min:0.40},{g:'chemosensory',min:0.30}], inhibits: [], strength: function(e){return 0.5*e.sociality+0.5*e.chemosensory;} },
+  allelopathy:  { requires: [{g:'chemosensory',min:0.45},{g:'aggression',min:0.25}], inhibits: [{g:'bodyArmour',max:0.45}], strength: function(e){return 0.6*e.chemosensory+0.4*e.aggression;} },
+  spore:        { requires: [{g:'fertility',min:0.50},{g:'growthRate',min:0.35}], inhibits: [], strength: function(e){return 0.5*e.fertility+0.5*e.growthRate;} },
+  poddefense:   { requires: [{g:'sociality',min:0.55},{g:'flightResponse',min:0.40}], inhibits: [], strength: function(e){return 0.5*e.sociality+0.5*e.flightResponse;} },
+  // New traits
+  streamlined:  { requires: [{g:'bodyShape',min:0.60},{g:'curiosity',min:0.40}], inhibits: [{g:'bodyArmour',max:0.35}], strength: function(e){return 0.6*e.bodyShape+0.4*e.curiosity;} },
+  chromatophores:{ requires: [{g:'pigment',min:0.55},{g:'flightResponse',min:0.45}], inhibits: [], strength: function(e){return 0.5*e.pigment+0.5*e.flightResponse;} },
+  torpor:       { requires: [{g:'hungerEfficiency',min:0.55},{g:'pressureAdapt',min:0.40}], inhibits: [{g:'metabolicRate',max:0.35}], strength: function(e){return 0.6*e.hungerEfficiency+0.4*e.pressureAdapt;} },
+  hypermetabolism:{ requires: [{g:'metabolicRate',min:0.65},{g:'fertility',min:0.50}], inhibits: [], strength: function(e){return 0.5*e.metabolicRate+0.5*e.fertility;} },
+  cooperativehunt:{ requires: [{g:'sociality',min:0.60},{g:'aggression',min:0.45},{g:'visionRange',min:0.35}], inhibits: [], strength: function(e){return 0.4*e.sociality+0.4*e.aggression+0.2*e.visionRange;} },
+  parentalinvest:{ requires: [{g:'sociality',min:0.45},{g:'growthRate',min:0.35}], inhibits: [{g:'fertility',max:0.45}], strength: function(e){return 0.5*e.sociality+0.5*e.growthRate;} },
+  thermosensing:{ requires: [{g:'thermalAdapt',min:0.55},{g:'chemosensory',min:0.40}], inhibits: [], strength: function(e){return 0.6*e.thermalAdapt+0.4*e.chemosensory;} },
+  lateralline:  { requires: [{g:'pressureAdapt',min:0.45},{g:'visionRange',min:0.40}], inhibits: [], strength: function(e){return 0.5*e.pressureAdapt+0.5*e.visionRange;} },
 };
 
 const NOVEL_ADAPTATIONS = {
@@ -763,12 +848,22 @@ function hasNovelAdapt(sid, key) {
 }
 
 const GENE_NAME_POOLS = {
-  v: ['Prolific', 'Thriving', 'Fecund', 'Blooming', 'Verdant'],
-  s: ['Swift', 'Darting', 'Fleet', 'Agile', 'Racing'],
-  f: ['Hardy', 'Stalwart', 'Ironclad', 'Enduring', 'Rugged'],
-  a: ['Plated', 'Spiny', 'Shielded', 'Thorned', 'Mailed'],
-  p: ['Fierce', 'Razor', 'Fanged', 'Savage', 'Vicious'],
-  o: ['Swarming', 'Herding', 'Colonial', 'Gregarious', 'Social'],
+  bodySize: ['Massive', 'Hulking', 'Titan', 'Colossal', 'Bulky'],
+  bodyArmour: ['Plated', 'Spiny', 'Shielded', 'Thorned', 'Mailed'],
+  bodyShape: ['Swift', 'Darting', 'Fleet', 'Agile', 'Racing'],
+  pigment: ['Vivid', 'Bright', 'Painted', 'Chromatic', 'Iridescent'],
+  metabolicRate: ['Blazing', 'Active', 'Restless', 'Energetic', 'Burning'],
+  fertility: ['Prolific', 'Thriving', 'Fecund', 'Blooming', 'Verdant'],
+  hungerEfficiency: ['Hardy', 'Stalwart', 'Ironclad', 'Enduring', 'Rugged'],
+  growthRate: ['Precocious', 'Rapid', 'Budding', 'Surging', 'Vigorous'],
+  aggression: ['Fierce', 'Razor', 'Fanged', 'Savage', 'Vicious'],
+  sociality: ['Swarming', 'Herding', 'Colonial', 'Gregarious', 'Social'],
+  curiosity: ['Roaming', 'Wandering', 'Explorer', 'Nomadic', 'Drifting'],
+  flightResponse: ['Elusive', 'Wary', 'Skittish', 'Cautious', 'Phantom'],
+  visionRange: ['Keen', 'Watchful', 'Sharp-eyed', 'Sentinel', 'Scanning'],
+  chemosensory: ['Sensing', 'Chemical', 'Tasting', 'Olfactory', 'Sensing'],
+  thermalAdapt: ['Thermal', 'Adapted', 'Temperate', 'Hardened', 'Resilient'],
+  pressureAdapt: ['Deep', 'Abyssal', 'Benthic', 'Crushing', 'Pressure'],
 };
 const NICHE_SHIFT_NAMES = {
   consumer: ['Hunter', 'Predatory', 'Prowling', 'Raptor'],
@@ -847,8 +942,12 @@ let lastEvoGen  = 0;   // generation of last evo event
 let radiationBoost = 0; // evo events remaining with boosted mutation (post-disaster adaptive radiation)
 let prevLivingCount = 0; // living cell count last gen, for detecting mass death
 
+function makeDiploidGene(val, noise) {
+  var n = noise || 0;
+  return { a1: clamp(val + n * 0.5, 0.02, 0.98), a2: clamp(val - n * 0.3, 0.02, 0.98), dom: 0.5 + n * 0.2 };
+}
+
 function initEvoStats() {
-  // Clean up all dynamic species (active and extinct)
   for (const id in SPECIES) {
     const numId = parseInt(id);
     if (numId >= 100) { delete SPECIES[numId]; delete COLOR_RGB[numId]; removeFromTierGroups(numId); }
@@ -864,7 +963,7 @@ function initEvoStats() {
   for (const id of LIVING_IDS) {
     const sp = SPECIES[id];
     const tierGenes = TIER_DEFAULT_GENES[sp.tier] || TIER_DEFAULT_GENES.herbivore;
-    const noise = (seed) => {
+    const noise = function(seed) {
       const x = Math.sin(seed * 127.1 + id * 311.7) * 43758.5453;
       return (x - Math.floor(x)) * 0.08 - 0.04;
     };
@@ -872,7 +971,8 @@ function initEvoStats() {
     const geneVar = {};
     for (let gi = 0; gi < GENE_KEYS.length; gi++) {
       const g = GENE_KEYS[gi];
-      genes[g] = clamp(tierGenes[g] + noise(gi + 1), 0.05, 0.95);
+      const n = noise(gi + 1);
+      genes[g] = makeDiploidGene(tierGenes[g], n);
       geneVar[g] = 0.14;
     }
     evoStats[id] = {
@@ -883,9 +983,11 @@ function initEvoStats() {
       traits:    [],
       traitAge:  {},
       traitStrengths: {},
+      _traitBitmask: 0,
       genes: genes,
       geneVar: geneVar,
-      baseGenes: { ...genes },
+      baseGenes: cloneGenes(genes),
+      novelAdapts: [],
     };
   }
   popHistory = [];
@@ -894,6 +996,16 @@ function initEvoStats() {
   lastEvoGen = 0;
   radiationBoost = 0;
   prevLivingCount = 0;
+}
+
+function cloneGenes(genes) {
+  var out = {};
+  for (var i = 0; i < GENE_KEYS.length; i++) {
+    var g = GENE_KEYS[i];
+    var v = genes[g];
+    out[g] = typeof v === 'number' ? v : { a1: v.a1, a2: v.a2, dom: v.dom };
+  }
+  return out;
 }
 
 // Get effective stat for a species (evolved if evo enabled, else base)
@@ -925,10 +1037,15 @@ function gaussRandom() {
   return Math.sqrt(-2.0 * Math.log(u)) * Math.cos(2.0 * Math.PI * v);
 }
 
+function geneVal(gene) {
+  if (typeof gene === 'number') return gene;
+  return expressGene(gene);
+}
+
 function geneDivergence(genesA, genesB) {
   let sum = 0;
   for (const g of GENE_KEYS) {
-    const d = (genesA[g] || 0.5) - (genesB[g] || 0.5);
+    const d = geneVal(genesA[g] || 0.5) - geneVal(genesB[g] || 0.5);
     sum += d * d;
   }
   return Math.sqrt(sum);
@@ -938,49 +1055,76 @@ function deriveStats(id) {
   const sp = SPECIES[id];
   const es = evoStats[id];
   if (!es || !es.genes) return;
-  const g = es.genes;
-  es.breedRate = sp.breedRate * (0.5 + g.v);
-  if (sp.moveRate) es.moveRate = clamp(sp.moveRate * (0.5 + g.s), 0.02, 0.98);
-  if (sp.hungerMax) es.hungerMax = clamp(Math.round(sp.hungerMax * (0.5 + g.f)), 6, 80);
+  const e = expressAllGenes(es.genes);
+
+  // Speed: bodyShape + curiosity, penalised by bodySize and bodyArmour
+  if (sp.moveRate) {
+    es.moveRate = clamp(sp.moveRate * (
+      0.3 + e.bodyShape * 0.25 + e.curiosity * 0.20 + (1 - e.bodySize) * 0.15 + (1 - e.bodyArmour) * 0.10
+    ), 0.02, 0.98);
+  }
+  // Breed rate: fertility + metabolicRate, penalised by bodySize
+  es.breedRate = sp.breedRate * (
+    0.2 + e.fertility * 0.35 + e.metabolicRate * 0.25 + e.growthRate * 0.15 + (1 - e.bodySize) * 0.05
+  );
+  // Hunger max: bodySize + hungerEfficiency + (1-metabolicRate)
+  if (sp.hungerMax) {
+    es.hungerMax = clamp(Math.round(sp.hungerMax * (
+      0.2 + e.bodySize * 0.25 + e.hungerEfficiency * 0.25 + (1 - e.metabolicRate) * 0.20 + 0.10
+    )), 6, 80);
+  }
+  es._expressed = e;
+}
+
+// Trait bitmask system for hot-path lookups
+const TRAIT_BITS = {};
+for (var ti = 0; ti < TRAIT_KEYS.length; ti++) TRAIT_BITS[TRAIT_KEYS[ti]] = 1 << (ti % 30);
+const TRAIT_BITS2 = {};
+for (var ti2 = 0; ti2 < TRAIT_KEYS.length; ti2++) {
+  if (ti2 >= 30) TRAIT_BITS2[TRAIT_KEYS[ti2]] = 1 << (ti2 - 30);
 }
 
 function expressTraits(id) {
   const sp = SPECIES[id];
   const es = evoStats[id];
   if (!es || !es.genes) return;
-  const genes = es.genes;
+  const exp = expressAllGenes(es.genes);
   const expressed = [];
 
-  for (const tk of TRAIT_KEYS) {
+  for (var ti = 0; ti < TRAIT_KEYS.length; ti++) {
+    var tk = TRAIT_KEYS[ti];
     if (!TRAITS[tk].eligible(sp.tier)) continue;
-    const req = TRAIT_GENE_REQS[tk];
+    var req = TRAIT_POLYGENIC[tk];
     if (!req) continue;
-    let qualifies = true;
-    let totalExcess = 0;
-    let reqCount = 0;
-    if (req.genes) {
-      for (const g in req.genes) {
-        if (genes[g] < req.genes[g]) { qualifies = false; break; }
-        totalExcess += (genes[g] - req.genes[g]) / Math.max(0.01, 1.0 - req.genes[g]);
-        reqCount++;
-      }
+    var qualifies = true;
+    var reqs = req.requires;
+    for (var ri = 0; ri < reqs.length; ri++) {
+      if (exp[reqs[ri].g] < reqs[ri].min) { qualifies = false; break; }
     }
-    if (qualifies && req.anti) {
-      for (const g in req.anti) {
-        if (genes[g] >= req.anti[g]) { qualifies = false; break; }
+    if (qualifies && req.inhibits) {
+      var inh = req.inhibits;
+      for (var ii = 0; ii < inh.length; ii++) {
+        if (exp[inh[ii].g] >= inh[ii].max) { qualifies = false; break; }
       }
     }
     if (qualifies) {
-      const strength = reqCount > 0 ? Math.min(1.5, 1 + totalExcess / reqCount) : 1;
+      var strength = clamp(req.strength(exp), 0.5, 1.5);
       expressed.push({ trait: tk, strength: strength });
     }
   }
 
-  expressed.sort((a, b) => b.strength - a.strength);
-  let candidates = expressed.slice(0, MAX_TRAITS_PER_SPECIES);
+  // Check exclusive groups and remove weaker conflicts
+  for (var ei = expressed.length - 1; ei >= 0; ei--) {
+    var conflict = getExclusiveConflict(expressed[ei].trait, expressed.filter(function(x, xi) { return xi < ei; }).map(function(x) { return x.trait; }));
+    if (conflict) expressed.splice(ei, 1);
+  }
+
+  expressed.sort(function(a, b) { return b.strength - a.strength; });
+  var candidates = expressed.slice(0, MAX_TRAITS_PER_SPECIES);
+
   if (sp.tier === 'producer') {
-    let defCount = 0;
-    candidates = candidates.filter(e => {
+    var defCount = 0;
+    candidates = candidates.filter(function(e) {
       if (PRODUCER_DEFENCE_TRAITS.indexOf(e.trait) !== -1) {
         defCount++;
         if (defCount > MAX_PRODUCER_DEFENCE_TRAITS) return false;
@@ -988,26 +1132,36 @@ function expressTraits(id) {
       return true;
     });
     while (candidates.length < MAX_TRAITS_PER_SPECIES && expressed.length > candidates.length) {
-      const next = expressed.find(e => candidates.indexOf(e) === -1 &&
-        (PRODUCER_DEFENCE_TRAITS.indexOf(e.trait) === -1 || defCount < MAX_PRODUCER_DEFENCE_TRAITS));
+      var next = expressed.find(function(e) {
+        return candidates.indexOf(e) === -1 &&
+          (PRODUCER_DEFENCE_TRAITS.indexOf(e.trait) === -1 || defCount < MAX_PRODUCER_DEFENCE_TRAITS);
+      });
       if (!next) break;
       if (PRODUCER_DEFENCE_TRAITS.indexOf(next.trait) !== -1) defCount++;
       candidates.push(next);
     }
   }
-  const newTraits = candidates.map(e => e.trait);
-  const oldTraits = es.traits || [];
-  for (const t of newTraits) {
-    if (oldTraits.indexOf(t) === -1) addEvoEvent(sp.name + ' expressed ' + TRAITS[t].name);
+
+  var newTraits = candidates.map(function(e) { return e.trait; });
+  var oldTraits = es.traits || [];
+  for (var ni = 0; ni < newTraits.length; ni++) {
+    if (oldTraits.indexOf(newTraits[ni]) === -1) addEvoEvent(sp.name + ' expressed ' + TRAITS[newTraits[ni]].name);
   }
-  for (const t of oldTraits) {
-    if (newTraits.indexOf(t) === -1) addEvoEvent(sp.name + ' lost ' + TRAITS[t].name);
+  for (var oi = 0; oi < oldTraits.length; oi++) {
+    if (newTraits.indexOf(oldTraits[oi]) === -1) addEvoEvent(sp.name + ' lost ' + TRAITS[oldTraits[oi]].name);
   }
   es.traits = newTraits;
   es.traitStrengths = {};
-  for (const e of candidates) {
-    es.traitStrengths[e.trait] = e.strength;
+  var bm1 = 0, bm2 = 0;
+  for (var ci = 0; ci < candidates.length; ci++) {
+    es.traitStrengths[candidates[ci].trait] = candidates[ci].strength;
+    var bit = TRAIT_BITS[candidates[ci].trait];
+    if (bit) bm1 |= bit;
+    var bit2 = TRAIT_BITS2[candidates[ci].trait];
+    if (bit2) bm2 |= bit2;
   }
+  es._traitBitmask = bm1;
+  es._traitBitmask2 = bm2;
 }
 
 function traitStr(sid, trait) {
@@ -1030,16 +1184,17 @@ function generateSpeciesName(parentId, genes, context, extraData) {
     adj = DIVERGENT_NAMES[extraData];
   } else {
     const parentGenes = evoStats[parentId] ? evoStats[parentId].genes : null;
-    let maxDrift = 0, maxGene = 'v';
+    let maxDrift = 0, maxGene = GENE_KEYS[0];
     if (parentGenes) {
       for (const g of GENE_KEYS) {
-        const drift = Math.abs((genes[g] || 0.5) - (parentGenes[g] || 0.5));
+        const drift = Math.abs(geneVal(genes[g] || 0.5) - geneVal(parentGenes[g] || 0.5));
         if (drift > maxDrift) { maxDrift = drift; maxGene = g; }
       }
     } else {
       let maxVal = 0;
       for (const g of GENE_KEYS) {
-        if ((genes[g] || 0) > maxVal) { maxVal = genes[g]; maxGene = g; }
+        const v = geneVal(genes[g] || 0);
+        if (v > maxVal) { maxVal = v; maxGene = g; }
       }
     }
     const pool = GENE_NAME_POOLS[maxGene];
@@ -1073,6 +1228,14 @@ function buildFoodWeb() {
 
 function clamp(v, lo, hi) { return v < lo ? lo : v > hi ? hi : v; }
 
+function _nudgeAllele(genes, key, amount) {
+  var gene = genes[key];
+  if (!gene) return;
+  if (typeof gene === 'number') { genes[key] = makeDiploidGene(gene, 0); gene = genes[key]; }
+  gene.a1 = clamp(gene.a1 + amount * (0.5 + Math.random()), 0.02, 0.98);
+  gene.a2 = clamp(gene.a2 + amount * (0.3 + Math.random() * 0.4), 0.02, 0.98);
+}
+
 function evolve() {
   if (popHistory.length < 3) return;
 
@@ -1100,31 +1263,61 @@ function evolve() {
     const genes = es.genes;
     const gv = es.geneVar;
 
-    // Random mutation: gaussian shift per gene, scaled by genetic variance
+    // Per-allele diploid mutation with genetic linkage
     const radMul = radiationBoost > 0 ? 2.0 : 1.0;
-    for (const g of GENE_KEYS) {
-      const sd = GENE_MUTATION_SD * (0.5 + gv[g] * 3) * radMul;
-      genes[g] = clamp(genes[g] + gaussRandom() * sd, 0, 1);
+    for (var gi = 0; gi < GENE_KEYS.length; gi++) {
+      var g = GENE_KEYS[gi];
+      var gene = genes[g];
+      if (typeof gene === 'number') { genes[g] = makeDiploidGene(gene, 0); gene = genes[g]; }
+      var sd = GENE_MUTATION_SD * (0.5 + gv[g] * 3) * radMul;
+      var m1 = gaussRandom() * sd;
+      var m2 = gaussRandom() * sd;
+      gene.a1 = clamp(gene.a1 + m1, 0.02, 0.98);
+      gene.a2 = clamp(gene.a2 + m2, 0.02, 0.98);
+      if (Math.random() < 0.02) gene.dom = clamp(gene.dom + gaussRandom() * 0.05, 0.1, 0.9);
+      // Genetic linkage: correlated mutation within cluster
+      if (Math.random() < 0.3) {
+        var cluster = GENE_CLUSTER_OF[g];
+        var nextGi = gi + 1;
+        if (nextGi < GENE_KEYS.length && GENE_CLUSTER_OF[GENE_KEYS[nextGi]] === cluster) {
+          var ng = genes[GENE_KEYS[nextGi]];
+          if (typeof ng === 'number') { genes[GENE_KEYS[nextGi]] = makeDiploidGene(ng, 0); ng = genes[GENE_KEYS[nextGi]]; }
+          ng.a1 = clamp(ng.a1 + m1 * 0.3, 0.02, 0.98);
+        }
+      }
     }
 
-    // Selection nudge: light directional pressure from environment
+    // Bottleneck: allele fixation in small populations
+    if (popNow > 0 && popNow < 15) {
+      for (var bgi = 0; bgi < GENE_KEYS.length; bgi++) {
+        var bg = GENE_KEYS[bgi];
+        var bgene = genes[bg];
+        if (typeof bgene !== 'number' && Math.random() < 0.05) {
+          var pick = Math.random() < 0.5 ? bgene.a1 : bgene.a2;
+          bgene.a1 = pick;
+          bgene.a2 = pick;
+        }
+      }
+    }
+
+    // Selection nudge using new gene keys
     if (predators[id] && predators[id].length > 0) {
       let predPop = 0;
       for (const pid of predators[id]) predPop += (now[pid] || 0);
       const pressure = popNow > 0 ? predPop / popNow : 0;
       if (pressure > PRESSURE_HIGH || trend < -0.15) {
-        genes.s = clamp(genes.s + 0.008 * (0.5 + Math.random()), 0, 1);
-        genes.a = clamp(genes.a + 0.006 * (0.5 + Math.random()), 0, 1);
-        if (trend < -0.25) genes.v = clamp(genes.v + 0.006, 0, 1);
+        _nudgeAllele(genes, 'flightResponse', 0.008);
+        _nudgeAllele(genes, 'bodyArmour', 0.006);
+        if (trend < -0.25) _nudgeAllele(genes, 'fertility', 0.006);
       }
     }
     if (preyOf[id] && preyOf[id].length > 0) {
       let totalPreyPop = 0;
       for (const prey of preyOf[id]) totalPreyPop += (now[prey] || 0);
       if (totalPreyPop < popNow * 0.5 && popNow > 2) {
-        genes.p = clamp(genes.p + 0.008 * (0.5 + Math.random()), 0, 1);
-        genes.s = clamp(genes.s + 0.004, 0, 1);
-        genes.f = clamp(genes.f + 0.004, 0, 1);
+        _nudgeAllele(genes, 'aggression', 0.008);
+        _nudgeAllele(genes, 'bodyShape', 0.004);
+        _nudgeAllele(genes, 'hungerEfficiency', 0.004);
       }
     }
     if (sp.tier === 'producer' && popNow > 0) {
@@ -1133,25 +1326,29 @@ function evolve() {
         for (const pid of predators[id]) grazerPop += (now[pid] || 0);
       }
       if (trend < -0.2 || (popNow > 0 && grazerPop / popNow > 0.8)) {
-        genes.v = clamp(genes.v + 0.01, 0, 1);
-        genes.a = clamp(genes.a + 0.004, 0, 1);
+        _nudgeAllele(genes, 'fertility', 0.01);
+        _nudgeAllele(genes, 'bodyArmour', 0.004);
       }
     }
 
-    // Stabilising selection: only pull back extreme gene values
-    for (const g of GENE_KEYS) {
-      if (genes[g] > 0.85) genes[g] -= (genes[g] - 0.85) * 0.06;
-      else if (genes[g] < 0.15) genes[g] += (0.15 - genes[g]) * 0.06;
+    // Stabilising selection on expressed values
+    var expVals = expressAllGenes(genes);
+    for (var sg = 0; sg < GENE_KEYS.length; sg++) {
+      var sGene = GENE_KEYS[sg];
+      var ev = expVals[sGene];
+      if (ev > 0.88) _nudgeAllele(genes, sGene, -(ev - 0.88) * 0.04);
+      else if (ev < 0.12) _nudgeAllele(genes, sGene, (0.12 - ev) * 0.04);
     }
 
-    // Gene variance: larger populations generate more variation (population genetics)
+    // Gene variance: population genetics
     const popRatio = popNow / Math.max(1, avgPop);
-    for (const g of GENE_KEYS) {
+    for (var vg = 0; vg < GENE_KEYS.length; vg++) {
+      var vGene = GENE_KEYS[vg];
       if (popRatio > 1.0 && popNow > 15) {
         const gain = 0.002 + 0.004 * Math.min(1, popNow / (avgPop * 3));
-        gv[g] = Math.min(0.35, gv[g] + gain);
+        gv[vGene] = Math.min(0.35, gv[vGene] + gain);
       } else if (popNow < 10) {
-        gv[g] = Math.max(0.02, gv[g] - 0.008);
+        gv[vGene] = Math.max(0.02, gv[vGene] - 0.008);
       }
     }
 
@@ -1190,18 +1387,19 @@ function evolve() {
       const shared = esA.eats.filter(e => esB.eats.indexOf(e) !== -1).length;
       const minLen = Math.min(esA.eats.length, esB.eats.length);
       if (minLen === 0 || shared / minLen < 0.5) continue;
+      var expA = expressAllGenes(esA.genes), expB = expressAllGenes(esB.genes);
       let maxDiffGene = GENE_KEYS[0], maxDiff = 0;
       for (const g of GENE_KEYS) {
-        const d = Math.abs(esA.genes[g] - esB.genes[g]);
+        const d = Math.abs(expA[g] - expB[g]);
         if (d > maxDiff) { maxDiff = d; maxDiffGene = g; }
       }
       const nudge = 0.012;
-      if (esA.genes[maxDiffGene] > esB.genes[maxDiffGene]) {
-        esA.genes[maxDiffGene] = clamp(esA.genes[maxDiffGene] + nudge, 0, 1);
-        esB.genes[maxDiffGene] = clamp(esB.genes[maxDiffGene] - nudge, 0, 1);
+      if (expA[maxDiffGene] > expB[maxDiffGene]) {
+        _nudgeAllele(esA.genes, maxDiffGene, nudge);
+        _nudgeAllele(esB.genes, maxDiffGene, -nudge);
       } else {
-        esA.genes[maxDiffGene] = clamp(esA.genes[maxDiffGene] - nudge, 0, 1);
-        esB.genes[maxDiffGene] = clamp(esB.genes[maxDiffGene] + nudge, 0, 1);
+        _nudgeAllele(esA.genes, maxDiffGene, -nudge);
+        _nudgeAllele(esB.genes, maxDiffGene, nudge);
       }
     }
   }
@@ -1305,12 +1503,26 @@ function speciate() {
     const newId = nextSpeciesId++;
     const rootId = sp.rootAncestor || id;
 
-    const vigour = 1.05 + Math.random() * 0.1;
+    // Meiosis-like recombination: pick one allele from parent per gene, mutate
     const newGenes = {};
     const newGeneVar = {};
     for (const g of GENE_KEYS) {
-      newGenes[g] = clamp(es.genes[g] + gaussRandom() * 0.04, 0, 1);
+      const parentGene = es.genes[g];
+      if (typeof parentGene === 'number') {
+        newGenes[g] = makeDiploidGene(parentGene + gaussRandom() * 0.04, gaussRandom() * 0.03);
+      } else {
+        const parentAllele = Math.random() < 0.5 ? parentGene.a1 : parentGene.a2;
+        newGenes[g] = {
+          a1: clamp(parentAllele + gaussRandom() * 0.03, 0.02, 0.98),
+          a2: clamp(parentAllele + gaussRandom() * 0.06, 0.02, 0.98),
+          dom: clamp(parentGene.dom + gaussRandom() * 0.03, 0.1, 0.9),
+        };
+      }
       newGeneVar[g] = Math.max(0.04, (es.geneVar[g] || 0.14) * 0.85);
+    }
+    // Sexual selection: pigment diverges further
+    if (newGenes.pigment && typeof newGenes.pigment !== 'number') {
+      newGenes.pigment.a1 = clamp(newGenes.pigment.a1 + gaussRandom() * 0.08, 0.02, 0.98);
     }
 
     const newName = generateSpeciesName(id, newGenes, 'speciation');
@@ -1322,9 +1534,11 @@ function speciate() {
     const nb = clamp(baseRGB[2] + shift(), 20, 255);
     const newHex = '#' + ((1 << 24) + (nr << 16) + (ng << 8) + nb).toString(16).slice(1).toUpperCase();
 
-    const tmpBR = sp.breedRate * (0.5 + newGenes.v) * vigour;
-    const tmpMR = sp.moveRate ? clamp(sp.moveRate * (0.5 + newGenes.s) * vigour, 0.02, 0.98) : 0;
-    const tmpHM = sp.hungerMax ? clamp(Math.round(sp.hungerMax * (0.5 + newGenes.f) * vigour), 6, 80) : 0;
+    const newExp = expressAllGenes(newGenes);
+    const vigour = 1.05 + Math.random() * 0.1;
+    const tmpBR = sp.breedRate * (0.2 + newExp.fertility * 0.35 + newExp.metabolicRate * 0.25 + newExp.growthRate * 0.15 + (1 - newExp.bodySize) * 0.05) * vigour;
+    const tmpMR = sp.moveRate ? clamp(sp.moveRate * (0.3 + newExp.bodyShape * 0.25 + newExp.curiosity * 0.20 + (1 - newExp.bodySize) * 0.15 + (1 - newExp.bodyArmour) * 0.10) * vigour, 0.02, 0.98) : 0;
+    const tmpHM = sp.hungerMax ? clamp(Math.round(sp.hungerMax * (0.2 + newExp.bodySize * 0.25 + newExp.hungerEfficiency * 0.25 + (1 - newExp.metabolicRate) * 0.20 + 0.10) * vigour), 6, 80) : 0;
 
     const newEats = es.eats.slice();
     if (newEats.length > 1 && Math.random() < 0.15) {
@@ -1348,7 +1562,8 @@ function speciate() {
     evoStats[newId] = {
       breedRate: tmpBR, moveRate: tmpMR, hungerMax: tmpHM,
       eats: newEats.slice(), traits: [], traitStrengths: {},
-      genes: newGenes, geneVar: newGeneVar, baseGenes: { ...newGenes },
+      _traitBitmask: 0, _traitBitmask2: 0,
+      genes: newGenes, geneVar: newGeneVar, baseGenes: cloneGenes(newGenes),
       novelAdapts: (es.novelAdapts || []).slice(),
     };
     expressTraits(newId);
@@ -1484,54 +1699,57 @@ function nicheShift() {
     const nb = clamp(baseRGB[2] + shiftC(), 20, 255);
     const newHex = '#' + ((1 << 24) + (nr << 16) + (ng << 8) + nb).toString(16).slice(1).toUpperCase();
 
-    const newGenes = {};
+    const newGenes = cloneGenes(es.genes);
     const newGeneVar = {};
     for (const g of GENE_KEYS) {
-      newGenes[g] = es.genes[g];
       newGeneVar[g] = Math.max(0.04, (es.geneVar[g] || 0.14) * 0.85);
     }
 
     let newEats = [];
     if (newTier === 'herbivore') {
       if (sp.tier === 'producer') {
-        newGenes.s = clamp(newGenes.s + 0.25, 0, 1);
-        newGenes.v = clamp(newGenes.v * 0.6, 0, 1);
-        newGenes.p = clamp(newGenes.p + 0.15, 0, 1);
+        _nudgeAllele(newGenes, 'bodyShape', 0.25);
+        _nudgeAllele(newGenes, 'curiosity', 0.20);
+        _nudgeAllele(newGenes, 'fertility', -0.15);
+        _nudgeAllele(newGenes, 'aggression', 0.15);
       } else {
-        newGenes.s = clamp(newGenes.s * 1.1, 0, 1);
-        newGenes.p = clamp(newGenes.p * 0.5, 0, 1);
+        _nudgeAllele(newGenes, 'bodyShape', 0.05);
+        _nudgeAllele(newGenes, 'aggression', -0.15);
       }
       const targets = LIVING_IDS.filter(pid => { const psp = SPECIES[pid]; return psp && psp.tier === 'producer'; });
       const sh = targets.slice(); for (let i = sh.length - 1; i > 0; i--) { const j = (Math.random() * (i + 1)) | 0; const t = sh[i]; sh[i] = sh[j]; sh[j] = t; }
       for (let i = 0; i < Math.min(sh.length, 1 + ((Math.random() * 2) | 0)); i++) newEats.push(sh[i]);
     } else if (newTier === 'consumer') {
-      newGenes.s = clamp(newGenes.s * 1.3, 0, 1);
-      newGenes.v = clamp(newGenes.v * 0.7, 0, 1);
-      newGenes.p = clamp(newGenes.p + 0.2, 0, 1);
+      _nudgeAllele(newGenes, 'bodyShape', 0.15);
+      _nudgeAllele(newGenes, 'fertility', -0.10);
+      _nudgeAllele(newGenes, 'aggression', 0.20);
       const targets = LIVING_IDS.filter(hid => { const hsp = SPECIES[hid]; return hsp && hsp.tier === 'herbivore' && hid !== id; });
       const sh = targets.slice(); for (let i = sh.length - 1; i > 0; i--) { const j = (Math.random() * (i + 1)) | 0; const t = sh[i]; sh[i] = sh[j]; sh[j] = t; }
       for (let i = 0; i < Math.min(sh.length, 1 + ((Math.random() * 2) | 0)); i++) newEats.push(sh[i]);
     } else if (newTier === 'apex') {
-      newGenes.s = clamp(newGenes.s * 1.2, 0, 1);
-      newGenes.v = clamp(newGenes.v * 0.5, 0, 1);
-      newGenes.p = clamp(newGenes.p + 0.15, 0, 1);
-      newGenes.f = clamp(newGenes.f * 1.2, 0, 1);
+      _nudgeAllele(newGenes, 'bodyShape', 0.10);
+      _nudgeAllele(newGenes, 'fertility', -0.15);
+      _nudgeAllele(newGenes, 'aggression', 0.15);
+      _nudgeAllele(newGenes, 'bodySize', 0.10);
+      _nudgeAllele(newGenes, 'hungerEfficiency', 0.10);
       const targets = LIVING_IDS.filter(cid => { const csp = SPECIES[cid]; return csp && (csp.tier === 'consumer' || csp.tier === 'herbivore') && cid !== id; });
       const sh = targets.slice(); for (let i = sh.length - 1; i > 0; i--) { const j = (Math.random() * (i + 1)) | 0; const t = sh[i]; sh[i] = sh[j]; sh[j] = t; }
       for (let i = 0; i < Math.min(sh.length, 1 + ((Math.random() * 3) | 0)); i++) newEats.push(sh[i]);
     } else if (newTier === 'megafauna') {
-      newGenes.s = clamp(newGenes.s * 0.7, 0, 1);
-      newGenes.v = clamp(newGenes.v * 0.4, 0, 1);
-      newGenes.f = clamp(newGenes.f + 0.2, 0, 1);
-      newGenes.p = clamp(newGenes.p + 0.1, 0, 1);
+      _nudgeAllele(newGenes, 'bodyShape', -0.10);
+      _nudgeAllele(newGenes, 'bodySize', 0.20);
+      _nudgeAllele(newGenes, 'fertility', -0.20);
+      _nudgeAllele(newGenes, 'hungerEfficiency', 0.15);
+      _nudgeAllele(newGenes, 'aggression', 0.10);
       const targets = LIVING_IDS.filter(pid => { const psp = SPECIES[pid]; return psp && (psp.tier === 'consumer' || psp.tier === 'herbivore') && pid !== id; });
       const sh = targets.slice(); for (let i = sh.length - 1; i > 0; i--) { const j = (Math.random() * (i + 1)) | 0; const t = sh[i]; sh[i] = sh[j]; sh[j] = t; }
       for (let i = 0; i < Math.min(sh.length, 2 + ((Math.random() * 3) | 0)); i++) newEats.push(sh[i]);
     }
 
-    const tmpBR = (sp.breedRate || 0.04) * (0.5 + newGenes.v);
-    const tmpMR = clamp((sp.moveRate || 0.35) * (0.5 + newGenes.s), 0.02, 0.98);
-    const tmpHM = clamp(Math.round((sp.hungerMax || 20) * (0.5 + newGenes.f)), 6, 80);
+    const nsExp = expressAllGenes(newGenes);
+    const tmpBR = (sp.breedRate || 0.04) * (0.2 + nsExp.fertility * 0.35 + nsExp.metabolicRate * 0.25 + nsExp.growthRate * 0.15 + (1 - nsExp.bodySize) * 0.05);
+    const tmpMR = clamp((sp.moveRate || 0.35) * (0.3 + nsExp.bodyShape * 0.25 + nsExp.curiosity * 0.20 + (1 - nsExp.bodySize) * 0.15 + (1 - nsExp.bodyArmour) * 0.10), 0.02, 0.98);
+    const tmpHM = clamp(Math.round((sp.hungerMax || 20) * (0.2 + nsExp.bodySize * 0.25 + nsExp.hungerEfficiency * 0.25 + (1 - nsExp.metabolicRate) * 0.20 + 0.10)), 6, 80);
 
     const tierLayerMap = { herbivore: 1, consumer: 2, apex: 3, megafauna: 3 };
     const newLayer = tierLayerMap[newTier] !== undefined ? tierLayerMap[newTier] : sp.layer;
@@ -1549,7 +1767,8 @@ function nicheShift() {
     evoStats[newId] = {
       breedRate: tmpBR, moveRate: tmpMR, hungerMax: tmpHM,
       eats: newEats.slice(), traits: [], traitStrengths: {},
-      genes: newGenes, geneVar: newGeneVar, baseGenes: { ...newGenes },
+      _traitBitmask: 0, _traitBitmask2: 0,
+      genes: newGenes, geneVar: newGeneVar, baseGenes: cloneGenes(newGenes),
       novelAdapts: (es.novelAdapts || []).slice(),
     };
     expressTraits(newId);
@@ -1630,7 +1849,8 @@ function createImmigrantSpecies(tier) {
   const genes = {};
   const geneVar = {};
   for (const g of GENE_KEYS) {
-    genes[g] = clamp(tierGenes[g] + gaussRandom() * 0.15, 0.08, 0.92);
+    var base = tierGenes[g] + gaussRandom() * 0.15;
+    genes[g] = makeDiploidGene(clamp(base, 0.08, 0.92), gaussRandom() * 0.06);
     geneVar[g] = 0.10 + Math.random() * 0.08;
   }
 
@@ -1652,9 +1872,10 @@ function createImmigrantSpecies(tier) {
   const newHex = '#' + ((1 << 24) + (nr << 16) + (ng << 8) + nb).toString(16).slice(1).toUpperCase();
 
   const vigour = 1.05 + Math.random() * 0.15;
-  const tmpBR = templateSp.breedRate * (0.5 + genes.v) * vigour;
-  const tmpMR = templateSp.moveRate ? clamp(templateSp.moveRate * (0.5 + genes.s) * vigour, 0.02, 0.98) : 0;
-  const tmpHM = templateSp.hungerMax ? clamp(Math.round(templateSp.hungerMax * (0.5 + genes.f) * vigour), 6, 80) : 0;
+  const immExp = expressAllGenes(genes);
+  const tmpBR = templateSp.breedRate * (0.2 + immExp.fertility * 0.35 + immExp.metabolicRate * 0.25 + immExp.growthRate * 0.15 + (1 - immExp.bodySize) * 0.05) * vigour;
+  const tmpMR = templateSp.moveRate ? clamp(templateSp.moveRate * (0.3 + immExp.bodyShape * 0.25 + immExp.curiosity * 0.20 + (1 - immExp.bodySize) * 0.15 + (1 - immExp.bodyArmour) * 0.10) * vigour, 0.02, 0.98) : 0;
+  const tmpHM = templateSp.hungerMax ? clamp(Math.round(templateSp.hungerMax * (0.2 + immExp.bodySize * 0.25 + immExp.hungerEfficiency * 0.25 + (1 - immExp.metabolicRate) * 0.20 + 0.10) * vigour), 6, 80) : 0;
 
   let newEats = templateSp.eats ? templateSp.eats.slice() : [];
   const liveTierSpecies = LIVING_IDS.filter(lid => {
@@ -1707,7 +1928,8 @@ function createImmigrantSpecies(tier) {
   evoStats[newId] = {
     breedRate: tmpBR, moveRate: tmpMR, hungerMax: tmpHM,
     eats: newEats.slice(), traits: [], traitStrengths: {},
-    genes: genes, geneVar: geneVar, baseGenes: { ...genes },
+    _traitBitmask: 0, _traitBitmask2: 0,
+    genes: genes, geneVar: geneVar, baseGenes: cloneGenes(genes),
     novelAdapts: novelAdapts,
   };
   expressTraits(newId);
@@ -2226,11 +2448,21 @@ const _dirs8 = new Uint8Array([0, 1, 2, 3, 4, 5, 6, 7]);
 function shuffleDirs4() { shuffleSmall(_dirs4); return _dirs4; }
 function shuffleDirs8() { shuffleSmall(_dirs8); return _dirs8; }
 
+// Pre-allocated buffers for step() hot path
+let _stepProcessed = null;
+let _stepIndices = null;
+let _stepPopCounts = null;
+
 function step() {
   const total = gridW * gridH;
-  const processed = new Uint8Array(total);
+  if (!_stepProcessed || _stepProcessed.length !== total) {
+    _stepProcessed = new Uint8Array(total);
+    _stepIndices = new Uint32Array(total);
+    _stepPopCounts = new Uint32Array(256);
+  }
+  const processed = _stepProcessed;
+  processed.fill(0);
 
-  // Advance season
   seasonTick++;
   if (seasonTick >= SEASON_LENGTH) {
     seasonTick = 0;
@@ -2239,8 +2471,7 @@ function step() {
   }
   const sMod = SEASON_MODS[currentSeason];
 
-  // Build index list of non-empty cells using typed array (avoids JS array push overhead)
-  const indices = new Uint32Array(total);
+  const indices = _stepIndices;
   let indexCount = 0;
   for (let i = 0; i < total; i++) {
     if (species[i] !== 0) indices[indexCount++] = i;
@@ -2253,13 +2484,13 @@ function step() {
 
   const cw = gridW, ch = gridH;
 
-  // Density-dependent population control: count per-species for dominance check
-  const _popCounts = {};
+  _stepPopCounts.fill(0);
   let _totalLiving = 0;
   for (let i = 0; i < indexCount; i++) {
     const _s = species[indices[i]];
-    if (_s >= 10) { _popCounts[_s] = (_popCounts[_s] || 0) + 1; _totalLiving++; }
+    if (_s >= 10) { _stepPopCounts[_s]++; _totalLiving++; }
   }
+  const _popCounts = _stepPopCounts;
   const _dominantThreshold = _totalLiving * DOMINANCE_THRESHOLD;
 
   for (let k = 0; k < indexCount; k++) {
@@ -2486,11 +2717,10 @@ function step() {
         }
       }
       const pes = evo(sid);
-      const pTraits = pes.traits ? new Set(pes.traits) : null;
-      let breedChance = pes.breedRate * sMod[3]; // seasonal producer breed modifier
-      // Warm/cold adaptation overrides seasonal penalty
-      if (pTraits && pTraits.has('warmadapt') && (currentSeason === 'Summer' || currentSeason === 'Spring')) breedChance = pes.breedRate * 1.4;
-      if (pTraits && pTraits.has('coldadapt') && (currentSeason === 'Winter' || currentSeason === 'Autumn')) breedChance = pes.breedRate * 1.0;
+      const pTraits = pes.traits || [];
+      let breedChance = pes.breedRate * sMod[3];
+      if (pTraits.indexOf('warmadapt') !== -1 && (currentSeason === 'Summer' || currentSeason === 'Spring')) breedChance = pes.breedRate * 1.4;
+      if (pTraits.indexOf('coldadapt') !== -1 && (currentSeason === 'Winter' || currentSeason === 'Autumn')) breedChance = pes.breedRate * 1.0;
 
       // Coral grows faster near rock (reef affinity)
       let nearRock = false;
@@ -2504,7 +2734,7 @@ function step() {
       }
 
       // Nitrogen Fix: breed 2x faster near dead matter
-      if (pTraits && pTraits.has('nitrofix')) {
+      if (pTraits.indexOf('nitrofix') !== -1) {
         for (let n = 0; n < 4; n++) {
           const dir = CARDINAL[n];
           const ni = wrapY(cy + dir[1]) * cw + wrapX(cx + dir[0]);
@@ -2513,7 +2743,7 @@ function step() {
       }
 
       // Allelopathy: inhibit other producer species within 2 tiles
-      if (pTraits && pTraits.has('allelopathy') && Math.random() < 0.08) {
+      if (pTraits.indexOf('allelopathy') !== -1 && Math.random() < 0.08) {
         for (let ady = -2; ady <= 2; ady++) {
           for (let adx = -2; adx <= 2; adx++) {
             if (adx === 0 && ady === 0) continue;
@@ -2531,11 +2761,11 @@ function step() {
       }
 
       // Nocturnal/diurnal for producers (via pes)
-      if (pTraits && pTraits.has('nocturnal')) {
+      if (pTraits.indexOf('nocturnal') !== -1) {
         if (currentSeason === 'Winter' || currentSeason === 'Autumn') breedChance *= 1.4;
         else breedChance *= 0.8;
       }
-      if (pTraits && pTraits.has('diurnal')) {
+      if (pTraits.indexOf('diurnal') !== -1) {
         if (currentSeason === 'Summer' || currentSeason === 'Spring') breedChance *= 1.4;
         else breedChance *= 0.8;
       }
@@ -2553,7 +2783,7 @@ function step() {
 
       if (Math.random() < breedChance) {
         // Spore Burst: can spread 2 tiles away
-        const maxDist = (pTraits && pTraits.has('spore')) ? 2 : 1;
+        const maxDist = (pTraits.indexOf('spore') !== -1) ? 2 : 1;
         const dirs = shuffleDirs4();
         let bred = false;
         for (let dist = 1; dist <= maxDist && !bred; dist++) {
@@ -2579,8 +2809,8 @@ function step() {
     if (!sp.hungerMax) continue;
     const es = evo(sid);
     const traits = es.traits || [];
-    const traitSet = new Set(traits);
-    const hasTrait = (t) => traitSet.has(t);
+    const _bm = es._traitBitmask || 0;
+    const hasTrait = function(t) { return traits.indexOf(t) !== -1; };
     const restoreFrac = HUNGER_RESTORE_BY_TIER[sp.tier] || HUNGER_RESTORE_FRACTION;
 
     // Seasonal adaptation check
@@ -2776,9 +3006,8 @@ function step() {
     }
 
     // 3. Eat: scan neighbours for food (layer-aware)
-    // Apex/megafauna scan 2-tile radius; others scan 8 immediate neighbours
     const eats = es.eats;
-    const eatsSet = new Set(eats);
+    const eatsSet = eats;
     let ate = false;
     const huntRange = (sp.tier === 'apex' || sp.tier === 'megafauna') ? 2 : 1;
     const isPackHunter = hasTrait('packhunter');
@@ -2807,7 +3036,7 @@ function step() {
         const ny = wrapY(cy + dy);
         const ni = ny * cw + nx;
         const foodId = species[ni];
-        if (eatsSet.has(foodId) && layersCanReach(sid, layerOf(foodId))) {
+        if (eatsSet.indexOf(foodId) !== -1 && layersCanReach(sid, layerOf(foodId))) {
           const preyEs = evo(foodId);
           const preyTraits = preyEs.traits || [];
 
@@ -2982,7 +3211,7 @@ function step() {
         const nx = wrapX(cx + dir[0]);
         const ny = wrapY(cy + dir[1]);
         const ni = ny * cw + nx;
-        if (eatsSet.has(species[ni]) && layersCanReach(sid, layerOf(species[ni]))) {
+        if (eatsSet.indexOf(species[ni]) !== -1 && layersCanReach(sid, layerOf(species[ni]))) {
           species[ni] = 0; hunger[ni] = 0; age[ni] = 0;
           hunger[idx] = Math.max(0, hunger[idx] - ((es.hungerMax * 0.3) | 0));
           processed[ni] = 1;
@@ -3035,7 +3264,7 @@ function step() {
         const ny = wrapY(cy + dir[1] * 2);
         const ni = ny * cw + nx;
         const foodId = species[ni];
-        if (eatsSet.has(foodId) && layersCanReach(sid, layerOf(foodId))) {
+        if (eatsSet.indexOf(foodId) !== -1 && layersCanReach(sid, layerOf(foodId))) {
           const preyEs = evo(foodId);
           const aPT = preyEs.traits || [];
           if (aPT.indexOf('mimicry') !== -1 && Math.random() < 0.45) continue;
@@ -3089,7 +3318,7 @@ function step() {
           const px = wrapX(cx + dx);
           const py = wrapY(cy + dy);
           const pi = py * cw + px;
-          if (eatsSet.has(species[pi]) && !processed[pi] && layersCanReach(sid, layerOf(species[pi]))) {
+          if (eatsSet.indexOf(species[pi]) !== -1 && !processed[pi] && layersCanReach(sid, layerOf(species[pi]))) {
             // Move prey one step closer to this predator
             const stepX = dx > 0 ? -1 : dx < 0 ? 1 : 0;
             const stepY = dy > 0 ? -1 : dy < 0 ? 1 : 0;
@@ -3137,7 +3366,7 @@ function step() {
             if (dist > 16 || dist >= bestDist) continue;
             const px = wrapX(cx + dx), py = wrapY(cy + dy);
             const echoSid = species[py * cw + px];
-            if (eatsSet.has(echoSid) && layersCanReach(sid, layerOf(echoSid))) {
+            if (eatsSet.indexOf(echoSid) !== -1 && layersCanReach(sid, layerOf(echoSid))) {
               bestDist = dist; bestDx = dx; bestDy = dy;
             }
           }
@@ -3165,7 +3394,7 @@ function step() {
             if (dist > 25 || dist >= bestDist) continue;
             const px = wrapX(cx + dx), py = wrapY(cy + dy);
             const erSid = species[py * cw + px];
-            if (eatsSet.has(erSid) && layersCanReach(sid, layerOf(erSid))) {
+            if (eatsSet.indexOf(erSid) !== -1 && layersCanReach(sid, layerOf(erSid))) {
               bestDist = dist; bestDx = dx; bestDy = dy;
             }
           }
@@ -3193,7 +3422,7 @@ function step() {
             if (dist > 9 || dist >= bestDist) continue;
             const px = wrapX(cx + dx), py = wrapY(cy + dy);
             const stSid = species[py * cw + px];
-            if (eatsSet.has(stSid) && layersCanReach(sid, layerOf(stSid))) {
+            if (eatsSet.indexOf(stSid) !== -1 && layersCanReach(sid, layerOf(stSid))) {
               bestDist = dist; bestDx = dx; bestDy = dy;
             }
           }
@@ -3627,10 +3856,15 @@ function updateStats() {
         let geneBar = '';
         const sEs = evoStats[id];
         if (evolveEnabled && sEs && sEs.genes) {
-          geneBar = '<div style="display:flex;gap:1px;height:3px;margin-top:1px;pointer-events:none;">';
-          for (const g of GENE_KEYS) {
-            const v = sEs.genes[g] || 0;
-            geneBar += '<div style="flex:1;background:' + GENE_COLORS[g] + ';opacity:' + (0.3 + v * 0.7).toFixed(2) + ';height:' + Math.round(v * 3) + 'px;align-self:flex-end;border-radius:1px;"></div>';
+          var sExp = sEs._expressed || expressAllGenes(sEs.genes);
+          geneBar = '<div style="display:flex;gap:0px;height:3px;margin-top:1px;pointer-events:none;">';
+          for (var clN in GENE_CLUSTERS) {
+            var clG = GENE_CLUSTERS[clN];
+            var clAvg = 0;
+            for (var cj = 0; cj < clG.length; cj++) clAvg += sExp[clG[cj]] || 0;
+            clAvg /= clG.length;
+            var clCol = clN === 'Morphology' ? '#AACCEE' : clN === 'Metabolism' ? '#FF8844' : clN === 'Behaviour' ? '#CC88FF' : '#88EEFF';
+            geneBar += '<div style="flex:1;background:' + clCol + ';opacity:' + (0.3 + clAvg * 0.7).toFixed(2) + ';height:' + Math.round(clAvg * 3) + 'px;align-self:flex-end;border-radius:1px;margin-right:1px;"></div>';
           }
           geneBar += '</div>';
         }
@@ -3706,13 +3940,21 @@ function _seedRng(seed) {
   };
 }
 
-function _portraitPalette(rgb, genes) {
+function _portraitPalette(rgb, expGenes) {
   const dark = [Math.max(0, rgb[0] - 60), Math.max(0, rgb[1] - 60), Math.max(0, rgb[2] - 60)];
   const light = [Math.min(255, rgb[0] + 50), Math.min(255, rgb[1] + 50), Math.min(255, rgb[2] + 50)];
-  const secHue = { v: [40,200,80], s: [60,180,220], f: [200,160,60], a: [160,160,200], p: [220,60,80], o: [180,120,220] };
-  let highG = 'v', highV = 0;
-  for (const g of GENE_KEYS) { if (genes[g] > highV) { highV = genes[g]; highG = g; } }
-  const sh = secHue[highG];
+  const secHue = {
+    bodySize:[160,160,200], bodyArmour:[160,160,200], bodyShape:[60,180,220], pigment:[220,120,180],
+    metabolicRate:[200,160,60], fertility:[40,200,80], hungerEfficiency:[200,160,60], growthRate:[80,200,60],
+    aggression:[220,60,80], sociality:[180,120,220], curiosity:[60,180,220], flightResponse:[220,200,60],
+    visionRange:[80,200,220], chemosensory:[80,220,180], thermalAdapt:[220,120,60], pressureAdapt:[60,80,180],
+  };
+  let highG = GENE_KEYS[0], highV = 0;
+  for (var gi = 0; gi < GENE_KEYS.length; gi++) {
+    var gv = expGenes[GENE_KEYS[gi]] || 0;
+    if (gv > highV) { highV = gv; highG = GENE_KEYS[gi]; }
+  }
+  const sh = secHue[highG] || [128,128,128];
   const secondary = [Math.round(rgb[0]*0.55+sh[0]*0.45), Math.round(rgb[1]*0.55+sh[1]*0.45), Math.round(rgb[2]*0.55+sh[2]*0.45)];
   const belly = [Math.min(255, rgb[0]+70), Math.min(255, rgb[1]+70), Math.min(255, rgb[2]+50)];
   return { base: rgb, dark, light, secondary, belly };
@@ -3728,9 +3970,10 @@ function generateCreaturePortrait(sid) {
   const cv = document.createElement('canvas');
   cv.width = size; cv.height = size;
   const cx = cv.getContext('2d');
-  const genes = es && es.genes ? es.genes : { v: 0.5, s: 0.5, f: 0.5, a: 0.5, p: 0.5, o: 0.5 };
+  const rawGenes = es && es.genes ? es.genes : {};
+  const expGenes = es && es.genes ? expressAllGenes(es.genes) : TIER_DEFAULT_GENES[sp.tier] || TIER_DEFAULT_GENES.herbivore;
   const rng = _seedRng(sid * 2654435761);
-  const pal = _portraitPalette(rgb, genes);
+  const pal = _portraitPalette(rgb, expGenes);
   const mid = size / 2;
 
   function px(x, y, c, a) {
@@ -3744,16 +3987,37 @@ function generateCreaturePortrait(sid) {
     cx.fillRect(Math.round(x), Math.round(y), w, h);
   }
 
-  // Gene amplification for evolved species
-  const baseGenes = es && es.baseGenes ? es.baseGenes : genes;
-  let driftSum = 0;
-  for (const g of GENE_KEYS) { const d = genes[g] - baseGenes[g]; driftSum += d * d; }
-  const drift = Math.sqrt(driftSum);
-  const ampFactor = 1 + drift * 4;
-  const ag = {};
-  for (const g of GENE_KEYS) {
-    ag[g] = clamp(baseGenes[g] + (genes[g] - baseGenes[g]) * ampFactor, 0, 1);
+  // Map 16 genes to the 6 portrait axes the body plans use
+  const ag = {
+    v: clamp(expGenes.fertility * 0.6 + expGenes.growthRate * 0.4, 0, 1),
+    s: clamp(expGenes.bodyShape * 0.5 + expGenes.curiosity * 0.5, 0, 1),
+    f: clamp(expGenes.bodySize * 0.4 + expGenes.hungerEfficiency * 0.6, 0, 1),
+    a: clamp(expGenes.bodyArmour * 0.7 + expGenes.pigment * 0.3, 0, 1),
+    p: clamp(expGenes.aggression * 0.6 + expGenes.visionRange * 0.4, 0, 1),
+    o: clamp(expGenes.sociality * 0.6 + expGenes.flightResponse * 0.4, 0, 1),
+  };
+  // Amplify based on divergence from baseline
+  const baseExpGenes = es && es.baseGenes ? expressAllGenes(es.baseGenes) : expGenes;
+  var driftSum = 0;
+  for (var dg = 0; dg < GENE_KEYS.length; dg++) {
+    var dd = (expGenes[GENE_KEYS[dg]] || 0.5) - (baseExpGenes[GENE_KEYS[dg]] || 0.5);
+    driftSum += dd * dd;
   }
+  const drift = Math.sqrt(driftSum);
+  const ampFactor = 1 + drift * 3;
+  var agBase = {
+    v: clamp(baseExpGenes.fertility * 0.6 + baseExpGenes.growthRate * 0.4, 0, 1),
+    s: clamp(baseExpGenes.bodyShape * 0.5 + baseExpGenes.curiosity * 0.5, 0, 1),
+    f: clamp(baseExpGenes.bodySize * 0.4 + baseExpGenes.hungerEfficiency * 0.6, 0, 1),
+    a: clamp(baseExpGenes.bodyArmour * 0.7 + baseExpGenes.pigment * 0.3, 0, 1),
+    p: clamp(baseExpGenes.aggression * 0.6 + baseExpGenes.visionRange * 0.4, 0, 1),
+    o: clamp(baseExpGenes.sociality * 0.6 + baseExpGenes.flightResponse * 0.4, 0, 1),
+  };
+  for (var agk in ag) {
+    ag[agk] = clamp(agBase[agk] + (ag[agk] - agBase[agk]) * ampFactor, 0, 1);
+  }
+  // Make genes alias for backward compat with portrait code
+  const genes = expGenes;
   const ld = sp.lineageDepth || 0;
   const evoScale = 1 + drift * 0.3;
 
@@ -4654,19 +4918,38 @@ function openSpeciesInfo(sid) {
   html += '</div></div>';
 
   if (genes) {
-    html += '<div class="sip-section"><div class="sip-section-title">GENOME</div>';
-    for (const g of GENE_KEYS) {
-      const val = genes[g] || 0;
-      const pct = (val * 100).toFixed(0);
-      const col = GENE_COLORS[g];
-      const variance = es.geneVar ? es.geneVar[g] : 0;
-      const varLabel = variance > 0.2 ? ' (diverse)' : variance < 0.05 ? ' (bottleneck)' : '';
-      html += '<div class="sip-gene-row">';
-      const gLabel = (TIER_GENE_NAMES[sp.tier] && TIER_GENE_NAMES[sp.tier][g]) || GENE_NAMES[g];
-      html += '<span class="sip-gene-label" style="color:' + col + ';">' + gLabel + '</span>';
-      html += '<div class="sip-gene-bar"><div class="sip-gene-fill" style="width:' + pct + '%;background:' + col + ';"></div></div>';
-      html += '<span class="sip-gene-val">' + val.toFixed(2) + varLabel + '</span>';
-      html += '</div>';
+    var diversity = speciesGeneticDiversity(sid);
+    var divLabel = diversity > 0.25 ? 'High' : diversity > 0.10 ? 'Moderate' : diversity > 0.04 ? 'Low' : 'Bottleneck';
+    var divCol = diversity > 0.25 ? '#44FF88' : diversity > 0.10 ? '#FFDD44' : diversity > 0.04 ? '#FF8844' : '#FF4444';
+    html += '<div class="sip-section"><div class="sip-section-title">GENOME <span style="float:right;font-size:0.55rem;color:' + divCol + ';">Diversity: ' + divLabel + '</span></div>';
+    for (var clName in GENE_CLUSTERS) {
+      html += '<div style="margin-top:4px;"><span style="font-size:0.5rem;color:#4A7A8A;letter-spacing:1px;">' + clName.toUpperCase() + '</span></div>';
+      var clGenes = GENE_CLUSTERS[clName];
+      for (var cgi = 0; cgi < clGenes.length; cgi++) {
+        var g = clGenes[cgi];
+        var gene = genes[g];
+        var val = geneVal(gene || 0);
+        var pct = (val * 100).toFixed(0);
+        var col = GENE_COLORS[g];
+        var variance = es.geneVar ? es.geneVar[g] : 0;
+        var varLabel = variance > 0.2 ? ' (diverse)' : variance < 0.05 ? ' (bottleneck)' : '';
+        var het = geneHeterozygosity(gene);
+        html += '<div class="sip-gene-row">';
+        html += '<span class="sip-gene-label" style="color:' + col + ';">' + GENE_NAMES[g] + '</span>';
+        html += '<div class="sip-gene-bar">';
+        if (typeof gene !== 'number' && gene) {
+          var a1pct = (gene.a1 * 100).toFixed(0);
+          var a2pct = (gene.a2 * 100).toFixed(0);
+          html += '<div style="position:absolute;left:0;top:0;width:' + a1pct + '%;height:50%;background:' + col + ';opacity:0.7;"></div>';
+          html += '<div style="position:absolute;left:0;bottom:0;width:' + a2pct + '%;height:50%;background:' + col + ';opacity:0.5;"></div>';
+          html += '<div class="sip-gene-fill" style="width:' + pct + '%;background:' + col + ';opacity:0.3;"></div>';
+        } else {
+          html += '<div class="sip-gene-fill" style="width:' + pct + '%;background:' + col + ';"></div>';
+        }
+        html += '</div>';
+        html += '<span class="sip-gene-val">' + val.toFixed(2) + varLabel + '</span>';
+        html += '</div>';
+      }
     }
     html += '</div>';
   }
