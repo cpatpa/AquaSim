@@ -2,6 +2,10 @@ import type {
   TraitDefinition,
   TraitPolygenicReq,
   TraitSynergy,
+  SpeciesDefinition,
+  EvoStats,
+  GeneSet,
+  ExpressedGenes,
 } from '../types';
 
 export const TRAITS: Record<string, TraitDefinition> = {
@@ -168,6 +172,91 @@ export function hasSynergy(synergies: TraitSynergy[], bonusType: string): number
 
 export function traitStr(strengths: Record<string, number> | undefined, trait: string): number {
   return strengths?.[trait] ?? 1;
+}
+
+export function expressTraits(
+  sp: SpeciesDefinition,
+  es: EvoStats,
+  maxTraits: number,
+  expressAllGenesFn: (genes: GeneSet) => ExpressedGenes,
+  logFn?: (msg: string) => void,
+): void {
+  if (!es.genes) return;
+
+  const exp = expressAllGenesFn(es.genes);
+  es._expressed = exp;
+
+  const expressed: Array<{ trait: string; strength: number }> = [];
+  for (const tk of TRAIT_KEYS) {
+    if (!TRAITS[tk].eligible(sp.tier)) continue;
+    const req = TRAIT_POLYGENIC[tk];
+    if (!req) continue;
+    let qualifies = true;
+    for (const r of req.requires) {
+      if ((exp[r.g] || 0) < r.min) { qualifies = false; break; }
+    }
+    if (qualifies && req.inhibits) {
+      for (const inh of req.inhibits) {
+        if ((exp[inh.g] || 0) >= inh.max) { qualifies = false; break; }
+      }
+    }
+    if (qualifies) {
+      const strength = Math.max(0.5, Math.min(1.5, req.strength(exp)));
+      expressed.push({ trait: tk, strength });
+    }
+  }
+
+  for (let ei = expressed.length - 1; ei >= 0; ei--) {
+    const conflict = getExclusiveConflict(
+      expressed[ei].trait,
+      expressed.filter((_, xi) => xi < ei).map(x => x.trait),
+    );
+    if (conflict) expressed.splice(ei, 1);
+  }
+
+  expressed.sort((a, b) => b.strength - a.strength);
+  let candidates = expressed.slice(0, maxTraits);
+
+  if (sp.tier === 'producer') {
+    let defCount = 0;
+    candidates = candidates.filter(e => {
+      if (PRODUCER_DEFENCE_TRAITS.indexOf(e.trait) !== -1) {
+        defCount++;
+        if (defCount > MAX_PRODUCER_DEFENCE_TRAITS) return false;
+      }
+      return true;
+    });
+    while (candidates.length < maxTraits && expressed.length > candidates.length) {
+      const next = expressed.find(e =>
+        candidates.indexOf(e) === -1 &&
+        (PRODUCER_DEFENCE_TRAITS.indexOf(e.trait) === -1 || defCount < MAX_PRODUCER_DEFENCE_TRAITS),
+      );
+      if (!next) break;
+      if (PRODUCER_DEFENCE_TRAITS.indexOf(next.trait) !== -1) defCount++;
+      candidates.push(next);
+    }
+  }
+
+  const newTraits = candidates.map(e => e.trait);
+  const oldTraits = es.traits || [];
+  if (logFn) {
+    for (const nt of newTraits) {
+      if (oldTraits.indexOf(nt) === -1) logFn(sp.name + ' expressed ' + TRAITS[nt].name);
+    }
+    for (const ot of oldTraits) {
+      if (newTraits.indexOf(ot) === -1) logFn(sp.name + ' lost ' + TRAITS[ot].name);
+    }
+  }
+
+  es.traits = newTraits;
+  es.traitStrengths = {};
+  let bm = 0;
+  for (const c of candidates) {
+    es.traitStrengths[c.trait] = c.strength;
+    const bit = TRAIT_BITS[c.trait];
+    if (bit) bm |= bit;
+  }
+  es._traitBitmask = bm;
 }
 
 // Trait bitmask system for hot-path lookups

@@ -73,6 +73,7 @@ import {
 } from './novel-adaptations';
 
 import { generateSpeciesName } from './naming';
+import { expressTraits } from './traits';
 
 import type { SimHistory } from '../data/history';
 import { addEvoEvent } from '../data/history';
@@ -425,8 +426,9 @@ export function evolve(ctx: EvoContext): EvolveResult {
       es.hungerMax = derived.hungerMax;
     }
 
-    // TODO: call expressTraits(id) once the trait expression module is available
-    // expressTraits(id);
+    expressTraits(sp, es, ctx.maxTraitsPerSpecies, expressAllGenes, (msg) =>
+      addEvoEvent(history, generation, msg),
+    );
 
     // Novel adaptations: emerge from extreme gene combinations
     if (!es.novelAdapts) es.novelAdapts = [];
@@ -831,7 +833,9 @@ export function speciate(ctx: EvoContext): SpeciateResult {
       novelAdapts: (es.novelAdapts || []).slice(),
     };
 
-    // TODO: call expressTraits(newId) once the trait expression module is available
+    expressTraits(SPECIES[newId], evoStats[newId], ctx.maxTraitsPerSpecies, expressAllGenes, (msg) =>
+      addEvoEvent(history, generation, msg),
+    );
 
     // Graph marker (returned to caller via history)
     ctx.history.graphEventMarkers.push({
@@ -1186,7 +1190,9 @@ export function nicheShift(ctx: EvoContext): NicheShiftResult {
       novelAdapts: (es.novelAdapts || []).slice(),
     };
 
-    // TODO: call expressTraits(newId) once the trait expression module is available
+    expressTraits(SPECIES[newId], evoStats[newId], ctx.maxTraitsPerSpecies, expressAllGenes, (msg) =>
+      addEvoEvent(history, generation, msg),
+    );
 
     // Convert a fraction of parent cells to the new species
     const convertTarget = (popNow * 0.25) | 0;
