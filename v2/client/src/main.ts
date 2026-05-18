@@ -63,13 +63,32 @@ seedBalancedRockReefs(sim.grid);
 const app = document.getElementById('app')!;
 app.innerHTML = `
 <div id="layout">
-  <div id="sidebar">
-    <div id="title-bar">
-      <h1 id="title">AquaSim <span style="font-size:0.6em;opacity:0.5;">v2</span></h1>
-      <span id="gen-counter">GEN 0</span>
-      <span id="season-display">Spring</span>
+  <div id="left-panel">
+    <h1>AQUASIM</h1>
+    <div id="user-bar">
+      <span id="user-label"></span>
+      <span style="flex:1;"></span>
+      <button id="btn-account">Acct</button>
     </div>
-    <div id="controls">
+    <div id="species-info"></div>
+    <div id="palette-list"></div>
+    <div id="heatmap-bar">
+      <select id="heatmap-select">
+        ${HEATMAP_MODES.map(m => `<option value="${m.id}">${m.label}</option>`).join('')}
+      </select>
+    </div>
+    <div id="scenario-bar">
+      <select id="scenario-select">
+        <option value="">Scenario...</option>
+        ${SCENARIOS.map(s => `<option value="${s.id}">${s.name}</option>`).join('')}
+      </select>
+    </div>
+  </div>
+  <div id="centre">
+    <div id="canvas-wrap">
+      <canvas id="grid-canvas"></canvas>
+    </div>
+    <div id="bottom-bar">
       <button id="btn-play" title="Space">Play</button>
       <button id="btn-step" title="Right Arrow">Step</button>
       <select id="speed-select">
@@ -80,46 +99,36 @@ app.innerHTML = `
         <option value="8">MAX</option>
       </select>
       <label><input type="checkbox" id="evo-toggle"> Evo</label>
-    </div>
-    <div id="user-bar" style="display:flex;align-items:center;gap:6px;padding:4px 8px;font-size:0.75rem;color:#4A7A8A;border-bottom:1px solid #1B3A4B;">
-      <span id="user-label"></span>
-      <span style="flex:1;"></span>
-      <button id="btn-account" style="background:none;border:1px solid #1B3A4B;color:#7EE8FA;border-radius:3px;padding:2px 8px;cursor:pointer;font-family:inherit;font-size:0.7rem;">Account</button>
-    </div>
-    <div id="tools">
+      <div class="bar-divider"></div>
       <button id="btn-seed" title="S">Seed</button>
       <button id="btn-balance" title="B">Balance</button>
       <button id="btn-biome" title="G">Biome</button>
-      <button id="btn-clear" title="C">Clear</button>
+      <button class="btn-danger" id="btn-clear" title="C">Clear</button>
+      <div class="bar-divider"></div>
       <button id="btn-save">Save</button>
       <button id="btn-load">Load</button>
       <button id="btn-dashboard">My Sims</button>
       <button id="btn-leaderboard">Ranks</button>
       <button id="btn-export">Export</button>
+      <div class="bar-divider"></div>
       <button id="btn-tree">Tree</button>
       <button id="btn-settings">Settings</button>
       <button id="btn-help" title="?">?</button>
+      <div class="bar-spacer"></div>
+      <span id="season-display">Spring</span>
+      <span id="gen-counter">GEN 0</span>
     </div>
-    <div id="scenario-bar">
-      <select id="scenario-select">
-        <option value="">Scenario...</option>
-        ${SCENARIOS.map(s => `<option value="${s.id}">${s.name}</option>`).join('')}
-      </select>
-    </div>
-    <div id="species-info" class="info-bar"></div>
-    <div id="palette-list"></div>
-    <div id="heatmap-bar">
-      <select id="heatmap-select">
-        ${HEATMAP_MODES.map(m => `<option value="${m.id}">${m.label}</option>`).join('')}
-      </select>
-    </div>
-    <div id="bio-score">Biodiversity: <span id="bio-score-value">0</span></div>
-    <div id="pop-graph-wrap"><canvas id="pop-graph"></canvas></div>
-    <div id="stats-list"></div>
-    <div id="evo-log"><div id="evo-entries"></div></div>
   </div>
-  <div id="canvas-wrap">
-    <canvas id="grid-canvas"></canvas>
+  <div id="right-panel">
+    <h2 class="rp-heading-pop">POPULATION</h2>
+    <div id="bio-score">
+      <span id="bio-score-label">BIODIVERSITY</span>
+      <span id="bio-score-value">0</span>
+    </div>
+    <div id="stats-list"></div>
+    <div id="pop-graph-wrap"><canvas id="pop-graph"></canvas></div>
+    <h2 class="rp-heading-evo">EVOLUTION</h2>
+    <div id="evo-log"><div id="evo-entries"></div></div>
   </div>
 </div>
 <div id="phylo-overlay" class="overlay-hidden">
