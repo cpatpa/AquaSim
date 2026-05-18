@@ -6,7 +6,7 @@ import { MIN_GRID_PX, MAX_GRID_PX, CELL_SIZE, SEASON_LENGTH } from './constants'
 import { noiseSeed } from './environment/terrain';
 import { createRenderer, initCanvas, render, spawnDeathParticles, tickParticles, drawParticles } from './renderer/canvas-renderer';
 import type { RendererState } from './renderer/canvas-renderer';
-import { seedGrid, seedBalancedRockReefs } from './environment/seeding';
+import { seedGrid, seedBalancedRockReefs, seedBiome } from './environment/seeding';
 import { createPaintState, setupPaintHandlers, setupKeyboardShortcuts } from './ui/toolbar';
 import { createPaletteState, buildPalette, selectType, updateGenerationDisplay, updateSeasonDisplay, updateEvoLog } from './ui/panels';
 import { calcBiodiversity, scoreColour, drawPopGraph, buildStatsHtml } from './ui/graphs';
@@ -20,7 +20,7 @@ import { serialise, deserialise, downloadSave, uploadSave } from './data/seriali
 import { createCamera, setupCameraHandlers, updateCamera, screenToWorld, drawMinimap, fitToView } from './ui/camera';
 import type { CameraState } from './ui/camera';
 import { createUndoState, beginStroke, commitStroke, undo, redo } from './ui/undo';
-import { COLOR_RGB } from './species/registry';
+import { COLOR_RGB, SPECIES } from './species/registry';
 import { createSpeciesInfoState, openSpeciesInfo, injectSpeciesInfoStyles } from './ui/species-info';
 import { buildPhyloTree, layoutPhyloTree, createPhyloView, setupPhyloInteraction, renderPhyloView } from './ui/phylo-tree';
 import type { PhyloViewState } from './ui/phylo-tree';
@@ -31,6 +31,7 @@ import { drawHeatmapOverlay, HEATMAP_MODES } from './renderer/heatmap';
 import type { HeatmapMode } from './renderer/heatmap';
 import { tierImmigration } from './evolution/immigration';
 import type { ImmigrationContext } from './evolution/immigration';
+import { generateCreaturePortrait, clearPortraitCache } from './renderer/portraits';
 
 noiseSeed(Date.now());
 
@@ -75,6 +76,7 @@ app.innerHTML = `
     <div id="tools">
       <button id="btn-seed" title="S">Seed</button>
       <button id="btn-balance" title="B">Balance</button>
+      <button id="btn-biome" title="G">Biome</button>
       <button id="btn-clear" title="C">Clear</button>
       <button id="btn-save">Save</button>
       <button id="btn-load">Load</button>
@@ -190,7 +192,9 @@ statsEl.addEventListener('click', (e) => {
   if (!row) return;
   const sid = parseInt(row.dataset.sid!);
   if (isNaN(sid) || sid < 10) return;
-  openSpeciesInfo(speciesInfoState, sid, sim.evoStats, getCellCounts());
+  const sp = SPECIES[sid];
+  const portrait = sp ? generateCreaturePortrait(sid, sp, sim.evoStats[sid], COLOR_RGB[sid] || [128, 128, 128]) : null;
+  openSpeciesInfo(speciesInfoState, sid, sim.evoStats, getCellCounts(), portrait);
 });
 
 function buildEvoContext(): EvoContext {
@@ -249,6 +253,7 @@ function doStep(): void {
     onSpeciate: () => { speciate(buildEvoContext()); },
     onNicheShift: () => { nicheShift(buildEvoContext()); },
     onTierImmigration: () => { tierImmigration(buildImmigrationContext()); },
+    onClearCreatureCache: () => { clearPortraitCache(); },
   };
 
   const result: StepResult = step(ctx);
@@ -301,6 +306,7 @@ const speedSelect = document.getElementById('speed-select') as HTMLSelectElement
 const evoToggle = document.getElementById('evo-toggle') as HTMLInputElement;
 const btnSeed = document.getElementById('btn-seed')!;
 const btnBalance = document.getElementById('btn-balance')!;
+const btnBiome = document.getElementById('btn-biome')!;
 const btnClear = document.getElementById('btn-clear')!;
 const btnSave = document.getElementById('btn-save')!;
 const btnLoad = document.getElementById('btn-load')!;
@@ -340,6 +346,12 @@ btnSeed.addEventListener('click', () => {
 });
 btnBalance.addEventListener('click', () => {
   seedBalancedRockReefs(sim.grid);
+  renderFrame();
+  updateUI();
+});
+btnBiome.addEventListener('click', () => {
+  resetSimulation(sim);
+  seedBiome(sim.grid);
   renderFrame();
   updateUI();
 });
@@ -428,7 +440,9 @@ function openPhyloTree(): void {
   phyloView = createPhyloView();
   if (phyloCleanup) phyloCleanup();
   phyloCleanup = setupPhyloInteraction(phyloCanvas, phyloView, layout, (id) => {
-    openSpeciesInfo(speciesInfoState, id, sim.evoStats, counts);
+    const psp = SPECIES[id];
+    const pp = psp ? generateCreaturePortrait(id, psp, sim.evoStats[id], COLOR_RGB[id] || [128, 128, 128]) : null;
+    openSpeciesInfo(speciesInfoState, id, sim.evoStats, counts, pp);
   }, () => {
     renderPhyloView(phyloCanvas, phyloView!, layout);
   });
@@ -475,7 +489,12 @@ setupKeyboardShortcuts({
     renderFrame();
     updateUI();
   },
-  biome: () => {},
+  biome: () => {
+    resetSimulation(sim);
+    seedBiome(sim.grid);
+    renderFrame();
+    updateUI();
+  },
   clear: () => {
     resetSimulation(sim);
     activeVents.length = 0;

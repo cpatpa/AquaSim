@@ -176,6 +176,7 @@ export function openSpeciesInfo(
   speciesId: number,
   evoStats: Record<number, EvoStats>,
   counts: Record<number, number>,
+  portraitUrl?: string | null,
 ): void {
   const sp = SPECIES[speciesId];
   if (!sp) return;
@@ -196,6 +197,7 @@ export function openSpeciesInfo(
       </div>
       <div class="species-modal-body">
         <div class="species-modal-left">
+          ${portraitUrl ? `<img class="sip-portrait" src="${portraitUrl}" alt="${sp.name}" style="width:64px;height:64px;image-rendering:pixelated;margin-bottom:8px;">` : ''}
           <div class="species-meta">
             <div><span class="meta-label">Tier</span> ${sp.tier}</div>
             <div><span class="meta-label">Layer</span> ${sp.layer >= 0 && sp.layer < LAYER_NAMES.length ? LAYER_NAMES[sp.layer as 0 | 1 | 2 | 3] : 'N/A'}</div>
