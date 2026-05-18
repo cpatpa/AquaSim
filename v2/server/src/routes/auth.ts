@@ -12,6 +12,13 @@ import { loginRateLimit } from '../middleware/rate-limit.js';
 import { validateBody } from '../middleware/validate.js';
 import { nanoid } from 'nanoid';
 import { TOTP, Secret } from 'otpauth';
+import type { Context } from 'hono';
+
+function setAdminCookie(c: Context, accessToken: string, role: string): void {
+  if (role === 'admin') {
+    c.header('Set-Cookie', `admin_token=${accessToken}; HttpOnly; Secure; SameSite=Strict; Path=/admin; Max-Age=${15 * 60}`, { append: true });
+  }
+}
 
 const registerSchema = z.object({
   username: z.string().min(3).max(32).regex(/^[a-zA-Z0-9_-]+$/),
@@ -177,6 +184,7 @@ authRoutes.post('/login', loginRateLimit, validateBody(loginSchema), async (c) =
   const refreshToken = await generateRefreshToken(user.id);
 
   c.header('Set-Cookie', `refresh_token=${refreshToken}; HttpOnly; Secure; SameSite=Strict; Path=/api/auth; Max-Age=${30 * 24 * 60 * 60}`);
+  setAdminCookie(c, accessToken, user.role);
 
   return c.json({
     token: accessToken,
@@ -268,6 +276,7 @@ authRoutes.post('/refresh', async (c) => {
   const newRefreshToken = await generateRefreshToken(user.id);
 
   c.header('Set-Cookie', `refresh_token=${newRefreshToken}; HttpOnly; Secure; SameSite=Strict; Path=/api/auth; Max-Age=${30 * 24 * 60 * 60}`);
+  setAdminCookie(c, accessToken, user.role);
 
   return c.json({
     token: accessToken,

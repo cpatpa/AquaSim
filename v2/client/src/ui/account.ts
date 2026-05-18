@@ -1,5 +1,5 @@
 import {
-  getUser, logout, setupMfa, verifyMfa, disableMfa,
+  getUser, isAdmin, logout, setupMfa, verifyMfa, disableMfa,
   promoteGuest, resetPassword,
 } from '../api/client';
 
@@ -120,6 +120,13 @@ export function openAccount(callbacks: AccountCallbacks): void {
             </div>
           `}
 
+          ${isAdmin() ? `
+            <div class="acct-section">
+              <div class="acct-section-title">Administration</div>
+              <button class="acct-btn acct-btn-secondary" id="acct-admin">Open Admin Console</button>
+            </div>
+          ` : ''}
+
           <div class="acct-section" style="border-top:1px solid #1A3A4B; padding-top:16px;">
             <button class="acct-btn acct-btn-danger" id="acct-logout">Logout</button>
           </div>
@@ -136,6 +143,13 @@ export function openAccount(callbacks: AccountCallbacks): void {
       close();
       callbacks.onLogout();
     });
+
+    const adminBtn = overlay.querySelector('#acct-admin');
+    if (adminBtn) {
+      adminBtn.addEventListener('click', () => {
+        window.open('/admin', '_blank');
+      });
+    }
 
     if (isGuest) {
       wirePromoteGuest();

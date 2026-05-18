@@ -1,4 +1,5 @@
 import { setSingleFingerPan } from './camera';
+import { isAdmin } from '../api/client';
 
 let _paintMode = false;
 let _isMobile = false;
@@ -247,6 +248,11 @@ function buildMenuDrawer(): string {
       <button class="mob-menu-btn" data-action="help" title="Open the comprehensive help guide">Help</button>
       <button class="mob-menu-btn" data-action="account" title="Login, register or manage your account">Account</button>
     </div>
+    ${isAdmin() ? `
+    <div style="display:flex;flex-wrap:wrap;gap:6px;padding:8px 0;border-top:1px solid #0C2D40;margin-top:8px;">
+      <button class="mob-menu-btn" data-action="admin" style="color:#FFD700;" title="Open the admin console">Admin</button>
+    </div>
+    ` : ''}
     <div style="display:flex;align-items:center;gap:6px;padding:8px 0;border-top:1px solid #0C2D40;margin-top:8px;">
       <label style="color:#4A7A8A;font-size:0.7rem;display:flex;align-items:center;gap:4px;">
         <input type="checkbox" id="mob-evo" style="accent-color:#00E5FF;"> Evolution
