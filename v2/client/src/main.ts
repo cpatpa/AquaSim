@@ -32,6 +32,14 @@ import type { HeatmapMode } from './renderer/heatmap';
 import { tierImmigration } from './evolution/immigration';
 import type { ImmigrationContext } from './evolution/immigration';
 import { generateCreaturePortrait, clearPortraitCache } from './renderer/portraits';
+import { showAuthModal } from './ui/auth';
+import { openDashboard } from './ui/dashboard';
+import { openLeaderboard } from './ui/leaderboard';
+import { openAccount } from './ui/account';
+import {
+  isLoggedIn, getUser, tryRestoreSession,
+  saveSimulation, loadSimulation, updateSimulation,
+} from './api/client';
 
 noiseSeed(Date.now());
 
@@ -73,6 +81,11 @@ app.innerHTML = `
       </select>
       <label><input type="checkbox" id="evo-toggle"> Evo</label>
     </div>
+    <div id="user-bar" style="display:flex;align-items:center;gap:6px;padding:4px 8px;font-size:0.75rem;color:#4A7A8A;border-bottom:1px solid #1B3A4B;">
+      <span id="user-label"></span>
+      <span style="flex:1;"></span>
+      <button id="btn-account" style="background:none;border:1px solid #1B3A4B;color:#7EE8FA;border-radius:3px;padding:2px 8px;cursor:pointer;font-family:inherit;font-size:0.7rem;">Account</button>
+    </div>
     <div id="tools">
       <button id="btn-seed" title="S">Seed</button>
       <button id="btn-balance" title="B">Balance</button>
@@ -80,6 +93,8 @@ app.innerHTML = `
       <button id="btn-clear" title="C">Clear</button>
       <button id="btn-save">Save</button>
       <button id="btn-load">Load</button>
+      <button id="btn-dashboard">My Sims</button>
+      <button id="btn-leaderboard">Ranks</button>
       <button id="btn-export">Export</button>
       <button id="btn-tree">Tree</button>
       <button id="btn-settings">Settings</button>
@@ -310,6 +325,10 @@ const btnBiome = document.getElementById('btn-biome')!;
 const btnClear = document.getElementById('btn-clear')!;
 const btnSave = document.getElementById('btn-save')!;
 const btnLoad = document.getElementById('btn-load')!;
+const btnDashboard = document.getElementById('btn-dashboard')!;
+const btnLeaderboard = document.getElementById('btn-leaderboard')!;
+const btnAccount = document.getElementById('btn-account')!;
+const userLabel = document.getElementById('user-label')!;
 const btnExport = document.getElementById('btn-export')!;
 const btnTree = document.getElementById('btn-tree')!;
 const btnSettings = document.getElementById('btn-settings')!;
@@ -363,24 +382,98 @@ btnClear.addEventListener('click', () => {
   btnPlay.textContent = 'Play';
 });
 
-btnSave.addEventListener('click', () => {
+let currentSimId: string | null = null;
+
+btnSave.addEventListener('click', async () => {
   const data = serialise(sim);
-  downloadSave(data);
+  if (isLoggedIn()) {
+    if (currentSimId) {
+      try {
+        await updateSimulation(currentSimId, data);
+        btnSave.textContent = 'Saved!';
+        setTimeout(() => { btnSave.textContent = 'Save'; }, 1500);
+      } catch {
+        btnSave.textContent = 'Failed';
+        setTimeout(() => { btnSave.textContent = 'Save'; }, 1500);
+      }
+    } else {
+      const name = prompt('Simulation name:');
+      if (!name) return;
+      try {
+        const { id } = await saveSimulation(name, data);
+        currentSimId = id;
+        btnSave.textContent = 'Saved!';
+        setTimeout(() => { btnSave.textContent = 'Save'; }, 1500);
+      } catch (e) {
+        alert((e as Error).message);
+      }
+    }
+  } else {
+    downloadSave(data);
+  }
 });
+
 btnLoad.addEventListener('click', async () => {
   try {
     const data = await uploadSave();
     const wasRunning = sim.running;
     if (wasRunning) { stopLoop(sim); btnPlay.textContent = 'Play'; }
     deserialise(data, sim);
+    currentSimId = null;
     initCanvas(rs, sim.grid.width, sim.grid.height);
     fitToView(cam);
     renderFrame();
     updateUI();
-  } catch (_e) {
+  } catch {
     // user cancelled or invalid file
   }
 });
+
+btnDashboard.addEventListener('click', () => {
+  if (!isLoggedIn()) { alert('Login to access your saved simulations.'); return; }
+  openDashboard({
+    onLoad: async (simId) => {
+      try {
+        const { state } = await loadSimulation(simId);
+        const wasRunning = sim.running;
+        if (wasRunning) { stopLoop(sim); btnPlay.textContent = 'Play'; }
+        deserialise(state as ReturnType<typeof serialise>, sim);
+        currentSimId = simId;
+        initCanvas(rs, sim.grid.width, sim.grid.height);
+        fitToView(cam);
+        renderFrame();
+        updateUI();
+      } catch (e) {
+        alert((e as Error).message);
+      }
+    },
+    onClose: () => {},
+  });
+});
+
+btnLeaderboard.addEventListener('click', () => {
+  openLeaderboard(() => {});
+});
+
+btnAccount.addEventListener('click', () => {
+  if (!isLoggedIn()) return;
+  openAccount({
+    onLogout: () => {
+      currentSimId = null;
+      updateUserBar();
+    },
+    onClose: () => { updateUserBar(); },
+  });
+});
+
+function updateUserBar(): void {
+  const u = getUser();
+  if (u) {
+    userLabel.textContent = u.username + (u.role === 'guest' ? ' (guest)' : '');
+  } else {
+    userLabel.textContent = 'Not logged in';
+  }
+}
 
 btnExport.addEventListener('click', () => {
   const counts = getCellCounts();
@@ -523,5 +616,16 @@ document.addEventListener('keydown', (e) => {
 
 renderFrame();
 updateUI();
+
+(async () => {
+  const restored = await tryRestoreSession();
+  if (!restored) {
+    const result = await showAuthModal();
+    if (result.action === 'skip') {
+      // continue without login
+    }
+  }
+  updateUserBar();
+})();
 
 export { sim };
