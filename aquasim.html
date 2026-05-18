@@ -5355,45 +5355,9 @@ function openSpeciesInfo(sid) {
 
   const tree = buildFamilyTree(sid);
   if (tree && tree.members.length > 1) {
-    html += '<div class="sip-section"><div class="sip-section-title">FAMILY TREE</div>';
-    html += '<div class="sip-lineage">';
-    const total = gridW * gridH;
-    function popOf(id) { let c = 0; for (let i = 0; i < total; i++) { if (species[i] === id) c++; } return c; }
-    function renderNode(id, prefix, isLast, depth) {
-      const nsp = SPECIES[id];
-      if (!nsp) return '';
-      const pop = popOf(id);
-      const isCurrent = id === sid;
-      const isExtinct = pop === 0 && id >= 100;
-      const cls = 'sip-tree-node' + (isCurrent ? ' sip-current' : '') + (isExtinct ? ' sip-extinct' : '');
-      let h = '<div class="' + cls + '" data-sid="' + id + '">';
-      h += '<span class="sip-tree-prefix">' + prefix + (isLast ? '&#x2514;' : '&#x251C;') + '&#x2500;' + '</span>';
-      h += '<span class="sip-lineage-swatch" style="background:' + nsp.color + ';"></span> ';
-      h += nsp.name;
-      if (nsp.tier !== SPECIES[tree.rootId].tier) h += '<span class="sip-tree-tier">[' + nsp.tier + ']</span>';
-      if (pop > 0) h += '<span class="sip-tree-pop">(' + pop + ')</span>';
-      else if (id >= 100) h += '<span class="sip-tree-pop">(extinct)</span>';
-      h += '</div>';
-      const children = tree.childMap[id] || [];
-      const nextPrefix = prefix + (isLast ? '&nbsp;&nbsp;' : '&#x2502;&nbsp;');
-      for (let i = 0; i < children.length; i++) {
-        h += renderNode(children[i], nextPrefix, i === children.length - 1, depth + 1);
-      }
-      return h;
-    }
-    const rootChildren = tree.childMap[tree.rootId] || [];
-    const rootSp = SPECIES[tree.rootId];
-    const rootPop = popOf(tree.rootId);
-    const rootCls = 'sip-tree-node' + (tree.rootId === sid ? ' sip-current' : '') + (rootPop === 0 && tree.rootId >= 100 ? ' sip-extinct' : '');
-    html += '<div class="' + rootCls + '" data-sid="' + tree.rootId + '">';
-    html += '<span class="sip-lineage-swatch" style="background:' + rootSp.color + ';"></span> ';
-    html += rootSp.name;
-    if (rootPop > 0) html += '<span class="sip-tree-pop">(' + rootPop + ')</span>';
+    html += '<div class="sip-section"><div class="sip-section-title">PHYLOGENETIC TREE</div>';
+    html += '<canvas id="sip-phylo" style="display:block;width:100%;cursor:pointer;"></canvas>';
     html += '</div>';
-    for (let i = 0; i < rootChildren.length; i++) {
-      html += renderNode(rootChildren[i], '', i === rootChildren.length - 1, 1);
-    }
-    html += '</div></div>';
   }
 
   if (sp.desc) html += '<div class="sip-desc">' + sp.desc + '</div>';
@@ -5445,6 +5409,106 @@ function openSpeciesInfo(sid) {
       var rlAng = (Math.PI * 2 * rLabels[rl][0] / rN) - Math.PI / 2;
       rCtx.fillText(rLabels[rl][1], rMid + Math.cos(rlAng) * (rR + 10), rMid + Math.sin(rlAng) * (rR + 10) + 3);
     }
+  }
+
+  // Draw phylogenetic tree on canvas
+  var phyloCv = document.getElementById('sip-phylo');
+  if (phyloCv && tree && tree.members.length > 1) {
+    var _total = gridW * gridH;
+    function _tPop(tid) { var c = 0; for (var i = 0; i < _total; i++) { if (species[i] === tid) c++; } return c; }
+    // Layout: compute positions for each node
+    var nodeY = {}, nodeX = {};
+    var maxDepth = 0;
+    var leafCount = 0;
+    function layoutTree(nid, depth) {
+      if (depth > maxDepth) maxDepth = depth;
+      nodeX[nid] = depth;
+      var ch = tree.childMap[nid] || [];
+      if (ch.length === 0) { nodeY[nid] = leafCount; leafCount++; return; }
+      for (var ci = 0; ci < ch.length; ci++) layoutTree(ch[ci], depth + 1);
+      var yMin = nodeY[ch[0]], yMax = nodeY[ch[ch.length - 1]];
+      nodeY[nid] = (yMin + yMax) / 2;
+    }
+    layoutTree(tree.rootId, 0);
+    var pW = phyloCv.parentElement ? phyloCv.parentElement.clientWidth : 200;
+    var nodeH = 16;
+    var pH = Math.max(60, leafCount * nodeH + 20);
+    var dpr = window.devicePixelRatio || 1;
+    phyloCv.width = pW * dpr;
+    phyloCv.height = pH * dpr;
+    phyloCv.style.height = pH + 'px';
+    var pCtx = phyloCv.getContext('2d');
+    pCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    pCtx.clearRect(0, 0, pW, pH);
+    var xStep = maxDepth > 0 ? (pW - 80) / (maxDepth + 1) : 40;
+    var yOff = 10;
+    // Draw lines
+    function drawLines(nid) {
+      var ch = tree.childMap[nid] || [];
+      var x0 = 10 + nodeX[nid] * xStep;
+      var y0 = yOff + nodeY[nid] * nodeH;
+      for (var ci = 0; ci < ch.length; ci++) {
+        var cid = ch[ci];
+        var x1 = 10 + nodeX[cid] * xStep;
+        var y1 = yOff + nodeY[cid] * nodeH;
+        var cPop = _tPop(cid);
+        var cRgb = COLOR_RGB[cid] || [128,128,128];
+        pCtx.strokeStyle = cPop === 0 ? 'rgba(80,80,80,0.4)' : 'rgba(' + cRgb[0] + ',' + cRgb[1] + ',' + cRgb[2] + ',0.6)';
+        pCtx.lineWidth = cPop === 0 ? 1 : 1.5;
+        if (cPop === 0) pCtx.setLineDash([2, 2]); else pCtx.setLineDash([]);
+        pCtx.beginPath();
+        pCtx.moveTo(x0, y0);
+        pCtx.lineTo(x0, y1);
+        pCtx.lineTo(x1, y1);
+        pCtx.stroke();
+        drawLines(cid);
+      }
+    }
+    pCtx.setLineDash([]);
+    drawLines(tree.rootId);
+    // Draw nodes
+    var _phyloNodes = [];
+    function drawNodes(nid) {
+      var nsp2 = SPECIES[nid];
+      if (!nsp2) return;
+      var x = 10 + nodeX[nid] * xStep;
+      var y = yOff + nodeY[nid] * nodeH;
+      var pop = _tPop(nid);
+      var isC = nid === sid;
+      var rgb2 = COLOR_RGB[nid] || [128,128,128];
+      pCtx.fillStyle = isC ? 'rgba(0,200,255,0.3)' : pop === 0 ? 'rgba(40,40,40,0.3)' : 'rgba(' + rgb2[0] + ',' + rgb2[1] + ',' + rgb2[2] + ',0.2)';
+      pCtx.beginPath();
+      pCtx.arc(x, y, isC ? 5 : 3.5, 0, Math.PI * 2);
+      pCtx.fill();
+      pCtx.fillStyle = pop === 0 ? '#555' : nsp2.color;
+      pCtx.beginPath();
+      pCtx.arc(x, y, isC ? 3 : 2, 0, Math.PI * 2);
+      pCtx.fill();
+      // Label
+      pCtx.fillStyle = pop === 0 ? '#555' : '#8ABECC';
+      pCtx.font = isC ? 'bold 8px monospace' : '7px monospace';
+      pCtx.textAlign = 'left';
+      var label = nsp2.name;
+      if (label.length > 12) label = label.substring(0, 11) + '.';
+      pCtx.fillText(label + (pop > 0 ? ' (' + pop + ')' : ''), x + 6, y + 3);
+      _phyloNodes.push({ id: nid, x: x, y: y, r: 5 });
+      var ch = tree.childMap[nid] || [];
+      for (var ci = 0; ci < ch.length; ci++) drawNodes(ch[ci]);
+    }
+    drawNodes(tree.rootId);
+    // Click handler for phylo nodes
+    phyloCv.addEventListener('click', function(e) {
+      var rect2 = phyloCv.getBoundingClientRect();
+      var mx = (e.clientX - rect2.left) * (phyloCv.width / dpr / rect2.width);
+      var my = (e.clientY - rect2.top) * (phyloCv.height / dpr / rect2.height);
+      for (var ni2 = 0; ni2 < _phyloNodes.length; ni2++) {
+        var n2 = _phyloNodes[ni2];
+        if ((mx - n2.x) * (mx - n2.x) + (my - n2.y) * (my - n2.y) < n2.r * n2.r * 4) {
+          openSpeciesInfo(n2.id);
+          return;
+        }
+      }
+    });
   }
 }
 
