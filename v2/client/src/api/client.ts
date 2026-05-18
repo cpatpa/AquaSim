@@ -63,6 +63,9 @@ async function refreshToken(): Promise<boolean> {
     if (!res.ok) return false;
     const data = await res.json();
     accessToken = data.token;
+    if (data.user) {
+      currentUser = data.user;
+    }
     return true;
   } catch {
     return false;
@@ -139,13 +142,7 @@ export async function logout(): Promise<void> {
 }
 
 export async function tryRestoreSession(): Promise<boolean> {
-  const ok = await refreshToken();
-  if (!ok) return false;
-  const res = await apiFetch('/api/simulations');
-  if (res.ok) {
-    return true;
-  }
-  return false;
+  return refreshToken();
 }
 
 export async function promoteGuest(username: string, email: string, password: string): Promise<void> {

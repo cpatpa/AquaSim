@@ -252,6 +252,11 @@ authRoutes.post('/refresh', async (c) => {
     return c.json({ error: 'Account not found or suspended' }, 401);
   }
 
+  const simCount = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(simulations)
+    .where(eq(simulations.ownerId, user.id));
+
   await db.delete(refreshTokens).where(eq(refreshTokens.id, stored.id));
 
   const accessToken = signAccessToken({
@@ -264,7 +269,18 @@ authRoutes.post('/refresh', async (c) => {
 
   c.header('Set-Cookie', `refresh_token=${newRefreshToken}; HttpOnly; Secure; SameSite=Strict; Path=/api/auth; Max-Age=${30 * 24 * 60 * 60}`);
 
-  return c.json({ token: accessToken });
+  return c.json({
+    token: accessToken,
+    user: {
+      id: user.id,
+      username: user.username,
+      role: user.role,
+      mfaEnabled: user.mfaEnabled,
+      saveCount: simCount[0]?.count ?? 0,
+      saveLimit: user.saveLimit,
+      createdAt: user.createdAt.toISOString(),
+    },
+  });
 });
 
 authRoutes.post('/logout', authRequired, async (c) => {
