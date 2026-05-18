@@ -26,6 +26,7 @@ import { buildPhyloTree, layoutPhyloTree, createPhyloView, setupPhyloInteraction
 import type { PhyloViewState } from './ui/phylo-tree';
 import { openSettings, injectSettingsStyles } from './ui/settings';
 import { openHelp, closeHelp, injectHelpStyles } from './ui/help';
+import { setupCellTooltip, injectTooltipStyles } from './ui/cell-tooltip';
 import { SCENARIOS, getScenario } from './environment/scenarios';
 import { drawHeatmapOverlay, HEATMAP_MODES } from './renderer/heatmap';
 import type { HeatmapMode } from './renderer/heatmap';
@@ -59,6 +60,7 @@ const speciesInfoState = createSpeciesInfoState();
 injectSpeciesInfoStyles();
 injectSettingsStyles();
 injectHelpStyles();
+injectTooltipStyles();
 
 seedGrid(sim.grid);
 seedBalancedRockReefs(sim.grid);
@@ -172,6 +174,8 @@ window.addEventListener('resize', () => {
 
 const paint = createPaintState();
 const palette = createPaletteState();
+
+setupCellTooltip(canvasEl, cam, sim.grid, sim.evoStats, () => paint.painting || cam.isDragging);
 
 const genEl = document.getElementById('gen-counter')!;
 const seasonEl = document.getElementById('season-display')!;
