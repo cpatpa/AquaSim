@@ -2389,11 +2389,23 @@ function render() {
           for (let ti = 0; ti < traits.length; ti++) {
             const tr = traits[ti];
             if (tr === 'bioluminesc') {
-              glowR += 15; glowG += 20; glowB += 30;
+              const bioPulse = 0.6 + 0.4 * Math.sin(gen * 0.15 + nv * 4);
+              glowR += (15 * bioPulse) | 0; glowG += (20 * bioPulse) | 0; glowB += (30 * bioPulse) | 0;
             } else if (tr === 'toxic') {
               baseG = Math.min(255, baseG + 12);
             } else if (tr === 'armored' || tr === 'shell') {
               bevelStrength += 8;
+            } else if (tr === 'chromatophores') {
+              const chromShift = Math.sin(gen * 0.08 + cx * 0.3 + cy * 0.2) * 12;
+              baseR = Math.min(255, Math.max(0, baseR + chromShift));
+              baseB = Math.min(255, Math.max(0, baseB - chromShift));
+            } else if (tr === 'streamlined') {
+              bevelStrength -= 4;
+            } else if (tr === 'hypermetabolism') {
+              const hyperPulse = 0.9 + 0.1 * Math.sin(gen * 0.3 + nv * 3);
+              baseR = Math.min(255, (baseR * hyperPulse + 8) | 0);
+            } else if (tr === 'cooperativehunt' || tr === 'schooling') {
+              glowB += 6;
             }
           }
         }
@@ -2450,6 +2462,27 @@ function render() {
             data[gapOff+1] = Math.min(255, data[gapOff+1] + glowG);
             data[gapOff+2] = Math.min(255, data[gapOff+2] + glowB);
           }
+        }
+      }
+
+      // Trait cell indicators: subtle per-cell markers
+      if (sp && sp.hungerMax && innerSize >= 5) {
+        const _tES = evo(sid);
+        const _tBM = _tES._traitBitmask || 0;
+        // Shell: bright centre dot
+        if (_tBM & TRAIT_BITS['shell']) {
+          const cmid = (innerSize >> 1);
+          const coff = ((py0 + cmid) * pw + px0 + cmid) * 4;
+          data[coff] = Math.min(255, data[coff] + 60);
+          data[coff+1] = Math.min(255, data[coff+1] + 60);
+          data[coff+2] = Math.min(255, data[coff+2] + 60);
+        }
+        // Toxic: green tint pixel at noise position
+        if (_tBM & TRAIT_BITS['toxic']) {
+          const tnpx = px0 + ((nv * (innerSize - 1)) | 0);
+          const tnpy = py0 + ((nv2 * 0.5 + 0.5) * (innerSize - 1) | 0);
+          const tnoff = (tnpy * pw + tnpx) * 4;
+          data[tnoff+1] = Math.min(255, data[tnoff+1] + 40);
         }
       }
 
@@ -4248,6 +4281,12 @@ function generateCreaturePortrait(sid) {
     return arr[bid % arr.length];
   }
   const bodyPlan = resolveBody(baseId, sp.tier);
+  // Gene-driven portrait scaling
+  const _bsz = expGenes.bodySize || 0.4;
+  const _bsc = 0.7 + _bsz * 0.6;
+  cx.save();
+  cx.translate(mid * (1 - _bsc), mid * (1 - _bsc));
+  cx.scale(_bsc, _bsc);
 
   function line(x0, y0, x1, y1, c, a) {
     const dx = Math.abs(x1 - x0), dy = Math.abs(y1 - y0);
@@ -5082,6 +5121,28 @@ function generateCreaturePortrait(sid) {
     }
   }
 
+  cx.restore();
+
+  // Armour overlay: draw thicker border when bodyArmour is high
+  const _bar = expGenes.bodyArmour || 0;
+  if (_bar > 0.4 && sp.tier !== 'producer') {
+    cx.strokeStyle = 'rgba(' + pal.outline[0] + ',' + pal.outline[1] + ',' + pal.outline[2] + ',' + (0.3 + _bar * 0.5) + ')';
+    cx.lineWidth = 1 + _bar * 2;
+    cx.strokeRect(4, 4, size - 8, size - 8);
+  }
+
+  // Sociality indicator: faint extra dots for schooling species
+  if ((expGenes.sociality || 0) > 0.65 && sp.tier !== 'producer') {
+    var _soc = expGenes.sociality;
+    var schoolCount = _soc > 0.85 ? 3 : _soc > 0.75 ? 2 : 1;
+    for (var _si = 0; _si < schoolCount; _si++) {
+      var sx = 4 + rng() * 8;
+      var sy = size - 8 + rng() * 5;
+      cx.fillStyle = 'rgba(' + rgb[0] + ',' + rgb[1] + ',' + rgb[2] + ',0.25)';
+      cx.fillRect(sx, sy, 2, 2);
+    }
+  }
+
   const dataUrl = cv.toDataURL();
   _creatureCache[sid] = dataUrl;
   return dataUrl;
@@ -5166,6 +5227,7 @@ function openSpeciesInfo(sid) {
         html += '</div>';
       }
     }
+    html += '<canvas id="sip-radar" width="120" height="120" style="display:block;margin:6px auto 0;"></canvas>';
     html += '</div>';
   }
 
@@ -5286,6 +5348,52 @@ function openSpeciesInfo(sid) {
 
   body.innerHTML = html;
   panel.classList.add('visible');
+
+  // Draw radar chart for gene clusters
+  var radarCv = document.getElementById('sip-radar');
+  if (radarCv && genes) {
+    var rCtx = radarCv.getContext('2d');
+    var rW = 120, rH = 120, rMid = 60, rR = 45;
+    rCtx.clearRect(0, 0, rW, rH);
+    var rExp = es._expressed || expressAllGenes(genes);
+    var rGenes = GENE_KEYS;
+    var rN = rGenes.length;
+    // Draw axis lines
+    rCtx.strokeStyle = 'rgba(40,80,100,0.4)';
+    rCtx.lineWidth = 0.5;
+    for (var ri = 0; ri < rN; ri++) {
+      var rAng = (Math.PI * 2 * ri / rN) - Math.PI / 2;
+      rCtx.beginPath();
+      rCtx.moveTo(rMid, rMid);
+      rCtx.lineTo(rMid + Math.cos(rAng) * rR, rMid + Math.sin(rAng) * rR);
+      rCtx.stroke();
+    }
+    // Draw gene polygon
+    rCtx.beginPath();
+    for (var ri2 = 0; ri2 < rN; ri2++) {
+      var rAng2 = (Math.PI * 2 * ri2 / rN) - Math.PI / 2;
+      var rVal = rExp[rGenes[ri2]] || 0;
+      var rx = rMid + Math.cos(rAng2) * rR * rVal;
+      var ry = rMid + Math.sin(rAng2) * rR * rVal;
+      if (ri2 === 0) rCtx.moveTo(rx, ry);
+      else rCtx.lineTo(rx, ry);
+    }
+    rCtx.closePath();
+    rCtx.fillStyle = 'rgba(0,200,255,0.15)';
+    rCtx.fill();
+    rCtx.strokeStyle = 'rgba(0,200,255,0.6)';
+    rCtx.lineWidth = 1;
+    rCtx.stroke();
+    // Label the 4 cardinal genes
+    rCtx.fillStyle = '#4A7A8A';
+    rCtx.font = '7px monospace';
+    rCtx.textAlign = 'center';
+    var rLabels = [[0, 'Size'], [4, 'Meta'], [8, 'Aggr'], [12, 'Visn']];
+    for (var rl = 0; rl < rLabels.length; rl++) {
+      var rlAng = (Math.PI * 2 * rLabels[rl][0] / rN) - Math.PI / 2;
+      rCtx.fillText(rLabels[rl][1], rMid + Math.cos(rlAng) * (rR + 10), rMid + Math.sin(rlAng) * (rR + 10) + 3);
+    }
+  }
 }
 
 document.getElementById('sip-close-btn').addEventListener('click', function() {
