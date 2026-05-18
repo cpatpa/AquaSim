@@ -229,6 +229,9 @@ printf "  DB password:      "; echo -e "${GREEN}[generated]${NC}"
 JWT_SECRET=$(openssl rand -base64 48 | tr -d '=/+' | head -c 48)
 printf "  JWT secret:       "; echo -e "${GREEN}[generated]${NC}"
 
+SAVE_SIGNING_KEY=$(openssl rand -base64 48 | tr -d '=/+' | head -c 48)
+printf "  Save signing key: "; echo -e "${GREEN}[generated]${NC}"
+
 GITHUB_WEBHOOK_SECRET=$(openssl rand -base64 32 | tr -d '=/+' | head -c 32)
 printf "  Webhook secret:   "; echo -e "${GREEN}[generated]${NC}"
 
@@ -240,6 +243,7 @@ APP_URL=$APP_URL
 CORS_ORIGIN=$APP_URL
 DB_PASSWORD=$DB_PASSWORD
 JWT_SECRET=$JWT_SECRET
+SAVE_SIGNING_KEY=$SAVE_SIGNING_KEY
 TUNNEL_TOKEN=$TUNNEL_TOKEN
 GITHUB_WEBHOOK_SECRET=$GITHUB_WEBHOOK_SECRET
 SMTP_HOST=$SMTP_HOST

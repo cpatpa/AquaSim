@@ -440,7 +440,7 @@ btnSave.addEventListener('click', async () => {
       }
     }
   } else {
-    downloadSave(data);
+    await downloadSave(data);
   }
 });
 

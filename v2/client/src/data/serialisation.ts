@@ -15,6 +15,7 @@ import type { SeasonState } from '../environment/seasons';
 import type { SimHistory } from './history';
 import { GENE_KEYS } from '../constants';
 import { noise2D } from '../environment/terrain';
+import { isLoggedIn, signSaveData, verifySaveData } from '../api/client';
 
 // ---------------------------------------------------------------------------
 // RLE encoding for typed arrays
@@ -119,6 +120,34 @@ export interface SaveData {
 }
 
 const CURRENT_VERSION = 1;
+
+interface SignedSaveEnvelope {
+  aquasim: true;
+  data: SaveData;
+  signature: string;
+}
+
+const CLIENT_SIGNING_KEY = 'aq-s1m-2026-v2-k3y-f4llb4ck';
+
+async function hmacSign(data: string): Promise<string> {
+  const enc = new TextEncoder();
+  const key = await crypto.subtle.importKey(
+    'raw', enc.encode(CLIENT_SIGNING_KEY),
+    { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'],
+  );
+  const sig = await crypto.subtle.sign('HMAC', key, enc.encode(data));
+  return Array.from(new Uint8Array(sig)).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+async function hmacVerify(data: string, signature: string): Promise<boolean> {
+  const expected = await hmacSign(data);
+  if (expected.length !== signature.length) return false;
+  let mismatch = 0;
+  for (let i = 0; i < expected.length; i++) {
+    mismatch |= expected.charCodeAt(i) ^ signature.charCodeAt(i);
+  }
+  return mismatch === 0;
+}
 
 // ---------------------------------------------------------------------------
 // serialise
@@ -304,12 +333,25 @@ export function deserialise(data: SaveData, sim: SimState): void {
 }
 
 // ---------------------------------------------------------------------------
-// downloadSave -- triggers a browser file download
+// downloadSave -- signs the save and triggers a browser file download
 // ---------------------------------------------------------------------------
 
-export function downloadSave(data: SaveData): void {
-  const json = JSON.stringify(data);
-  const blob = new Blob([json], { type: 'application/json' });
+export async function downloadSave(data: SaveData): Promise<void> {
+  const dataJson = JSON.stringify(data);
+
+  let signature: string;
+  try {
+    if (isLoggedIn()) {
+      signature = await signSaveData(data);
+    } else {
+      signature = await hmacSign(dataJson);
+    }
+  } catch {
+    signature = await hmacSign(dataJson);
+  }
+
+  const envelope: SignedSaveEnvelope = { aquasim: true, data, signature };
+  const blob = new Blob([JSON.stringify(envelope)], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
 
   const anchor = document.createElement('a');
@@ -322,7 +364,7 @@ export function downloadSave(data: SaveData): void {
 }
 
 // ---------------------------------------------------------------------------
-// uploadSave -- opens a file picker and parses the selected JSON save
+// uploadSave -- opens a file picker, verifies signature, then returns data
 // ---------------------------------------------------------------------------
 
 export function uploadSave(): Promise<SaveData> {
@@ -339,14 +381,39 @@ export function uploadSave(): Promise<SaveData> {
       }
 
       const reader = new FileReader();
-      reader.onload = () => {
+      reader.onload = async () => {
         try {
-          const parsed = JSON.parse(reader.result as string) as SaveData;
-          if (typeof parsed.version !== 'number') {
-            reject(new Error('Invalid save file: missing version field'));
-            return;
+          const raw = reader.result as string;
+          const parsed = JSON.parse(raw);
+
+          if (parsed.aquasim === true && parsed.data && parsed.signature) {
+            const envelope = parsed as SignedSaveEnvelope;
+            const dataJson = JSON.stringify(envelope.data);
+
+            let valid = false;
+            try {
+              if (isLoggedIn()) {
+                valid = await verifySaveData(envelope.data, envelope.signature);
+              }
+            } catch { /* server unavailable, fall through */ }
+
+            if (!valid) {
+              valid = await hmacVerify(dataJson, envelope.signature);
+            }
+
+            if (!valid) {
+              reject(new Error('Save file signature is invalid. The file may have been tampered with.'));
+              return;
+            }
+
+            if (typeof envelope.data.version !== 'number') {
+              reject(new Error('Invalid save file: missing version field'));
+              return;
+            }
+            resolve(envelope.data);
+          } else {
+            reject(new Error('Unrecognised save format. Only signed AquaSim save files are accepted.'));
           }
-          resolve(parsed);
         } catch (err) {
           reject(new Error(`Failed to parse save file: ${err}`));
         }
@@ -355,7 +422,6 @@ export function uploadSave(): Promise<SaveData> {
       reader.readAsText(file);
     });
 
-    // Handle user cancelling the dialog
     input.addEventListener('cancel', () => {
       reject(new Error('File selection cancelled'));
     });

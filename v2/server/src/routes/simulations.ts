@@ -6,6 +6,7 @@ import { eq, sql, desc } from 'drizzle-orm';
 import { authRequired, authOptional } from '../middleware/auth.js';
 import { validateBody } from '../middleware/validate.js';
 import { nanoid } from 'nanoid';
+import { signSaveData, verifySaveSignature } from '../lib/save-signing.js';
 
 const createSimSchema = z.object({
   name: z.string().min(1).max(100),
@@ -211,6 +212,27 @@ simulationRoutes.delete('/:id', authRequired, async (c) => {
   await db.delete(simulations).where(eq(simulations.id, id));
 
   return c.json({ ok: true });
+});
+
+const signBodySchema = z.object({
+  data: z.record(z.unknown()),
+});
+
+simulationRoutes.post('/sign', authRequired, validateBody(signBodySchema), async (c) => {
+  const body = signBodySchema.parse(await c.req.json());
+  const signature = signSaveData(body.data);
+  return c.json({ signature });
+});
+
+const verifyBodySchema = z.object({
+  data: z.record(z.unknown()),
+  signature: z.string(),
+});
+
+simulationRoutes.post('/verify', authRequired, validateBody(verifyBodySchema), async (c) => {
+  const body = verifyBodySchema.parse(await c.req.json());
+  const valid = verifySaveSignature(body.data, body.signature);
+  return c.json({ valid });
 });
 
 simulationRoutes.post('/:id/share', authRequired, async (c) => {

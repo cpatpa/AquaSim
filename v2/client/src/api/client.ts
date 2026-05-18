@@ -265,6 +265,26 @@ export async function listPublicSimulations(page: number = 1): Promise<Simulatio
   return res.json();
 }
 
+export async function signSaveData(data: unknown): Promise<string> {
+  const res = await apiFetch('/api/simulations/sign', {
+    method: 'POST',
+    body: JSON.stringify({ data }),
+  });
+  if (!res.ok) throw new Error('Signing failed');
+  const json = await res.json();
+  return json.signature;
+}
+
+export async function verifySaveData(data: unknown, signature: string): Promise<boolean> {
+  const res = await apiFetch('/api/simulations/verify', {
+    method: 'POST',
+    body: JSON.stringify({ data, signature }),
+  });
+  if (!res.ok) return false;
+  const json = await res.json();
+  return json.valid === true;
+}
+
 export async function getLeaderboard(type: string, limit: number = 50): Promise<LeaderboardEntry[]> {
   const res = await apiFetch(`/api/leaderboard/${type}?limit=${limit}`);
   if (!res.ok) throw new Error('Failed to load leaderboard');

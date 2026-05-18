@@ -8,6 +8,7 @@ services:
     environment:
       - DATABASE_URL=postgres://aquasim:${DB_PASSWORD}@db:5432/aquasim
       - JWT_SECRET=${JWT_SECRET}
+      - SAVE_SIGNING_KEY=${SAVE_SIGNING_KEY:-}
       - CORS_ORIGIN=${CORS_ORIGIN}
       - APP_URL=${APP_URL}
       - GITHUB_WEBHOOK_SECRET=${GITHUB_WEBHOOK_SECRET}
