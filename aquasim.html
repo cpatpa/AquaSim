@@ -876,6 +876,24 @@ const NOVEL_ADAPT_KEYS = Object.keys(NOVEL_ADAPTATIONS);
 const NOVEL_ADAPT_CHANCE = 0.02;
 const MAX_NOVEL_ADAPTS = 2;
 
+const NOVEL_GENE_REQS = {
+  jetpropulsion:  [{g:'bodyShape',min:0.70},{g:'flightResponse',min:0.65}],
+  flyingfish:     [{g:'bodyShape',min:0.65},{g:'curiosity',min:0.60}],
+  burrowing:      [{g:'bodySize',min:0.55},{g:'pressureAdapt',min:0.55}],
+  electricorgan:  [{g:'aggression',min:0.75},{g:'chemosensory',min:0.60}],
+  calcification:  [{g:'bodyArmour',min:0.70},{g:'pressureAdapt',min:0.50}],
+  autotomy:       [{g:'flightResponse',min:0.70},{g:'growthRate',min:0.50}],
+  mucuscoat:      [{g:'chemosensory',min:0.55},{g:'flightResponse',min:0.55}],
+  kleptoplasty:   [{g:'hungerEfficiency',min:0.65},{g:'chemosensory',min:0.55}],
+  aestivation:    [{g:'hungerEfficiency',min:0.60},{g:'thermalAdapt',min:0.55}],
+  chemosynthesis: [{g:'chemosensory',min:0.65},{g:'pressureAdapt',min:0.55}],
+  broodparasite:  [{g:'aggression',min:0.55},{g:'fertility',min:0.60}],
+  budding:        [{g:'fertility',min:0.70},{g:'growthRate',min:0.55}],
+  neoteny:        [{g:'growthRate',min:0.70},{g:'metabolicRate',min:0.55}],
+  electroreception:[{g:'visionRange',min:0.70},{g:'aggression',min:0.60}],
+  hivemind:       [{g:'sociality',min:0.75},{g:'chemosensory',min:0.50}],
+};
+
 function hasNovelAdapt(sid, key) {
   const es = evoStats[sid];
   return es && es.novelAdapts && es.novelAdapts.indexOf(key) !== -1;
@@ -1441,17 +1459,25 @@ function evolve() {
     deriveStats(id);
     expressTraits(id);
 
-    if (Math.random() < NOVEL_ADAPT_CHANCE) {
-      if (!es.novelAdapts) es.novelAdapts = [];
-      if (es.novelAdapts.length < MAX_NOVEL_ADAPTS) {
-        const eligible = NOVEL_ADAPT_KEYS.filter(k =>
-          NOVEL_ADAPTATIONS[k].eligible(sp.tier) && es.novelAdapts.indexOf(k) === -1
-        );
-        if (eligible.length > 0) {
-          const pick = eligible[Math.floor(Math.random() * eligible.length)];
-          es.novelAdapts.push(pick);
-          addEvoEvent(sp.name + ' developed ' + NOVEL_ADAPTATIONS[pick].name + '!');
-          for (const k in _creatureCache) delete _creatureCache[k];
+    // Novel adaptations: emerge from extreme gene combinations
+    if (!es.novelAdapts) es.novelAdapts = [];
+    if (es.novelAdapts.length < MAX_NOVEL_ADAPTS) {
+      var _nExp = es._expressed || expressAllGenes(genes);
+      for (var _ni = 0; _ni < NOVEL_ADAPT_KEYS.length; _ni++) {
+        var _nk = NOVEL_ADAPT_KEYS[_ni];
+        if (es.novelAdapts.indexOf(_nk) !== -1) continue;
+        if (!NOVEL_ADAPTATIONS[_nk].eligible(sp.tier)) continue;
+        var _nReq = NOVEL_GENE_REQS[_nk];
+        if (!_nReq) { if (Math.random() < NOVEL_ADAPT_CHANCE * 0.5) { es.novelAdapts.push(_nk); addEvoEvent(sp.name + ' developed ' + NOVEL_ADAPTATIONS[_nk].name + '!'); for (var _ck in _creatureCache) delete _creatureCache[_ck]; break; } continue; }
+        var _nOk = true;
+        for (var _nj = 0; _nj < _nReq.length; _nj++) {
+          if ((_nExp[_nReq[_nj].g] || 0) < _nReq[_nj].min) { _nOk = false; break; }
+        }
+        if (_nOk && Math.random() < 0.15) {
+          es.novelAdapts.push(_nk);
+          addEvoEvent(sp.name + ' developed ' + NOVEL_ADAPTATIONS[_nk].name + '!');
+          for (var _ck2 in _creatureCache) delete _creatureCache[_ck2];
+          break;
         }
       }
     }
@@ -1580,7 +1606,33 @@ function speciate() {
 
     const divergence = geneDivergence(es.genes, es.baseGenes);
     const radDiv = radiationBoost > 0 ? 0.5 : 1.0;
-    const driftThreshold = SPECIATION_DRIFT * Math.max(0.3, 1 - depth * 0.2) * radDiv;
+    let driftThreshold = SPECIATION_DRIFT * Math.max(0.3, 1 - depth * 0.2) * radDiv;
+
+    // Allopatric speciation: detect spatial separation
+    if (popNow > 25 && divergence > driftThreshold * 0.5) {
+      var sampleCells = [];
+      var step = Math.max(1, (total / 80) | 0);
+      for (var si2 = 0; si2 < total && sampleCells.length < 40; si2 += step) {
+        if (species[si2] === id) sampleCells.push(si2);
+      }
+      if (sampleCells.length >= 6) {
+        var cxAvg = 0, cyAvg = 0;
+        for (var sci = 0; sci < sampleCells.length; sci++) {
+          cxAvg += sampleCells[sci] % gridW; cyAvg += (sampleCells[sci] / gridW) | 0;
+        }
+        cxAvg /= sampleCells.length; cyAvg /= sampleCells.length;
+        var cluster1 = 0, cluster2 = 0;
+        for (var sci2 = 0; sci2 < sampleCells.length; sci2++) {
+          var scx = sampleCells[sci2] % gridW, scy = (sampleCells[sci2] / gridW) | 0;
+          var sdist = Math.abs(scx - cxAvg) + Math.abs(scy - cyAvg);
+          if (sdist > 15) cluster2++; else cluster1++;
+        }
+        if (cluster1 >= 3 && cluster2 >= 3) {
+          driftThreshold *= 0.6;
+        }
+      }
+    }
+
     if (divergence < driftThreshold) continue;
 
     let speciationChance = Math.min(0.7, SPECIATION_CHANCE + depth * 0.06);
