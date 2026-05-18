@@ -126,9 +126,9 @@ function buildMobileUI(): void {
   const bar = document.createElement('div');
   bar.id = 'mobile-bar';
   bar.innerHTML = `
-    <button id="mob-play">Play</button>
-    <button id="mob-step">Step</button>
-    <select id="mob-speed">
+    <button id="mob-play" title="Start or pause the simulation">Play</button>
+    <button id="mob-step" title="Advance one tick while paused">Step</button>
+    <select id="mob-speed" title="Simulation speed multiplier">
       <option value="500">0.5x</option>
       <option value="100" selected>1x</option>
       <option value="50">2x</option>
@@ -225,23 +225,23 @@ function restorePanels(): void {
 function buildMenuDrawer(): string {
   return `
     <div style="display:flex;flex-wrap:wrap;gap:6px;padding:4px 0;">
-      <button class="mob-menu-btn" data-action="seed">Seed</button>
-      <button class="mob-menu-btn" data-action="balance">Balance</button>
-      <button class="mob-menu-btn" data-action="biome">Biome</button>
-      <button class="mob-menu-btn" data-action="clear" style="color:#FF6B6B;">Clear</button>
+      <button class="mob-menu-btn" data-action="seed" title="Populate grid with a balanced random ecosystem">Seed</button>
+      <button class="mob-menu-btn" data-action="balance" title="Add rock reef formations">Balance</button>
+      <button class="mob-menu-btn" data-action="biome" title="Reset and generate a terrain-driven biome">Biome</button>
+      <button class="mob-menu-btn" data-action="clear" style="color:#FF6B6B;" title="Wipe the entire grid">Clear</button>
     </div>
     <div style="display:flex;flex-wrap:wrap;gap:6px;padding:8px 0;border-top:1px solid #0C2D40;margin-top:8px;">
-      <button class="mob-menu-btn" data-action="save">Save</button>
-      <button class="mob-menu-btn" data-action="load">Load</button>
-      <button class="mob-menu-btn" data-action="dashboard">My Sims</button>
-      <button class="mob-menu-btn" data-action="leaderboard">Ranks</button>
-      <button class="mob-menu-btn" data-action="export">Export</button>
+      <button class="mob-menu-btn" data-action="save" title="Save simulation to your account or download">Save</button>
+      <button class="mob-menu-btn" data-action="load" title="Load a simulation from file">Load</button>
+      <button class="mob-menu-btn" data-action="dashboard" title="Browse your saved simulations">My Sims</button>
+      <button class="mob-menu-btn" data-action="leaderboard" title="View top scores leaderboard">Ranks</button>
+      <button class="mob-menu-btn" data-action="export" title="Download detailed data export">Export</button>
     </div>
     <div style="display:flex;flex-wrap:wrap;gap:6px;padding:8px 0;border-top:1px solid #0C2D40;margin-top:8px;">
-      <button class="mob-menu-btn" data-action="tree">Tree</button>
-      <button class="mob-menu-btn" data-action="settings">Settings</button>
-      <button class="mob-menu-btn" data-action="help">Help</button>
-      <button class="mob-menu-btn" data-action="account">Account</button>
+      <button class="mob-menu-btn" data-action="tree" title="View phylogenetic tree of species lineages">Tree</button>
+      <button class="mob-menu-btn" data-action="settings" title="Adjust simulation parameters">Settings</button>
+      <button class="mob-menu-btn" data-action="help" title="Open the comprehensive help guide">Help</button>
+      <button class="mob-menu-btn" data-action="account" title="Login, register or manage your account">Account</button>
     </div>
     <div style="display:flex;align-items:center;gap:6px;padding:8px 0;border-top:1px solid #0C2D40;margin-top:8px;">
       <label style="color:#4A7A8A;font-size:0.7rem;display:flex;align-items:center;gap:4px;">

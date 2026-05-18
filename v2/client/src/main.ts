@@ -71,17 +71,17 @@ app.innerHTML = `
     <div id="user-bar">
       <span id="user-label"></span>
       <span style="flex:1;"></span>
-      <button id="btn-account">Acct</button>
+      <button id="btn-account" title="Login, register or manage your account">Acct</button>
     </div>
     <div id="species-info"></div>
     <div id="palette-list"></div>
     <div id="heatmap-bar">
-      <select id="heatmap-select">
+      <select id="heatmap-select" title="Overlay a heatmap showing hunger, age, traits or other data">
         ${HEATMAP_MODES.map(m => `<option value="${m.id}">${m.label}</option>`).join('')}
       </select>
     </div>
     <div id="scenario-bar">
-      <select id="scenario-select">
+      <select id="scenario-select" title="Load a preset scenario with different starting conditions">
         <option value="">Scenario...</option>
         ${SCENARIOS.map(s => `<option value="${s.id}">${s.name}</option>`).join('')}
       </select>
@@ -92,31 +92,31 @@ app.innerHTML = `
       <canvas id="grid-canvas"></canvas>
     </div>
     <div id="bottom-bar">
-      <button id="btn-play" title="Space">Play</button>
-      <button id="btn-step" title="Right Arrow">Step</button>
-      <select id="speed-select">
+      <button id="btn-play" title="Start or pause the simulation (Space)">Play</button>
+      <button id="btn-step" title="Advance one tick while paused (Right Arrow)">Step</button>
+      <select id="speed-select" title="Simulation speed multiplier">
         <option value="500">0.5x</option>
         <option value="100" selected>1x</option>
         <option value="50">2x</option>
         <option value="25">4x</option>
         <option value="8">MAX</option>
       </select>
-      <label><input type="checkbox" id="evo-toggle"> Evo</label>
+      <label title="Enable evolution, mutation and speciation"><input type="checkbox" id="evo-toggle"> Evo</label>
       <div class="bar-divider"></div>
-      <button id="btn-seed" title="S">Seed</button>
-      <button id="btn-balance" title="B">Balance</button>
-      <button id="btn-biome" title="G">Biome</button>
-      <button class="btn-danger" id="btn-clear" title="C">Clear</button>
+      <button id="btn-seed" title="Populate grid with a balanced random ecosystem (S)">Seed</button>
+      <button id="btn-balance" title="Add rock reef formations without clearing life (B)">Balance</button>
+      <button id="btn-biome" title="Reset and generate a terrain-driven biome (G)">Biome</button>
+      <button class="btn-danger" id="btn-clear" title="Wipe the entire grid (C)">Clear</button>
       <div class="bar-divider"></div>
-      <button id="btn-save">Save</button>
-      <button id="btn-load">Load</button>
-      <button id="btn-dashboard">My Sims</button>
-      <button id="btn-leaderboard">Ranks</button>
-      <button id="btn-export">Export</button>
+      <button id="btn-save" title="Save simulation to your account or download as file">Save</button>
+      <button id="btn-load" title="Load a simulation from a .json save file">Load</button>
+      <button id="btn-dashboard" title="Browse and load your saved simulations">My Sims</button>
+      <button id="btn-leaderboard" title="View leaderboard of top scores">Ranks</button>
+      <button id="btn-export" title="Download a detailed data export of the current state">Export</button>
       <div class="bar-divider"></div>
-      <button id="btn-tree">Tree</button>
-      <button id="btn-settings">Settings</button>
-      <button id="btn-help" title="?">?</button>
+      <button id="btn-tree" title="View the phylogenetic tree of all species lineages">Tree</button>
+      <button id="btn-settings" title="Adjust mutation rate, speciation rate, trait limits and grid size">Settings</button>
+      <button id="btn-help" title="Open the comprehensive help guide (?)">?</button>
       <div class="bar-spacer"></div>
       <span id="season-display">Spring</span>
       <span id="gen-counter">GEN 0</span>
