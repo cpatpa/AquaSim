@@ -1,4 +1,10 @@
-node_modules
-dist
+.env
+.env.*
 .git
-*.md
+node_modules
+*/node_modules
+client/dist
+server/dist
+infra/nginx/certs
+*.log
+.DS_Store
