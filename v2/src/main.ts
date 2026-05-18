@@ -24,6 +24,11 @@ import { COLOR_RGB } from './species/registry';
 import { createSpeciesInfoState, openSpeciesInfo, injectSpeciesInfoStyles } from './ui/species-info';
 import { buildPhyloTree, layoutPhyloTree, createPhyloView, setupPhyloInteraction, renderPhyloView } from './ui/phylo-tree';
 import type { PhyloViewState } from './ui/phylo-tree';
+import { openSettings, injectSettingsStyles } from './ui/settings';
+import { openHelp, closeHelp, injectHelpStyles } from './ui/help';
+import { SCENARIOS, getScenario } from './environment/scenarios';
+import { drawHeatmapOverlay, HEATMAP_MODES } from './renderer/heatmap';
+import type { HeatmapMode } from './renderer/heatmap';
 
 noiseSeed(Date.now());
 
@@ -38,6 +43,8 @@ const activeVents: Vent[] = [];
 const undoState = createUndoState();
 const speciesInfoState = createSpeciesInfoState();
 injectSpeciesInfoStyles();
+injectSettingsStyles();
+injectHelpStyles();
 
 seedGrid(sim.grid);
 seedBalancedRockReefs(sim.grid);
@@ -71,9 +78,22 @@ app.innerHTML = `
       <button id="btn-load">Load</button>
       <button id="btn-export">Export</button>
       <button id="btn-tree">Tree</button>
+      <button id="btn-settings">Settings</button>
+      <button id="btn-help" title="?">?</button>
+    </div>
+    <div id="scenario-bar">
+      <select id="scenario-select">
+        <option value="">Scenario...</option>
+        ${SCENARIOS.map(s => `<option value="${s.id}">${s.name}</option>`).join('')}
+      </select>
     </div>
     <div id="species-info" class="info-bar"></div>
     <div id="palette-list"></div>
+    <div id="heatmap-bar">
+      <select id="heatmap-select">
+        ${HEATMAP_MODES.map(m => `<option value="${m.id}">${m.label}</option>`).join('')}
+      </select>
+    </div>
     <div id="bio-score">Biodiversity: <span id="bio-score-value">0</span></div>
     <div id="pop-graph-wrap"><canvas id="pop-graph"></canvas></div>
     <div id="stats-list"></div>
@@ -225,6 +245,9 @@ function doStep(): void {
 function renderFrame(): void {
   updateCamera(cam);
   render(rs, sim.grid, sim.evoStats, sim.season.current, sim.generation);
+  if (currentHeatmap !== 'none') {
+    drawHeatmapOverlay(rs.ctx, sim.grid, sim.evoStats, currentHeatmap);
+  }
   drawMinimap(rs.ctx, cam, sim.grid.species, sim.grid.width, sim.grid.height, COLOR_RGB);
   tickParticles(rs);
   drawParticles(rs);
@@ -265,6 +288,11 @@ const btnSave = document.getElementById('btn-save')!;
 const btnLoad = document.getElementById('btn-load')!;
 const btnExport = document.getElementById('btn-export')!;
 const btnTree = document.getElementById('btn-tree')!;
+const btnSettings = document.getElementById('btn-settings')!;
+const btnHelp = document.getElementById('btn-help')!;
+const scenarioSelect = document.getElementById('scenario-select') as HTMLSelectElement;
+const heatmapSelect = document.getElementById('heatmap-select') as HTMLSelectElement;
+let currentHeatmap: HeatmapMode = 'none';
 
 function togglePlay(): void {
   if (sim.running) {
@@ -329,6 +357,43 @@ btnExport.addEventListener('click', () => {
   const bio = calcBiodiversity(counts, sim.evoStats);
   const data = buildExportData(sim.grid, sim.evoStats, sim.generation, sim.evolveEnabled, sim.history.popHistory, sim.history.evoLog, bio);
   downloadExport(data);
+});
+
+btnSettings.addEventListener('click', () => {
+  openSettings(sim.config, sim.maxTraitsPerSpecies, {
+    onMutationRateChange: (v) => { sim.config.mutationRateMult = v; },
+    onSpeciationRateChange: (v) => { sim.config.speciationRateMult = v; },
+    onTraitLimitChange: (v) => { sim.maxTraitsPerSpecies = v; sim.config.maxTraitsPerSpecies = v; },
+    onGridResize: (w, h) => {
+      if (sim.running) { stopLoop(sim); btnPlay.textContent = 'Play'; }
+      Object.assign(sim, createSimState({ ...sim.config, gridWidth: w, gridHeight: h }));
+      initCanvas(rs, sim.grid.width, sim.grid.height);
+      fitToView(cam);
+      seedGrid(sim.grid);
+      seedBalancedRockReefs(sim.grid);
+      renderFrame();
+      updateUI();
+    },
+  });
+});
+
+btnHelp.addEventListener('click', () => openHelp());
+
+scenarioSelect.addEventListener('change', () => {
+  const id = scenarioSelect.value;
+  if (!id) return;
+  const scenario = getScenario(id);
+  if (!scenario) return;
+  if (sim.running) { stopLoop(sim); btnPlay.textContent = 'Play'; }
+  scenario.apply(sim.grid);
+  renderFrame();
+  updateUI();
+  scenarioSelect.value = '';
+});
+
+heatmapSelect.addEventListener('change', () => {
+  currentHeatmap = heatmapSelect.value as HeatmapMode;
+  renderFrame();
 });
 
 const phyloOverlay = document.getElementById('phylo-overlay')!;
@@ -400,7 +465,7 @@ setupKeyboardShortcuts({
     updateUI();
     btnPlay.textContent = 'Play';
   },
-  showHelp: () => {},
+  showHelp: () => openHelp(),
 });
 
 document.addEventListener('keydown', (e) => {
@@ -415,6 +480,7 @@ document.addEventListener('keydown', (e) => {
   }
   if (e.key === 'Escape') {
     closePhyloTree();
+    closeHelp();
   }
 });
 
