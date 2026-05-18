@@ -28,11 +28,12 @@ const MOBILE_STYLES = `
     #left-panel, #right-panel { display: none !important; }
     #bottom-bar { display: none !important; }
 
-    #centre { width: 100%; }
+    #layout { height: calc(100vh - 36px - 44px); margin-top: 36px; }
+    #centre { width: 100%; height: 100%; }
 
     #mobile-tabs {
+      position: fixed; top: 0; left: 0; right: 0; z-index: 790;
       display: flex; height: 36px; background: #04090F; border-bottom: 1px solid #0C2D40;
-      flex-shrink: 0;
     }
     .mob-tab {
       flex: 1; display: flex; align-items: center; justify-content: center;
@@ -42,22 +43,23 @@ const MOBILE_STYLES = `
     .mob-tab.active { color: #00E5FF; border-color: #00E5FF; }
 
     #mobile-bar {
-      display: flex; height: 40px; align-items: center; padding: 0 6px; gap: 4px;
-      background: #04090F; border-top: 1px solid #0C2D40; flex-shrink: 0;
+      position: fixed; bottom: 0; left: 0; right: 0; z-index: 790;
+      display: flex; height: 44px; align-items: center; padding: 0 8px; gap: 4px;
+      background: #04090F; border-top: 1px solid #0C2D40;
     }
     #mobile-bar button, #mobile-bar select {
-      font-family: 'Share Tech Mono', monospace; font-size: 0.65rem;
-      padding: 4px 8px; border: 1px solid #0C2D40; background: #0A1622; color: #7EE8FA;
+      font-family: 'Share Tech Mono', monospace; font-size: 0.7rem;
+      padding: 6px 10px; border: 1px solid #0C2D40; background: #0A1622; color: #7EE8FA;
       cursor: pointer; border-radius: 3px; white-space: nowrap;
     }
-    #mobile-bar select { padding: 3px 5px; }
+    #mobile-bar select { padding: 5px 6px; }
     #mobile-bar .bar-spacer { flex: 1; }
-    #mobile-bar .mob-season { color: #88FF88; font-size: 0.65rem; }
-    #mobile-bar .mob-gen { color: #00E5FF; font-size: 0.65rem; }
+    #mobile-bar .mob-season { color: #88FF88; font-size: 0.7rem; }
+    #mobile-bar .mob-gen { color: #00E5FF; font-size: 0.7rem; }
 
     #mobile-drawer {
-      position: fixed; bottom: 40px; left: 0; right: 0;
-      height: 50vh; background: #04090F; border-top: 1px solid #0C2D40;
+      position: fixed; bottom: 44px; left: 0; right: 0;
+      max-height: 55vh; background: #04090F; border-top: 1px solid #0C2D40;
       transform: translateY(100%); transition: transform 0.25s ease;
       z-index: 800; overflow-y: auto; padding: 8px;
     }
@@ -66,7 +68,7 @@ const MOBILE_STYLES = `
     #mobile-drawer::-webkit-scrollbar-thumb { background: #0C2D40; border-radius: 2px; }
 
     #paint-fab {
-      position: fixed; bottom: 52px; right: 12px; z-index: 810;
+      position: fixed; bottom: 56px; right: 12px; z-index: 810;
       width: 52px; height: 52px; border-radius: 50%;
       background: #0A1622; border: 2px solid #0C2D40; color: #7EE8FA;
       font-family: 'Share Tech Mono', monospace; font-size: 0.6rem;
@@ -123,7 +125,7 @@ function buildMobileUI(): void {
     <div class="mob-tab" data-tab="stats">Stats</div>
     <div class="mob-tab" data-tab="menu">Menu</div>
   `;
-  centre.insertBefore(tabs, centre.firstChild);
+  document.body.appendChild(tabs);
 
   const bar = document.createElement('div');
   bar.id = 'mobile-bar';
@@ -141,7 +143,7 @@ function buildMobileUI(): void {
     <span class="mob-season" id="mob-season">Spring</span>
     <span class="mob-gen" id="mob-gen">GEN 0</span>
   `;
-  centre.appendChild(bar);
+  document.body.appendChild(bar);
 
   const drawer = document.createElement('div');
   drawer.id = 'mobile-drawer';
