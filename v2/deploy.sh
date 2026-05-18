@@ -33,10 +33,10 @@ $COMPOSE_CMD $COMPOSE_PROFILES up -d
 
 echo ""
 echo "Waiting for health check..."
-RETRIES=20
-until curl -skf http://localhost:3000/api/health &>/dev/null || [ $RETRIES -eq 0 ]; do
+RETRIES=30
+until curl -skf https://localhost/api/health &>/dev/null || [ $RETRIES -eq 0 ]; do
     RETRIES=$((RETRIES - 1))
-    sleep 2
+    sleep 3
 done
 
 if [ $RETRIES -eq 0 ]; then

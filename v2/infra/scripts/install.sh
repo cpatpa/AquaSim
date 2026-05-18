@@ -277,21 +277,20 @@ echo "  Starting services..."
 $COMPOSE_CMD $COMPOSE_PROFILES up -d \
     || fail "Failed to start services."
 
-echo "  Waiting for health check..."
-RETRIES=30
-until curl -skf http://localhost:3000/api/health &>/dev/null || [ $RETRIES -eq 0 ]; do
+echo "  Waiting for services to start (migrations, nginx, etc.)..."
+RETRIES=40
+until curl -skf https://localhost/api/health &>/dev/null || [ $RETRIES -eq 0 ]; do
     RETRIES=$((RETRIES - 1))
-    sleep 2
+    sleep 3
 done
 
 if [ $RETRIES -eq 0 ]; then
-    warn "  Health check did not pass within 60 seconds."
+    warn "  Health check did not pass within 2 minutes."
     warn "  Check logs with: $COMPOSE_CMD logs app"
     echo ""
     warn "  Common issues:"
-    warn "    - PostgreSQL still starting: wait 30s and try again"
-    warn "    - Port conflict: check if port 3000 is in use"
-    warn "    - Run '$COMPOSE_CMD logs app db' for details"
+    warn "    - Database migrations still running (wait and retry)"
+    warn "    - Run '$COMPOSE_CMD logs app db nginx' for details"
 else
     printf "  Health check:     "; ok
 fi
@@ -323,10 +322,10 @@ while true; do
     fi
 done
 
-REGISTER_RESPONSE=$(curl -sk -X POST "http://localhost:3000/api/auth/register" \
+REGISTER_RESPONSE=$(curl -sk -X POST "https://localhost/api/auth/register" \
     -H "Content-Type: application/json" \
     -d "{\"username\":\"$ADMIN_USERNAME\",\"email\":\"$ADMIN_EMAIL\",\"password\":\"$ADMIN_PASSWORD\",\"_bootstrapAdmin\":true}" \
-    -w "\n%{http_code}" 2>/dev/null)
+    -w "\n%{http_code}" 2>/dev/null) || true
 
 HTTP_CODE=$(echo "$REGISTER_RESPONSE" | tail -1)
 if [ "$HTTP_CODE" = "201" ] || [ "$HTTP_CODE" = "200" ]; then
@@ -334,7 +333,10 @@ if [ "$HTTP_CODE" = "201" ] || [ "$HTTP_CODE" = "200" ]; then
 else
     BODY=$(echo "$REGISTER_RESPONSE" | head -n -1)
     warn "  Admin creation returned HTTP $HTTP_CODE: $BODY"
-    warn "  You can create the admin account manually later via the register endpoint."
+    warn "  If the app is still starting, wait a minute and run:"
+    warn "    curl -sk -X POST https://localhost/api/auth/register \\"
+    warn "      -H 'Content-Type: application/json' \\"
+    warn "      -d '{\"username\":\"$ADMIN_USERNAME\",\"email\":\"$ADMIN_EMAIL\",\"password\":\"YOUR_PASSWORD\",\"_bootstrapAdmin\":true}'"
 fi
 
 # -----------------------------------------------------------------------

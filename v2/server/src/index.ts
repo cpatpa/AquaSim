@@ -4,6 +4,7 @@ import { logger } from 'hono/logger';
 import { serveStatic } from '@hono/node-server/serve-static';
 import { serve } from '@hono/node-server';
 import { WebSocketServer } from 'ws';
+import { migrate } from 'drizzle-orm/postgres-js/migrator';
 import { db } from './db/index.js';
 import { sql } from 'drizzle-orm';
 import { authRoutes } from './routes/auth.js';
@@ -61,12 +62,26 @@ app.use('/*', serveStatic({ root: './public' }));
 app.get('*', serveStatic({ root: './public', path: '/index.html' }));
 
 const port = parseInt(process.env.PORT || '3000', 10);
-const server = serve({ fetch: app.fetch, port }, (info) => {
-  console.log(`AquaSim server running on port ${info.port}`);
-  console.log(`Build: ${BUILD_INFO.commitHash} (${BUILD_INFO.buildTime})`);
-});
 
-const wss = new WebSocketServer({ server: server as never, path: '/ws' });
-wss.on('connection', (ws) => {
-  handleWsConnection(ws);
-});
+async function start(): Promise<void> {
+  try {
+    console.log('Running database migrations...');
+    await migrate(db, { migrationsFolder: './drizzle' });
+    console.log('Migrations complete.');
+  } catch (err) {
+    console.error('Migration failed:', err);
+    process.exit(1);
+  }
+
+  const server = serve({ fetch: app.fetch, port }, (info) => {
+    console.log(`AquaSim server running on port ${info.port}`);
+    console.log(`Build: ${BUILD_INFO.commitHash} (${BUILD_INFO.buildTime})`);
+  });
+
+  const wss = new WebSocketServer({ server: server as never, path: '/ws' });
+  wss.on('connection', (ws) => {
+    handleWsConnection(ws);
+  });
+}
+
+start();
