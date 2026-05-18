@@ -1,7 +1,6 @@
-#!/usr/bin/env tsx
+#!/usr/bin/env node
 // Interactive admin account creation tool.
-// Host:   cd server && npm run create-admin
-// Docker: docker compose exec -it app node dist/server/scripts/create-admin.js
+// Usage: cd ~/AquaSim/v2 && npm run create-admin
 
 import * as readline from 'readline';
 import { db, client } from '../src/db/index.js';

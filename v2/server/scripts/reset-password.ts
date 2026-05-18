@@ -1,7 +1,6 @@
-#!/usr/bin/env tsx
+#!/usr/bin/env node
 // Interactive admin password reset tool.
-// Host:   cd server && npm run reset-password
-// Docker: docker compose exec -it app node dist/server/scripts/reset-password.js
+// Usage: cd ~/AquaSim/v2 && npm run reset-password
 
 import * as readline from 'readline';
 import { db, client } from '../src/db/index.js';

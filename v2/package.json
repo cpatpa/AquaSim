@@ -12,7 +12,7 @@
     "dev:server": "npm run dev --workspace=server",
     "build": "npm run build --workspaces",
     "typecheck": "npm run typecheck --workspaces --if-present",
-    "create-admin": "npm run create-admin --workspace=server",
-    "reset-password": "npm run reset-password --workspace=server"
+    "create-admin": "docker compose exec -it app node dist/server/scripts/create-admin.js",
+    "reset-password": "docker compose exec -it app node dist/server/scripts/reset-password.js"
   }
 }
