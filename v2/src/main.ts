@@ -16,6 +16,14 @@ import type { DisasterState } from './environment/disasters';
 import { buildExportData, downloadExport } from './data/export';
 import { evolve, speciate, nicheShift } from './evolution/evolution-engine';
 import type { EvoContext } from './evolution/evolution-engine';
+import { serialise, deserialise, downloadSave, uploadSave } from './data/serialisation';
+import { createCamera, setupCameraHandlers, updateCamera, screenToWorld, drawMinimap, fitToView } from './ui/camera';
+import type { CameraState } from './ui/camera';
+import { createUndoState, beginStroke, commitStroke, undo, redo } from './ui/undo';
+import { COLOR_RGB } from './species/registry';
+import { createSpeciesInfoState, openSpeciesInfo, injectSpeciesInfoStyles } from './ui/species-info';
+import { buildPhyloTree, layoutPhyloTree, createPhyloView, setupPhyloInteraction, renderPhyloView } from './ui/phylo-tree';
+import type { PhyloViewState } from './ui/phylo-tree';
 
 noiseSeed(Date.now());
 
@@ -25,8 +33,11 @@ const gridW = Math.max(Math.floor(Math.max(viewW, MIN_GRID_PX) / CELL_SIZE), 60)
 const gridH = Math.max(Math.floor(Math.max(viewH, MIN_GRID_PX) / CELL_SIZE), 60);
 
 const sim: SimState = createSimState({ gridWidth: gridW, gridHeight: gridH });
-const disasterState: DisasterState = createDisasterState();
+const _disasterState: DisasterState = createDisasterState();
 const activeVents: Vent[] = [];
+const undoState = createUndoState();
+const speciesInfoState = createSpeciesInfoState();
+injectSpeciesInfoStyles();
 
 seedGrid(sim.grid);
 seedBalancedRockReefs(sim.grid);
@@ -56,7 +67,10 @@ app.innerHTML = `
       <button id="btn-seed" title="S">Seed</button>
       <button id="btn-balance" title="B">Balance</button>
       <button id="btn-clear" title="C">Clear</button>
+      <button id="btn-save">Save</button>
+      <button id="btn-load">Load</button>
       <button id="btn-export">Export</button>
+      <button id="btn-tree">Tree</button>
     </div>
     <div id="species-info" class="info-bar"></div>
     <div id="palette-list"></div>
@@ -68,11 +82,30 @@ app.innerHTML = `
   <div id="canvas-wrap">
     <canvas id="grid-canvas"></canvas>
   </div>
+</div>
+<div id="phylo-overlay" class="overlay-hidden">
+  <div id="phylo-panel">
+    <div id="phylo-header">
+      <span>Phylogenetic Tree</span>
+      <button id="phylo-close">&times;</button>
+    </div>
+    <canvas id="phylo-canvas"></canvas>
+  </div>
 </div>`;
 
 const canvasEl = document.getElementById('grid-canvas') as HTMLCanvasElement;
 const rs: RendererState = createRenderer(canvasEl);
 initCanvas(rs, sim.grid.width, sim.grid.height);
+
+const worldW = sim.grid.width * CELL_SIZE;
+const worldH = sim.grid.height * CELL_SIZE;
+const cam: CameraState = createCamera(worldW, worldH, viewW, viewH);
+
+const canvasWrap = document.getElementById('canvas-wrap')!;
+canvasEl.style.width = canvasWrap.clientWidth + 'px';
+canvasEl.style.height = canvasWrap.clientHeight + 'px';
+
+setupCameraHandlers(canvasEl, cam, () => renderFrame());
 
 const paint = createPaintState();
 const palette = createPaletteState();
@@ -93,9 +126,20 @@ buildPalette(paletteListEl, palette, (id) => {
   selectType(palette, id, speciesInfoEl);
 });
 
+function getCellCounts(): Record<number, number> {
+  const total = sim.grid.width * sim.grid.height;
+  const counts: Record<number, number> = {};
+  for (let i = 0; i < total; i++) {
+    const s = sim.grid.species[i];
+    if (s !== 0) counts[s] = (counts[s] || 0) + 1;
+  }
+  return counts;
+}
+
 function handleDisaster(canvasX: number, canvasY: number): void {
-  const cellX = (canvasX / CELL_SIZE) | 0;
-  const cellY = (canvasY / CELL_SIZE) | 0;
+  const [wx, wy] = screenToWorld(cam, canvasX, canvasY);
+  const cellX = (wx / CELL_SIZE) | 0;
+  const cellY = (wy / CELL_SIZE) | 0;
   const r = 8 + paint.brushSize;
   switch (palette.selectedType) {
     case -1: triggerBomb(sim.grid, cellX, cellY, r); break;
@@ -103,12 +147,29 @@ function handleDisaster(canvasX: number, canvasY: number): void {
     case -3: triggerHeatwave(sim.grid, sim.evoStats, cellX, cellY, r); break;
     case -4: triggerIceAge(sim.grid, sim.evoStats, cellX, cellY, r); break;
     case -5: triggerToxicBloom(sim.grid, cellX, cellY, r); break;
-    case -6: triggerVolcano(sim.grid, disasterState, cellX, cellY, r); break;
+    case -6: triggerVolcano(sim.grid, _disasterState, cellX, cellY, r); break;
   }
   renderFrame();
 }
 
 setupPaintHandlers(canvasEl, paint, sim.grid, renderFrame, handleDisaster);
+
+canvasEl.addEventListener('mousedown', () => {
+  if (paint.selectedType >= 0) {
+    beginStroke(undoState, sim.grid, []);
+  }
+});
+window.addEventListener('mouseup', () => {
+  commitStroke(undoState);
+});
+
+statsEl.addEventListener('click', (e) => {
+  const row = (e.target as HTMLElement).closest('.stat-row') as HTMLElement | null;
+  if (!row) return;
+  const sid = parseInt(row.dataset.sid!);
+  if (isNaN(sid) || sid < 10) return;
+  openSpeciesInfo(speciesInfoState, sid, sim.evoStats, getCellCounts());
+});
 
 function buildEvoContext(): EvoContext {
   return {
@@ -162,7 +223,9 @@ function doStep(): void {
 }
 
 function renderFrame(): void {
+  updateCamera(cam);
   render(rs, sim.grid, sim.evoStats, sim.season.current, sim.generation);
+  drawMinimap(rs.ctx, cam, sim.grid.species, sim.grid.width, sim.grid.height, COLOR_RGB);
   tickParticles(rs);
   drawParticles(rs);
 }
@@ -171,13 +234,7 @@ function updateUI(): void {
   updateGenerationDisplay(genEl, sim.generation);
   updateSeasonDisplay(seasonEl, sim.season.current, sim.season.tick, SEASON_LENGTH);
 
-  const total = sim.grid.width * sim.grid.height;
-  const counts: Record<number, number> = {};
-  for (let i = 0; i < total; i++) {
-    const s = sim.grid.species[i];
-    if (s !== 0) counts[s] = (counts[s] || 0) + 1;
-  }
-
+  const counts = getCellCounts();
   statsEl.innerHTML = buildStatsHtml(counts, sim.evoStats, sim.evolveEnabled);
   const bio = calcBiodiversity(counts, sim.evoStats);
   bioScoreEl.textContent = String(bio);
@@ -204,7 +261,10 @@ const evoToggle = document.getElementById('evo-toggle') as HTMLInputElement;
 const btnSeed = document.getElementById('btn-seed')!;
 const btnBalance = document.getElementById('btn-balance')!;
 const btnClear = document.getElementById('btn-clear')!;
+const btnSave = document.getElementById('btn-save')!;
+const btnLoad = document.getElementById('btn-load')!;
 const btnExport = document.getElementById('btn-export')!;
+const btnTree = document.getElementById('btn-tree')!;
 
 function togglePlay(): void {
   if (sim.running) {
@@ -225,6 +285,7 @@ evoToggle.addEventListener('change', () => {
   sim.evolveEnabled = evoToggle.checked;
   sim.config.evolveEnabled = evoToggle.checked;
 });
+
 btnSeed.addEventListener('click', () => {
   seedGrid(sim.grid);
   seedBalancedRockReefs(sim.grid);
@@ -243,16 +304,64 @@ btnClear.addEventListener('click', () => {
   updateUI();
   btnPlay.textContent = 'Play';
 });
-btnExport.addEventListener('click', () => {
-  const total = sim.grid.width * sim.grid.height;
-  const counts: Record<number, number> = {};
-  for (let i = 0; i < total; i++) {
-    const s = sim.grid.species[i];
-    if (s !== 0) counts[s] = (counts[s] || 0) + 1;
+
+btnSave.addEventListener('click', () => {
+  const data = serialise(sim);
+  downloadSave(data);
+});
+btnLoad.addEventListener('click', async () => {
+  try {
+    const data = await uploadSave();
+    const wasRunning = sim.running;
+    if (wasRunning) { stopLoop(sim); btnPlay.textContent = 'Play'; }
+    deserialise(data, sim);
+    initCanvas(rs, sim.grid.width, sim.grid.height);
+    fitToView(cam);
+    renderFrame();
+    updateUI();
+  } catch (_e) {
+    // user cancelled or invalid file
   }
+});
+
+btnExport.addEventListener('click', () => {
+  const counts = getCellCounts();
   const bio = calcBiodiversity(counts, sim.evoStats);
   const data = buildExportData(sim.grid, sim.evoStats, sim.generation, sim.evolveEnabled, sim.history.popHistory, sim.history.evoLog, bio);
   downloadExport(data);
+});
+
+const phyloOverlay = document.getElementById('phylo-overlay')!;
+const phyloCanvas = document.getElementById('phylo-canvas') as HTMLCanvasElement;
+const phyloCloseBtn = document.getElementById('phylo-close')!;
+let phyloView: PhyloViewState | null = null;
+let phyloCleanup: (() => void) | null = null;
+
+function openPhyloTree(): void {
+  phyloOverlay.classList.remove('overlay-hidden');
+  const counts = getCellCounts();
+  const roots = buildPhyloTree(sim.evoStats, counts);
+  const layout = layoutPhyloTree(roots);
+  phyloView = createPhyloView();
+  if (phyloCleanup) phyloCleanup();
+  phyloCleanup = setupPhyloInteraction(phyloCanvas, phyloView, layout, (id) => {
+    openSpeciesInfo(speciesInfoState, id, sim.evoStats, counts);
+  }, () => {
+    renderPhyloView(phyloCanvas, phyloView!, layout);
+  });
+  renderPhyloView(phyloCanvas, phyloView, layout);
+}
+
+function closePhyloTree(): void {
+  phyloOverlay.classList.add('overlay-hidden');
+  if (phyloCleanup) { phyloCleanup(); phyloCleanup = null; }
+  phyloView = null;
+}
+
+btnTree.addEventListener('click', openPhyloTree);
+phyloCloseBtn.addEventListener('click', closePhyloTree);
+phyloOverlay.addEventListener('click', (e) => {
+  if (e.target === phyloOverlay) closePhyloTree();
 });
 
 setupKeyboardShortcuts({
@@ -292,6 +401,21 @@ setupKeyboardShortcuts({
     btnPlay.textContent = 'Play';
   },
   showHelp: () => {},
+});
+
+document.addEventListener('keydown', (e) => {
+  if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+  if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
+    e.preventDefault();
+    if (undo(undoState, sim.grid)) { renderFrame(); updateUI(); }
+  }
+  if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || (e.key === 'z' && e.shiftKey))) {
+    e.preventDefault();
+    if (redo(undoState, sim.grid)) { renderFrame(); updateUI(); }
+  }
+  if (e.key === 'Escape') {
+    closePhyloTree();
+  }
 });
 
 renderFrame();

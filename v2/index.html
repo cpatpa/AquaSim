@@ -70,6 +70,27 @@
       overflow: hidden; background: #020610;
     }
     #grid-canvas { image-rendering: pixelated; }
+
+    .overlay-hidden { display: none !important; }
+    #phylo-overlay {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.75); z-index: 900;
+      display: flex; align-items: center; justify-content: center;
+    }
+    #phylo-panel {
+      background: #0A1520; border: 1px solid #1A3A4B; border-radius: 8px;
+      width: 85vw; height: 80vh; display: flex; flex-direction: column;
+    }
+    #phylo-header {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 10px 16px; border-bottom: 1px solid #1A3A4B;
+      font-family: 'Orbitron', monospace; color: #00E5FF; letter-spacing: 1px; font-size: 0.9rem;
+    }
+    #phylo-header button {
+      background: none; border: none; color: #4A7A8A; font-size: 1.5rem; cursor: pointer;
+    }
+    #phylo-header button:hover { color: #FF6B6B; }
+    #phylo-canvas { flex: 1; width: 100%; cursor: grab; }
+    #phylo-canvas:active { cursor: grabbing; }
   </style>
 </head>
 <body>
