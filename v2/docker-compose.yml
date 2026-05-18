@@ -18,6 +18,9 @@ services:
       - SMTP_PASS=${SMTP_PASS:-}
       - SMTP_FROM=${SMTP_FROM:-}
       - NODE_ENV=production
+    volumes:
+      - ./deploy-trigger:/app/deploy-trigger
+      - deploy-log:/var/log
     depends_on:
       db:
         condition: service_healthy
@@ -71,6 +74,7 @@ services:
 
 volumes:
   pgdata:
+  deploy-log:
 
 networks:
   internal:

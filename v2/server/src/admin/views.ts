@@ -300,12 +300,47 @@ export function analyticsView(data: {
   `);
 }
 
-export function deployView(log: string): Html {
+export function deployView(data: {
+  log: string;
+  lastDeploy: string;
+}): Html {
   return layout('Deploy', html`
-    <h2 style="margin-bottom: 1.5rem;">Deploy Log</h2>
-    <p style="color: #5a7a9a; margin-bottom: 1rem;">
-      Webhook URL: <code>${process.env.APP_URL || 'https://localhost'}/api/webhooks/github-deploy</code>
+    <h2 style="margin-bottom: 1.5rem;">Deploy</h2>
+
+    <div class="cards">
+      <div class="card">
+        <div class="label">Running Build</div>
+        <div class="value" style="font-size:1rem;">${BUILD_INFO.commitHash}</div>
+      </div>
+      <div class="card">
+        <div class="label">Built At</div>
+        <div class="value" style="font-size:0.95rem;">${BUILD_INFO.buildTime}</div>
+      </div>
+      <div class="card">
+        <div class="label">Last Deploy</div>
+        <div class="value" style="font-size:0.85rem;">${data.lastDeploy || 'None recorded'}</div>
+      </div>
+    </div>
+
+    <div style="display:flex; gap:1rem; align-items:center; margin-bottom:2rem; flex-wrap:wrap;">
+      <form method="post" action="/admin/deploy" onsubmit="return confirm('Pull latest changes from GitHub and rebuild? The app will restart.')">
+        <button class="btn btn-primary" type="submit" style="padding:0.6rem 1.5rem; font-size:0.9rem;">
+          Pull & Deploy
+        </button>
+      </form>
+      <a href="/admin/deploy" class="btn btn-warn" style="text-decoration:none; padding:0.6rem 1.5rem; font-size:0.9rem;">
+        Refresh
+      </a>
+    </div>
+
+    <p style="color:#5a7a9a; font-size:0.8rem; margin-bottom:1.5rem;">
+      Clicking "Pull & Deploy" will pull the latest code from GitHub and rebuild the application.
+      The deploy watcher service on the host must be running.
+      Alternatively, pushes to main trigger automatic deploys via the GitHub webhook:
+      <code>${process.env.APP_URL || 'https://localhost'}/api/webhooks/github-deploy</code>
     </p>
-    <pre>${log || 'No deploy log found.'}</pre>
+
+    <h3 style="margin-bottom: 1rem;">Deploy Log</h3>
+    <pre>${data.log || 'No deploy history yet. Deploy log will appear here after the first deploy.'}</pre>
   `);
 }

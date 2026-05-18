@@ -1,0 +1,15 @@
+[Unit]
+Description=AquaSim Deploy Watcher
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=simple
+User=chrispaterson
+WorkingDirectory=/home/chrispaterson/AquaSim/v2
+ExecStart=/home/chrispaterson/AquaSim/v2/infra/scripts/deploy-watcher.sh
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

@@ -152,10 +152,49 @@ adminRoutes.get('/health', async (c) => {
   return c.html(healthView({ db: dbOk, ...metrics }));
 });
 
-adminRoutes.get('/deploy', async (_c) => {
-  let log = '';
+function getDeployStatus(): { lastDeploy: string; watcherLog: string } {
+  let lastDeploy = '';
+  let watcherLog = '';
   try {
-    log = fs.readFileSync('/var/log/aquasim-deploy.log', 'utf-8');
+    watcherLog = fs.readFileSync('/app/deploy-trigger/deploy.log', 'utf-8');
+    const lines = watcherLog.trim().split('\n');
+    for (let i = lines.length - 1; i >= 0; i--) {
+      if (lines[i].includes('Deploy complete')) {
+        lastDeploy = lines[i];
+        break;
+      }
+    }
   } catch {}
-  return _c.html(deployView(log));
+  return { lastDeploy, watcherLog };
+}
+
+adminRoutes.get('/deploy', async (c) => {
+  const status = getDeployStatus();
+  return c.html(deployView({ log: status.watcherLog, lastDeploy: status.lastDeploy }));
+});
+
+adminRoutes.post('/deploy', async (c) => {
+  const triggerPath = '/app/deploy-trigger/deploy.trigger';
+  const logPath = '/var/log/aquasim-deploy.log';
+  const timestamp = new Date().toISOString();
+
+  try {
+    fs.writeFileSync(triggerPath, timestamp);
+  } catch {
+    try {
+      fs.mkdirSync('/app/deploy-trigger', { recursive: true });
+      fs.writeFileSync(triggerPath, timestamp);
+    } catch (err) {
+      try { fs.appendFileSync(logPath, `\n--- Deploy trigger failed at ${timestamp}: ${err} ---\n`); } catch {}
+      return c.redirect('/admin/deploy');
+    }
+  }
+
+  try {
+    fs.appendFileSync(logPath, `\n--- Manual deploy triggered at ${timestamp} (waiting for host) ---\n`);
+  } catch {
+    try { fs.writeFileSync(logPath, `--- Manual deploy triggered at ${timestamp} (waiting for host) ---\n`); } catch {}
+  }
+
+  return c.redirect('/admin/deploy');
 });
