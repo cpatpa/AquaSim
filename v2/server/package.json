@@ -4,13 +4,14 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "tsx watch src/index.ts",
+    "dev": "npx tsx watch src/index.ts",
     "build": "tsc",
     "start": "node dist/index.js",
     "typecheck": "tsc --noEmit",
     "db:generate": "drizzle-kit generate",
-    "db:migrate": "tsx src/db/migrate.ts",
-    "reset-password": "tsx scripts/reset-password.ts"
+    "db:migrate": "npx tsx src/db/migrate.ts",
+    "create-admin": "npx tsx scripts/create-admin.ts",
+    "reset-password": "npx tsx scripts/reset-password.ts"
   },
   "dependencies": {
     "@aquasim/shared": "*",
