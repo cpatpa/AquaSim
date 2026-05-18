@@ -4,7 +4,9 @@ const OVERLAY_STYLES = `
   .auth-overlay { position:fixed; inset:0; background:rgba(0,0,0,0.8); z-index:1000; display:flex; align-items:center; justify-content:center; }
   .auth-panel { background:#0A1520; border:1px solid #1A3A4B; border-radius:8px; width:380px; max-width:90vw; padding:24px; }
   .auth-panel h2 { font-family:'Orbitron',monospace; color:#00E5FF; letter-spacing:1px; margin-bottom:16px; font-size:1.1rem; }
-  .auth-panel input { width:100%; padding:8px 12px; background:#0D1B2A; border:1px solid #1B3A4B; color:#7EE8FA; font-family:inherit; font-size:13px; border-radius:4px; margin-bottom:10px; }
+  .auth-field { margin-bottom:10px; }
+  .auth-label { display:block; color:#4A7A8A; font-size:0.75rem; margin-bottom:3px; padding-left:2px; }
+  .auth-panel input { width:100%; padding:8px 12px; background:#0D1B2A; border:1px solid #1B3A4B; color:#7EE8FA; font-family:inherit; font-size:13px; border-radius:4px; }
   .auth-panel input::placeholder { color:#3A5A6A; }
   .auth-panel input:focus { outline:none; border-color:#00E5FF; }
   .auth-btn { width:100%; padding:10px; border:none; border-radius:4px; font-family:inherit; font-size:13px; cursor:pointer; margin-bottom:8px; }
@@ -22,6 +24,7 @@ const OVERLAY_STYLES = `
   .auth-tab { flex:1; padding:8px; text-align:center; cursor:pointer; border-bottom:2px solid transparent; color:#4A7A8A; font-size:0.85rem; }
   .auth-tab.active { border-color:#00E5FF; color:#00E5FF; }
   .auth-mfa-input { letter-spacing:0.5em; text-align:center; font-size:1.2rem; }
+  .auth-skip { text-align:center; margin-top:4px; }
 `;
 
 let stylesInjected = false;
@@ -54,8 +57,12 @@ export function showAuthModal(): Promise<AuthResult> {
         overlay.innerHTML = `
           <div class="auth-panel">
             <h2>Reset Password</h2>
+            <p style="color:#4A7A8A;font-size:0.8rem;margin-bottom:12px;">Enter the email address you registered with and we'll send you a reset link.</p>
             <div class="auth-error" id="auth-err"></div>
-            <input type="email" id="auth-email" placeholder="Email address" autocomplete="email">
+            <div class="auth-field">
+              <label class="auth-label">Email address</label>
+              <input type="email" id="auth-email" placeholder="you@example.com" autocomplete="email">
+            </div>
             <button class="auth-btn auth-btn-primary" id="auth-submit">Send Reset Link</button>
             <div style="text-align:center;margin-top:8px;">
               <span class="auth-link" id="auth-back">Back to login</span>
@@ -83,20 +90,43 @@ export function showAuthModal(): Promise<AuthResult> {
           <h2>AquaSim</h2>
           <div class="auth-tabs">
             <div class="auth-tab ${mode === 'login' ? 'active' : ''}" id="tab-login">Login</div>
-            <div class="auth-tab ${mode === 'register' ? 'active' : ''}" id="tab-register">Register</div>
+            <div class="auth-tab ${mode === 'register' ? 'active' : ''}" id="tab-register">Create Account</div>
           </div>
           <div class="auth-error" id="auth-err"></div>
-          ${mode === 'register' ? '<input type="text" id="auth-user" placeholder="Username" autocomplete="username">' : ''}
-          ${mode === 'register' ? '<input type="email" id="auth-email" placeholder="Email" autocomplete="email">' : ''}
-          ${mode === 'login' ? '<input type="text" id="auth-user" placeholder="Username" autocomplete="username">' : ''}
-          <input type="password" id="auth-pass" placeholder="Password" autocomplete="${mode === 'register' ? 'new-password' : 'current-password'}">
+          ${mode === 'register' ? `
+            <div class="auth-field">
+              <label class="auth-label">Username</label>
+              <input type="text" id="auth-user" placeholder="Choose a username" autocomplete="username">
+            </div>
+            <div class="auth-field">
+              <label class="auth-label">Email</label>
+              <input type="email" id="auth-email" placeholder="you@example.com" autocomplete="email">
+            </div>
+            <div class="auth-field">
+              <label class="auth-label">Password</label>
+              <input type="password" id="auth-pass" placeholder="Minimum 8 characters" autocomplete="new-password">
+            </div>
+          ` : `
+            <div class="auth-field">
+              <label class="auth-label">Username</label>
+              <input type="text" id="auth-user" placeholder="Your username" autocomplete="username">
+            </div>
+            <div class="auth-field">
+              <label class="auth-label">Password</label>
+              <input type="password" id="auth-pass" placeholder="Your password" autocomplete="current-password">
+            </div>
+          `}
           <div id="auth-mfa-row" style="display:none;">
-            <input type="text" id="auth-mfa" class="auth-mfa-input" placeholder="MFA Code" maxlength="6" autocomplete="one-time-code">
+            <div class="auth-field">
+              <label class="auth-label">MFA Code</label>
+              <input type="text" id="auth-mfa" class="auth-mfa-input" placeholder="6-digit code" maxlength="6" autocomplete="one-time-code">
+            </div>
           </div>
           <button class="auth-btn auth-btn-primary" id="auth-submit">${mode === 'register' ? 'Create Account' : 'Login'}</button>
           ${mode === 'login' ? '<div style="text-align:right;margin-bottom:8px;"><span class="auth-link" id="auth-forgot">Forgot password?</span></div>' : ''}
           <div class="auth-divider">or</div>
           <button class="auth-btn auth-btn-secondary" id="auth-guest">Play as Guest</button>
+          <div class="auth-skip"><span class="auth-link" id="auth-skip">Skip for now</span></div>
         </div>`;
 
       overlay.querySelector('#tab-login')!.addEventListener('click', () => { mode = 'login'; renderPanel(); });
@@ -104,6 +134,9 @@ export function showAuthModal(): Promise<AuthResult> {
 
       const forgotEl = overlay.querySelector('#auth-forgot');
       if (forgotEl) forgotEl.addEventListener('click', () => { mode = 'forgot'; renderPanel(); });
+
+      const skipEl = overlay.querySelector('#auth-skip');
+      if (skipEl) skipEl.addEventListener('click', () => { close({ action: 'skip' }); });
 
       overlay.querySelector('#auth-guest')!.addEventListener('click', async () => {
         try {

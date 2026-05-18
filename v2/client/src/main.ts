@@ -464,23 +464,31 @@ btnLeaderboard.addEventListener('click', () => {
   openLeaderboard(() => {});
 });
 
-btnAccount.addEventListener('click', () => {
-  if (!isLoggedIn()) return;
-  openAccount({
-    onLogout: () => {
-      currentSimId = null;
+btnAccount.addEventListener('click', async () => {
+  if (isLoggedIn()) {
+    openAccount({
+      onLogout: () => {
+        currentSimId = null;
+        updateUserBar();
+      },
+      onClose: () => { updateUserBar(); },
+    });
+  } else {
+    const result = await showAuthModal();
+    if (result.action !== 'skip') {
       updateUserBar();
-    },
-    onClose: () => { updateUserBar(); },
-  });
+    }
+  }
 });
 
 function updateUserBar(): void {
   const u = getUser();
   if (u) {
     userLabel.textContent = u.username + (u.role === 'guest' ? ' (guest)' : '');
+    btnAccount.textContent = 'Acct';
   } else {
-    userLabel.textContent = 'Not logged in';
+    userLabel.textContent = '';
+    btnAccount.textContent = 'Login';
   }
 }
 
