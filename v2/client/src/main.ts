@@ -103,7 +103,7 @@ app.innerHTML = `
         <option value="25">4x</option>
         <option value="8">MAX</option>
       </select>
-      <label title="Enable evolution, mutation and speciation"><input type="checkbox" id="evo-toggle"> Evo</label>
+      <label title="Enable evolution, mutation and speciation"><input type="checkbox" id="evo-toggle" checked> Evo</label>
       <div class="bar-divider"></div>
       <button id="btn-seed" title="Populate grid with a balanced random ecosystem (S)">Seed</button>
       <button id="btn-balance" title="Add rock reef formations without clearing life (B)">Balance</button>

@@ -34,7 +34,7 @@ export function createDefaultConfig(): SimConfig {
     gridHeight: 60,
     cellSize: CELL_SIZE,
     gridGap: 1,
-    evolveEnabled: false,
+    evolveEnabled: true,
     tickInterval: 100,
     maxTraitsPerSpecies: DEFAULT_MAX_TRAITS_PER_SPECIES,
     mutationRateMult: 1.0,
