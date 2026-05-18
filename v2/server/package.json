@@ -10,8 +10,8 @@
     "typecheck": "tsc --noEmit",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "npx tsx src/db/migrate.ts",
-    "create-admin": "npx tsx scripts/create-admin.ts",
-    "reset-password": "npx tsx scripts/reset-password.ts"
+    "create-admin": "node dist/server/scripts/create-admin.js",
+    "reset-password": "node dist/server/scripts/reset-password.js"
   },
   "dependencies": {
     "@aquasim/shared": "*",
