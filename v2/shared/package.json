@@ -1,0 +1,14 @@
+{
+  "name": "@aquasim/shared",
+  "version": "2.0.0",
+  "private": true,
+  "type": "module",
+  "main": "types.ts",
+  "types": "types.ts",
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "typescript": "^6.0.3"
+  }
+}

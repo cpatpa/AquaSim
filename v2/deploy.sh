@@ -1,31 +1,35 @@
 #!/bin/bash
 set -e
 
-PORT="${1:-8080}"
-NAME="aquasim"
+if [ ! -f .env ]; then
+    echo "No .env file found. Run the guided installer first:"
+    echo "  bash infra/scripts/install.sh"
+    exit 1
+fi
 
-echo "Building AquaSim..."
-docker build -t "$NAME" .
+source .env
 
-echo "Stopping any existing container..."
-docker rm -f "$NAME" 2>/dev/null || true
+GIT_COMMIT=$(git rev-parse --short HEAD 2>/dev/null || echo "dev")
+BUILD_TIME=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 
-echo "Starting AquaSim on port $PORT..."
-docker run -d --name "$NAME" -p "$PORT:8080" --restart unless-stopped "$NAME"
+COMPOSE_PROFILES=""
+if [ -n "$TUNNEL_TOKEN" ]; then
+    COMPOSE_PROFILES="--profile tunnel"
+fi
 
-HOST_IP=$(hostname -I 2>/dev/null | awk '{print $1}')
-HOSTNAME=$(hostname -f 2>/dev/null || hostname)
+echo "Building AquaSim (commit: $GIT_COMMIT)..."
+docker compose $COMPOSE_PROFILES build \
+    --build-arg GIT_COMMIT="$GIT_COMMIT" \
+    --build-arg BUILD_TIME="$BUILD_TIME"
+
+echo "Restarting services..."
+docker compose $COMPOSE_PROFILES up -d
 
 echo ""
 echo "========================================="
-echo "  AquaSim deployed successfully"
+echo "  AquaSim deployed"
 echo "========================================="
-echo ""
-echo "  Local:    http://localhost:$PORT"
-[ -n "$HOST_IP" ] && echo "  Network:  http://$HOST_IP:$PORT"
-[ "$HOSTNAME" != "localhost" ] && echo "  Host:     http://$HOSTNAME:$PORT"
-echo ""
-echo "  Container: $NAME"
-echo "  Port:      $PORT"
-echo "  Status:    $(docker inspect -f '{{.State.Status}}' $NAME 2>/dev/null)"
+echo "  Build:  $GIT_COMMIT ($BUILD_TIME)"
+echo "  URL:    $APP_URL"
+echo "  Admin:  $APP_URL/admin"
 echo "========================================="

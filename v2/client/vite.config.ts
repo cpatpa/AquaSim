@@ -4,7 +4,7 @@ export default defineConfig({
   root: '.',
   build: {
     outDir: 'dist',
-    sourcemap: true,
+    sourcemap: false,
   },
   server: {
     port: 3000,

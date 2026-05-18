@@ -1,15 +1,16 @@
 {
-  "name": "aquasim-v2",
+  "name": "aquasim",
   "version": "2.0.0",
   "private": true,
-  "type": "module",
+  "workspaces": [
+    "shared",
+    "client",
+    "server"
+  ],
   "scripts": {
-    "dev": "vite",
-    "build": "tsc && vite build",
-    "typecheck": "tsc --noEmit"
-  },
-  "devDependencies": {
-    "typescript": "^6.0.3",
-    "vite": "^8.0.13"
+    "dev": "npm run dev --workspace=client",
+    "dev:server": "npm run dev --workspace=server",
+    "build": "npm run build --workspaces",
+    "typecheck": "npm run typecheck --workspaces --if-present"
   }
 }

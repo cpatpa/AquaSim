@@ -1,0 +1,40 @@
+{
+  "name": "@aquasim/server",
+  "version": "2.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "typecheck": "tsc --noEmit",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "tsx src/db/migrate.ts"
+  },
+  "dependencies": {
+    "@aquasim/shared": "*",
+    "@hono/node-server": "^1.14.1",
+    "@simplewebauthn/server": "^11.0.0",
+    "argon2": "^0.41.1",
+    "drizzle-orm": "^0.40.1",
+    "hono": "^4.7.10",
+    "jsonwebtoken": "^9.0.2",
+    "nanoid": "^5.1.5",
+    "nodemailer": "^6.10.1",
+    "otpauth": "^9.3.6",
+    "pino": "^9.6.0",
+    "postgres": "^3.4.7",
+    "qrcode": "^1.5.4",
+    "ws": "^8.20.1",
+    "zod": "^3.24.4"
+  },
+  "devDependencies": {
+    "@types/jsonwebtoken": "^9.0.9",
+    "@types/ws": "^8.18.1",
+    "@types/nodemailer": "^6.4.17",
+    "@types/qrcode": "^1.5.5",
+    "drizzle-kit": "^0.30.5",
+    "tsx": "^4.19.4",
+    "typescript": "^6.0.3"
+  }
+}
