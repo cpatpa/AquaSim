@@ -32,13 +32,55 @@ You will have a running instance in under 10 minutes.
 - Root or sudo access
 - A domain on Cloudflare (if you want public access)
 
-## Redeploying after code changes
+## Updating
+
+### Manual update
+
+From the server:
 
 ```bash
-cd AquaSim/v2 && bash deploy.sh
+cd ~/AquaSim/v2
+git pull origin main
+bash deploy.sh
 ```
 
-Or push to `main` on GitHub and the webhook triggers it automatically.
+This pulls the latest code, rebuilds the containers, runs any new database migrations automatically, and restarts all services. Your `.env`, database, and Cloudflare Tunnel config are preserved.
+
+### Automatic update via GitHub webhook
+
+If you configured the webhook during install, pushing to `main` or `master` on GitHub triggers a rebuild automatically. No SSH required.
+
+### What happens during an update
+
+1. `git pull` fetches the latest code
+2. `docker compose build` rebuilds the app container (cached layers make this fast)
+3. `docker compose up -d` restarts only changed containers
+4. The app runs database migrations on startup before accepting requests
+5. PostgreSQL data persists in a Docker volume across rebuilds
+
+Your data is safe. Containers are rebuilt from code, not replaced. The database volume (`pgdata`) is never deleted by a rebuild.
+
+### Updating after the installer
+
+The one-liner in Quick Start is only for first-time setup on a fresh server. If AquaSim is already installed, always use `git pull` + `deploy.sh` instead of re-running the installer.
+
+### Rolling back
+
+If an update breaks something:
+
+```bash
+cd ~/AquaSim/v2
+git log --oneline -5          # find the last good commit
+git checkout <commit-hash>    # switch to it
+bash deploy.sh                # rebuild from that commit
+```
+
+To return to the latest after investigating:
+
+```bash
+git checkout main
+bash deploy.sh
+```
 
 ## Cloudflare Tunnel setup
 
