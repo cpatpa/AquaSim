@@ -1,7 +1,7 @@
 #!/usr/bin/env tsx
 // Interactive admin password reset tool.
-// Usage: npx tsx scripts/reset-password.ts
-//   Or from Docker: docker compose exec -it app npx tsx scripts/reset-password.ts
+// Host:   cd server && npm run reset-password
+// Docker: docker compose exec -it app node dist/server/scripts/reset-password.js
 
 import * as readline from 'readline';
 import { db, client } from '../src/db/index.js';
