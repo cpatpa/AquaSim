@@ -360,6 +360,25 @@ export function step(ctx: StepContext): StepResult {
         hunger[idx] = 0;
         age[idx] = 0;
       }
+      // Rock buildup: dense rock clusters grow upward into the next layer
+      if (cz < layers - 1 && adjRock >= 3 && Math.random() < 0.003) {
+        const aboveIdx = (cz + 1) * planeSize + xyIdx;
+        if (species[aboveIdx] === 0) {
+          species[aboveIdx] = 1;
+          hunger[aboveIdx] = 0;
+          age[aboveIdx] = 0;
+        }
+      }
+      // Rock sinks: rock above z=0 without rock below it erodes downward
+      if (cz > 0) {
+        const belowIdx = (cz - 1) * planeSize + xyIdx;
+        if (species[belowIdx] === 0 && Math.random() < 0.01) {
+          species[belowIdx] = 1;
+          species[idx] = 0;
+          hunger[idx] = 0;
+          age[idx] = 0;
+        }
+      }
       continue;
     }
 
@@ -1849,8 +1868,7 @@ export function step(ctx: StepContext): StepResult {
   // End of main entity loop
   // =========================================================================
 
-  // Active volcanic vents: emit lava each tick (lava lives at z=0 / Abyssal)
-  const lavaZOff = 0; // SPECIES[7].layer = 0
+  // Active volcanic vents: emit lava across multiple layers (cone eruption)
   for (let vi = activeVents.length - 1; vi >= 0; vi--) {
     const v = activeVents[vi];
     v.ticksLeft--;
@@ -1864,7 +1882,9 @@ export function step(ctx: StepContext): StepResult {
       const dist = v.coreR + 1 + ((Math.random() * 3) | 0);
       const lx = wrapX(v.x + Math.round(Math.cos(a) * dist), cw);
       const ly = wrapY(v.y + Math.round(Math.sin(a) * dist), ch);
-      const li = lavaZOff + ly * cw + lx;
+      // Emit lava at a random layer, biased towards lower layers
+      const emitZ = Math.min(layers - 1, ((Math.random() * Math.random() * layers) | 0));
+      const li = emitZ * planeSize + ly * cw + lx;
       if (species[li] !== 1 && species[li] !== 7) {
         if (species[li] >= 10 && onSpawnDeathParticles) onSpawnDeathParticles(li, species[li]);
         species[li] = 7;

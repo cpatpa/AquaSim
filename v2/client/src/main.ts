@@ -221,6 +221,8 @@ function applyTiltTransforms(): void {
     const c = tiltContainer.children[layer] as HTMLCanvasElement;
     const zOffset = (layer - (LAYER_COUNT - 1) / 2) * depthView.layerSpacing;
     c.style.transform = `translateZ(${zOffset}px)`;
+    c.style.filter = depthView.focusLayer >= 0 && layer !== depthView.focusLayer
+      ? 'brightness(0.4)' : 'none';
   }
 }
 

@@ -1,5 +1,5 @@
 import type { GridState, Particle, EvoStats } from '../types';
-import { CELL_SIZE, GRID_GAP, MAX_PARTICLES, LAVA_COOL_AGE, LAYER_COLORS } from '../constants';
+import { CELL_SIZE, GRID_GAP, MAX_PARTICLES, LAVA_COOL_AGE, LAYER_COLORS, LAYER_NAMES } from '../constants';
 import { COLOR_RGB, getSpecies } from '../species/registry';
 import { TRAIT_BITS } from '../evolution/traits';
 
@@ -626,12 +626,12 @@ export function renderLayer(
     data[i + 3] = 0;
   }
 
-  // Subtle layer-tinted water background
+  // Layer-tinted water background with stronger colour saturation
   if (targetLayer >= 0 && targetLayer < LAYER_RGB.length) {
     const tintR = LAYER_RGB[targetLayer][0];
     const tintG = LAYER_RGB[targetLayer][1];
     const tintB = LAYER_RGB[targetLayer][2];
-    const bgAlpha = (40 * opacity) | 0;
+    const bgAlpha = (70 * opacity) | 0;
     for (let py = 0; py < ph; py++) {
       const dt = py / ph;
       const fade = 0.85 + 0.15 * (1 - dt);
@@ -645,6 +645,32 @@ export function renderLayer(
         data[off + 1] = g;
         data[off + 2] = b;
         data[off + 3] = bgAlpha;
+      }
+    }
+  }
+
+  // Edge border: draw a bright border around the entire canvas so each layer
+  // is visually distinct when stacked in 3D tilt view.
+  if (targetLayer >= 0 && targetLayer < LAYER_RGB.length) {
+    const edgeR = Math.min(255, LAYER_RGB[targetLayer][0] + 80);
+    const edgeG = Math.min(255, LAYER_RGB[targetLayer][1] + 80);
+    const edgeB = Math.min(255, LAYER_RGB[targetLayer][2] + 80);
+    const edgeAlpha = (200 * opacity) | 0;
+    const borderW = 2;
+    for (let b = 0; b < borderW; b++) {
+      // Top and bottom rows
+      for (let px = 0; px < pw; px++) {
+        const topOff = (b * pw + px) * 4;
+        data[topOff] = edgeR; data[topOff + 1] = edgeG; data[topOff + 2] = edgeB; data[topOff + 3] = edgeAlpha;
+        const botOff = ((ph - 1 - b) * pw + px) * 4;
+        data[botOff] = edgeR; data[botOff + 1] = edgeG; data[botOff + 2] = edgeB; data[botOff + 3] = edgeAlpha;
+      }
+      // Left and right columns
+      for (let py = 0; py < ph; py++) {
+        const leftOff = (py * pw + b) * 4;
+        data[leftOff] = edgeR; data[leftOff + 1] = edgeG; data[leftOff + 2] = edgeB; data[leftOff + 3] = edgeAlpha;
+        const rightOff = (py * pw + pw - 1 - b) * 4;
+        data[rightOff] = edgeR; data[rightOff + 1] = edgeG; data[rightOff + 2] = edgeB; data[rightOff + 3] = edgeAlpha;
       }
     }
   }
@@ -681,4 +707,18 @@ export function renderLayer(
   }
 
   rs.ctx.putImageData(rs.imgData, 0, 0);
+
+  // Draw layer name label so each stacked plane is identifiable in tilt view
+  if (targetLayer >= 0 && targetLayer < LAYER_NAMES.length) {
+    const label = LAYER_NAMES[targetLayer];
+    const ctx = rs.ctx;
+    ctx.save();
+    ctx.font = 'bold 11px monospace';
+    ctx.fillStyle = `rgba(${LAYER_RGB[targetLayer][0]},${LAYER_RGB[targetLayer][1]},${LAYER_RGB[targetLayer][2]},${(opacity * 0.9).toFixed(2)})`;
+    ctx.strokeStyle = `rgba(0,0,0,${(opacity * 0.6).toFixed(2)})`;
+    ctx.lineWidth = 2;
+    ctx.strokeText(label, 6, 14);
+    ctx.fillText(label, 6, 14);
+    ctx.restore();
+  }
 }

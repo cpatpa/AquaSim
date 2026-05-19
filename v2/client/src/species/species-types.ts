@@ -2,7 +2,7 @@ import type { SpeciesDefinition, DisasterDefinition, Tier, LivingTier } from '..
 
 export const SPECIES: Record<number, SpeciesDefinition> = {
   0:  { name: 'Empty',          color: '#0A1628', tier: 'none',        layer: -1 },
-  1:  { name: 'Rock',           color: '#4A5A6A', tier: 'environment', layer: 1, desc: 'Impassable terrain blocker' },
+  1:  { name: 'Rock',           color: '#4A5A6A', tier: 'environment', layer: 0, desc: 'Impassable terrain blocker' },
   2:  { name: 'Current',        color: '#003D88', tier: 'environment', layer: -1, desc: 'Drag to paint — sweeps creatures in drag direction' },
   3:  { name: 'Dead',           color: '#8B7355', tier: 'transient',   layer: -1, desc: 'Decays to empty after 14 ticks' },
   4:  { name: 'Oil',            color: '#2A1800', tier: 'transient',   layer: 5, desc: 'Toxic sludge — spreads, kills life, then decays' },

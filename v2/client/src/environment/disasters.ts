@@ -115,7 +115,7 @@ export function triggerBomb(
       grid.hunger[idx] = 0;
       grid.age[idx] = 0;
     }
-    // Place rock at benthic
+    // Place rock at abyssal floor
     const rockIdx = rockZ * plane + xy;
     grid.species[rockIdx] = 1;
     grid.currents[xy] = 0;
@@ -225,18 +225,44 @@ export function triggerVolcano(
   radius: number,
 ): void {
   const plane = planeSize(grid);
-  const lavaZ = homeZ(7, grid.layers);
-  const zOff = lavaZ * plane;
-  forEachInRadius(grid, cellX, cellY, radius, (xy) => {
-    const idx = zOff + xy;
-    grid.species[idx] = 7;
-    grid.age[idx] = 0;
-  });
+  const layers = grid.layers;
 
+  // Build a cone shape: full radius at z=0 (Abyssal), tapering to ~30% at top layers.
+  // Each layer gets a progressively smaller radius, creating a volcanic cone.
+  for (let z = 0; z < layers; z++) {
+    const layerFrac = z / Math.max(1, layers - 1);
+    const layerRadius = Math.max(1, Math.round(radius * (1.0 - layerFrac * 0.7)));
+    const zOff = z * plane;
+
+    // Only fill the cone volume: lower layers wider, upper layers narrower
+    const r2 = layerRadius * layerRadius;
+    for (let dy = -layerRadius; dy <= layerRadius; dy++) {
+      for (let dx = -layerRadius; dx <= layerRadius; dx++) {
+        const dist2 = dx * dx + dy * dy;
+        if (dist2 > r2) continue;
+        const x = wrapX(grid, cellX + dx);
+        const y = wrapY(grid, cellY + dy);
+        const idx = zOff + y * grid.width + x;
+        // Core of the cone is lava, outer ring is rock (cooled lava)
+        const distFrac = Math.sqrt(dist2) / Math.max(1, layerRadius);
+        if (z <= 1 && distFrac > 0.7) {
+          grid.species[idx] = 1; // Rock shell at base layers
+          grid.age[idx] = 0;
+        } else {
+          grid.species[idx] = 7; // Lava
+          grid.age[idx] = 0;
+        }
+        grid.hunger[idx] = 0;
+      }
+    }
+  }
+
+  // Place vents near the summit (top layers) for ongoing eruption
   const ventCount = 1 + ((Math.random() * 3) | 0);
   for (let v = 0; v < ventCount; v++) {
-    const vx = wrapX(grid, cellX + ((Math.random() - 0.5) * radius) | 0);
-    const vy = wrapY(grid, cellY + ((Math.random() - 0.5) * radius) | 0);
+    const spread = radius * 0.3;
+    const vx = wrapX(grid, cellX + ((Math.random() - 0.5) * spread) | 0);
+    const vy = wrapY(grid, cellY + ((Math.random() - 0.5) * spread) | 0);
     const angles: number[] = [];
     const numAngles = 3 + ((Math.random() * 5) | 0);
     for (let a = 0; a < numAngles; a++) {

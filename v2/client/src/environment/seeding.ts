@@ -156,7 +156,7 @@ export function seedBiome(grid: GridState): void {
     fbm(x / scale, y / scale, oct ?? 5, 2.0, 0.5);
 
   // ==================================================================
-  // 1. SEAFLOOR TOPOLOGY -- rocks at benthic layer
+  // 1. SEAFLOOR TOPOLOGY -- rocks at abyssal layer
   // ==================================================================
   const rockZ = homeLayer(1, grid.layers);
   const rockZOff = rockZ * plane;
