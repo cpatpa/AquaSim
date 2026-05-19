@@ -378,12 +378,22 @@ export function setupPhyloInteraction(
   view: PhyloViewState,
   layout: PhyloLayout,
   onSelect: (id: number) => void,
-  onHover: (id: number | null) => void,
+  onRedraw: () => void,
 ): () => void {
   let dragging = false;
   let lastX = 0;
   let lastY = 0;
   let dragMoved = false;
+  let rafPending = false;
+
+  function scheduleRedraw(): void {
+    if (rafPending) return;
+    rafPending = true;
+    requestAnimationFrame(() => {
+      rafPending = false;
+      onRedraw();
+    });
+  }
 
   function hitTest(mx: number, my: number): number | null {
     const dpr = window.devicePixelRatio || 1;
@@ -420,6 +430,7 @@ export function setupPhyloInteraction(
       if (Math.abs(dx) > 2 || Math.abs(dy) > 2) {
         dragMoved = true;
       }
+      scheduleRedraw();
     } else {
       const rect = canvas.getBoundingClientRect();
       const dpr = window.devicePixelRatio || 1;
@@ -428,7 +439,7 @@ export function setupPhyloInteraction(
       const hit = hitTest(mx, my);
       if (hit !== view.hoveredNode) {
         view.hoveredNode = hit;
-        onHover(hit);
+        scheduleRedraw();
       }
     }
   }
@@ -453,7 +464,70 @@ export function setupPhyloInteraction(
     dragging = false;
     if (view.hoveredNode != null) {
       view.hoveredNode = null;
-      onHover(null);
+      scheduleRedraw();
+    }
+  }
+
+  function onWheel(e: WheelEvent): void {
+    e.preventDefault();
+    view.scrollX -= e.deltaX;
+    view.scrollY -= e.deltaY;
+    scheduleRedraw();
+  }
+
+  let touchId: number | null = null;
+  let touchX = 0;
+  let touchY = 0;
+
+  function onTouchStart(e: TouchEvent): void {
+    if (e.touches.length === 1) {
+      e.preventDefault();
+      const t = e.touches[0];
+      touchId = t.identifier;
+      touchX = t.clientX;
+      touchY = t.clientY;
+      dragMoved = false;
+    }
+  }
+
+  function onTouchMove(e: TouchEvent): void {
+    if (touchId == null) return;
+    for (let i = 0; i < e.touches.length; i++) {
+      if (e.touches[i].identifier === touchId) {
+        e.preventDefault();
+        const t = e.touches[i];
+        view.scrollX += t.clientX - touchX;
+        view.scrollY += t.clientY - touchY;
+        if (Math.abs(t.clientX - touchX) > 2 || Math.abs(t.clientY - touchY) > 2) {
+          dragMoved = true;
+        }
+        touchX = t.clientX;
+        touchY = t.clientY;
+        scheduleRedraw();
+        break;
+      }
+    }
+  }
+
+  function onTouchEnd(e: TouchEvent): void {
+    if (touchId == null) return;
+    let found = false;
+    for (let i = 0; i < e.touches.length; i++) {
+      if (e.touches[i].identifier === touchId) { found = true; break; }
+    }
+    if (!found) {
+      if (!dragMoved) {
+        const rect = canvas.getBoundingClientRect();
+        const dpr = window.devicePixelRatio || 1;
+        const mx = (touchX - rect.left) * dpr;
+        const my = (touchY - rect.top) * dpr;
+        const hit = hitTest(mx, my);
+        if (hit != null) {
+          view.selectedNode = hit;
+          onSelect(hit);
+        }
+      }
+      touchId = null;
     }
   }
 
@@ -461,12 +535,20 @@ export function setupPhyloInteraction(
   canvas.addEventListener('mousemove', onMouseMove);
   canvas.addEventListener('mouseup', onMouseUp);
   canvas.addEventListener('mouseleave', onMouseLeave);
+  canvas.addEventListener('wheel', onWheel, { passive: false });
+  canvas.addEventListener('touchstart', onTouchStart, { passive: false });
+  canvas.addEventListener('touchmove', onTouchMove, { passive: false });
+  canvas.addEventListener('touchend', onTouchEnd);
 
   return () => {
     canvas.removeEventListener('mousedown', onMouseDown);
     canvas.removeEventListener('mousemove', onMouseMove);
     canvas.removeEventListener('mouseup', onMouseUp);
     canvas.removeEventListener('mouseleave', onMouseLeave);
+    canvas.removeEventListener('wheel', onWheel);
+    canvas.removeEventListener('touchstart', onTouchStart);
+    canvas.removeEventListener('touchmove', onTouchMove);
+    canvas.removeEventListener('touchend', onTouchEnd);
   };
 }
 
@@ -485,9 +567,13 @@ export function renderPhyloView(
 
   const displayW = canvas.clientWidth;
   const displayH = canvas.clientHeight;
-  canvas.width = displayW * dpr;
-  canvas.height = displayH * dpr;
-  ctx.scale(dpr, dpr);
+  const targetW = displayW * dpr;
+  const targetH = displayH * dpr;
+  if (canvas.width !== targetW || canvas.height !== targetH) {
+    canvas.width = targetW;
+    canvas.height = targetH;
+  }
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
   // Clear
   ctx.clearRect(0, 0, displayW, displayH);
