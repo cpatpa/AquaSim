@@ -3,7 +3,9 @@ import { isAdmin } from '../api/client';
 
 let _paintMode = false;
 let _isMobile = false;
-let _appHeight = window.innerHeight;
+
+const TABS_HEIGHT = 36;
+const BAR_HEIGHT = 44;
 
 function detectMobile(): boolean {
   const hasTouch = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
@@ -15,19 +17,16 @@ function detectMobile(): boolean {
 }
 
 function getVisualHeight(): number {
-  if (window.visualViewport) {
-    return window.visualViewport.height;
-  }
-  return window.innerHeight;
+  return window.visualViewport ? window.visualViewport.height : window.innerHeight;
 }
 
-function updateAppHeight(): void {
-  _appHeight = getVisualHeight();
-  document.documentElement.style.setProperty('--app-height', `${_appHeight}px`);
-}
-
-export function getAppHeight(): number {
-  return _appHeight;
+export function getMobileContentRect(): { top: number; height: number; width: number } {
+  const vh = getVisualHeight();
+  return {
+    top: TABS_HEIGHT,
+    height: vh - TABS_HEIGHT - BAR_HEIGHT,
+    width: window.innerWidth,
+  };
 }
 
 export function isMobile(): boolean {
@@ -54,15 +53,28 @@ const MOBILE_STYLES = `
     #bottom-bar { display: none !important; }
 
     #layout {
-      height: calc(var(--app-height, 100vh) - 36px - 44px);
-      margin-top: 36px;
+      position: fixed !important;
+      top: ${TABS_HEIGHT}px;
+      left: 0;
+      right: 0;
+      display: block !important;
       overflow: hidden;
     }
-    #centre { width: 100%; height: 100%; }
+    #centre { width: 100%; height: 100%; display: block !important; }
+    #canvas-wrap {
+      width: 100% !important;
+      height: 100% !important;
+      display: block !important;
+    }
+    #grid-canvas {
+      display: block;
+      width: 100% !important;
+      height: 100% !important;
+    }
 
     #mobile-tabs {
       position: fixed; top: 0; left: 0; right: 0; z-index: 790;
-      display: flex; height: 36px; background: #0a1628; border-bottom: 1px solid #1a3a5c;
+      display: flex; height: ${TABS_HEIGHT}px; background: #0a1628; border-bottom: 1px solid #1a3a5c;
     }
     .mob-tab {
       flex: 1; display: flex; align-items: center; justify-content: center;
@@ -73,7 +85,7 @@ const MOBILE_STYLES = `
 
     #mobile-bar {
       position: fixed; bottom: 0; left: 0; right: 0; z-index: 900;
-      display: flex; height: 44px;
+      display: flex; height: ${BAR_HEIGHT}px;
       align-items: center; padding: 0 8px; gap: 4px;
       background: #0a1628; border-top: 1px solid #1a3a5c;
     }
@@ -87,7 +99,7 @@ const MOBILE_STYLES = `
     #mobile-bar .mob-gen { color: #4da6ff; font-size: 0.7rem; }
 
     #mobile-drawer {
-      position: fixed; bottom: 44px; left: 0; right: 0;
+      position: fixed; bottom: ${BAR_HEIGHT}px; left: 0; right: 0;
       max-height: 55vh; background: #0a1628; border-top: 1px solid #1a3a5c;
       z-index: 850; overflow-y: auto; padding: 8px;
       display: none;
@@ -97,7 +109,7 @@ const MOBILE_STYLES = `
     #mobile-drawer::-webkit-scrollbar-thumb { background: #1a3a5c; border-radius: 2px; }
 
     #paint-fab {
-      position: fixed; bottom: 56px; left: 12px; z-index: 810;
+      position: fixed; bottom: ${BAR_HEIGHT + 12}px; left: 12px; z-index: 810;
       width: 52px; height: 52px; border-radius: 50%;
       background: #0d1f3c; border: 2px solid #1a3a5c; color: #e0e8f0;
       font-family: 'Share Tech Mono', monospace; font-size: 0.6rem;
@@ -114,27 +126,34 @@ const MOBILE_STYLES = `
 let drawerOpen = false;
 let activeTab: 'species' | 'stats' | 'menu' | null = null;
 
+function applyLayoutHeight(): void {
+  if (!_isMobile) return;
+  const layout = document.getElementById('layout');
+  if (!layout) return;
+  const rect = getMobileContentRect();
+  layout.style.height = `${rect.height}px`;
+}
+
 export function initMobile(): void {
   const style = document.createElement('style');
   style.textContent = MOBILE_STYLES;
   document.head.appendChild(style);
 
   _isMobile = detectMobile();
-  updateAppHeight();
   setSingleFingerPan(_isMobile && !_paintMode);
 
   if (window.visualViewport) {
     window.visualViewport.addEventListener('resize', () => {
-      updateAppHeight();
-      updateLayoutHeight();
+      applyLayoutHeight();
+      resizeCanvas();
     });
   }
   window.addEventListener('resize', () => {
     const wasMobile = _isMobile;
     _isMobile = detectMobile();
-    updateAppHeight();
-    updateLayoutHeight();
     setSingleFingerPan(_isMobile && !_paintMode);
+    applyLayoutHeight();
+    resizeCanvas();
     if (!_isMobile && wasMobile) {
       closeDrawer();
       restorePanels();
@@ -146,25 +165,26 @@ export function initMobile(): void {
 
   window.addEventListener('orientationchange', () => {
     setTimeout(() => {
-      updateAppHeight();
-      updateLayoutHeight();
-    }, 100);
+      applyLayoutHeight();
+      resizeCanvas();
+    }, 150);
   });
 }
 
-function updateLayoutHeight(): void {
-  const layout = document.getElementById('layout');
-  if (layout && _isMobile) {
-    layout.style.height = `${_appHeight - 36 - 44}px`;
-  } else if (layout) {
-    layout.style.height = '';
-  }
+let _resizeCallback: (() => void) | null = null;
+
+export function setResizeCallback(cb: () => void): void {
+  _resizeCallback = cb;
+}
+
+function resizeCanvas(): void {
+  if (_resizeCallback) _resizeCallback();
 }
 
 export function initMobileUI(): void {
   if (_isMobile) {
     buildMobileUI();
-    updateLayoutHeight();
+    applyLayoutHeight();
   }
 }
 

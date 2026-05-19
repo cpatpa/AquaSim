@@ -37,7 +37,7 @@ import { showAuthModal } from './ui/auth';
 import { openDashboard } from './ui/dashboard';
 import { openLeaderboard } from './ui/leaderboard';
 import { openAccount } from './ui/account';
-import { initMobile, initMobileUI, isMobile, getAppHeight, setMobileCallbacks, updateMobileBar } from './ui/mobile';
+import { initMobile, initMobileUI, isMobile, getMobileContentRect, setResizeCallback, setMobileCallbacks, updateMobileBar } from './ui/mobile';
 import {
   isLoggedIn, getUser, tryRestoreSession,
   saveSimulation, loadSimulation, updateSimulation, submitScore,
@@ -47,9 +47,16 @@ noiseSeed(Date.now());
 initMobile();
 
 const mobileView = isMobile();
-const mobileVisualH = getAppHeight();
-const viewW = Math.min(mobileView ? window.innerWidth : window.innerWidth - 400, MAX_GRID_PX);
-const viewH = Math.min(mobileView ? mobileVisualH - 80 : window.innerHeight - 60, MAX_GRID_PX);
+let viewW: number;
+let viewH: number;
+if (mobileView) {
+  const rect = getMobileContentRect();
+  viewW = rect.width;
+  viewH = rect.height;
+} else {
+  viewW = Math.min(window.innerWidth - 400, MAX_GRID_PX);
+  viewH = Math.min(window.innerHeight - 60, MAX_GRID_PX);
+}
 const mobileGridMult = mobileView ? 2 : 1;
 const gridW = Math.max(Math.floor(Math.max(viewW, MIN_GRID_PX) / CELL_SIZE), 60) * mobileGridMult;
 const gridH = Math.max(Math.floor(Math.max(viewH, MIN_GRID_PX) / CELL_SIZE), 60) * mobileGridMult;
@@ -159,27 +166,37 @@ const worldH = sim.grid.height * CELL_SIZE;
 const cam: CameraState = createCamera(worldW, worldH, viewW, viewH);
 
 const canvasWrap = document.getElementById('canvas-wrap')!;
-canvasEl.style.width = canvasWrap.clientWidth + 'px';
-canvasEl.style.height = canvasWrap.clientHeight + 'px';
 
-setupCameraHandlers(canvasEl, cam, () => renderFrame());
-
-function handleViewportResize(): void {
-  const w = canvasWrap.clientWidth;
-  const h = canvasWrap.clientHeight;
+function syncCanvasSize(): void {
+  let w: number, h: number;
+  if (mobileView) {
+    const rect = getMobileContentRect();
+    w = rect.width;
+    h = rect.height;
+  } else {
+    w = canvasWrap.clientWidth;
+    h = canvasWrap.clientHeight;
+  }
   if (w > 0 && h > 0) {
     canvasEl.style.width = w + 'px';
     canvasEl.style.height = h + 'px';
     cam.viewW = w;
     cam.viewH = h;
-    renderFrame();
   }
 }
 
-window.addEventListener('resize', handleViewportResize);
-if (window.visualViewport) {
-  window.visualViewport.addEventListener('resize', handleViewportResize);
-}
+syncCanvasSize();
+setupCameraHandlers(canvasEl, cam, () => renderFrame());
+
+window.addEventListener('resize', () => {
+  syncCanvasSize();
+  renderFrame();
+});
+
+setResizeCallback(() => {
+  syncCanvasSize();
+  renderFrame();
+});
 
 const paint = createPaintState();
 const palette = createPaletteState();
