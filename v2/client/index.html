@@ -70,7 +70,9 @@
       flex: 1; position: relative; overflow: hidden; background: #0a1628;
     }
     #grid-canvas { position: absolute; left: 0; top: 0; image-rendering: pixelated; transform-origin: 0 0; touch-action: none; }
-    #minimap-canvas { position: absolute; top: 8px; right: 8px; pointer-events: none; z-index: 5; }
+    #minimap-canvas { position: absolute; bottom: 8px; right: 8px; pointer-events: none; z-index: 5; }
+    #tilt-container { position: absolute; left: 0; top: 0; transform-origin: 0 0; pointer-events: none; }
+    #tilt-container .layer-canvas { position: absolute; left: 0; top: 0; image-rendering: pixelated; transform-origin: 50% 50%; }
 
     #bottom-bar {
       height: 44px; min-height: 44px;

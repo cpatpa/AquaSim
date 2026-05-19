@@ -2,9 +2,9 @@ import { createSimState, startLoop, stopLoop, setSpeed, resetSimulation } from '
 import type { SimState } from './core/simulation';
 import { step } from './core/scheduler';
 import type { StepContext, StepResult, Vent } from './core/scheduler';
-import { MIN_GRID_PX, MAX_GRID_PX, CELL_SIZE, SEASON_LENGTH } from './constants';
+import { MIN_GRID_PX, MAX_GRID_PX, CELL_SIZE, SEASON_LENGTH, LAYER_COUNT } from './constants';
 import { noiseSeed } from './environment/terrain';
-import { createRenderer, initCanvas, render, spawnDeathParticles, tickParticles, drawParticles } from './renderer/canvas-renderer';
+import { createRenderer, initCanvas, render, renderLayer, spawnDeathParticles, tickParticles, drawParticles } from './renderer/canvas-renderer';
 import type { RendererState } from './renderer/canvas-renderer';
 import { seedGrid, seedBalancedRockReefs, seedBiome } from './environment/seeding';
 import { createPaintState, setupPaintHandlers, setupKeyboardShortcuts } from './ui/toolbar';
@@ -181,6 +181,61 @@ const canvasWrap = document.getElementById('canvas-wrap')!;
 const minimapCanvas = document.getElementById('minimap-canvas') as HTMLCanvasElement;
 const minimapCtx = minimapCanvas.getContext('2d')!;
 
+let tiltContainer: HTMLDivElement | null = null;
+const layerRenderers: RendererState[] = [];
+
+function ensureTiltCanvases(): void {
+  if (tiltContainer) return;
+  tiltContainer = document.createElement('div');
+  tiltContainer.id = 'tilt-container';
+  tiltContainer.style.position = 'absolute';
+  tiltContainer.style.top = '0';
+  tiltContainer.style.left = '0';
+  tiltContainer.style.transformStyle = 'preserve-3d';
+  tiltContainer.style.transformOrigin = '0 0';
+  tiltContainer.style.pointerEvents = 'none';
+  tiltContainer.style.display = 'none';
+  for (let layer = 0; layer < LAYER_COUNT; layer++) {
+    const c = document.createElement('canvas');
+    c.className = 'layer-canvas';
+    c.dataset.layer = String(layer);
+    c.style.position = 'absolute';
+    c.style.top = '0';
+    c.style.left = '0';
+    c.style.imageRendering = 'pixelated';
+    c.style.transformStyle = 'preserve-3d';
+    tiltContainer.appendChild(c);
+    const lrs = createRenderer(c);
+    initCanvas(lrs, sim.grid.width, sim.grid.height);
+    layerRenderers.push(lrs);
+  }
+  canvasWrap.appendChild(tiltContainer);
+}
+
+function applyTiltTransforms(): void {
+  if (!tiltContainer) return;
+  const tx = -cam.x * cam.zoom;
+  const ty = -cam.y * cam.zoom;
+  tiltContainer.style.transform = `translate(${tx}px, ${ty}px) scale(${cam.zoom}) perspective(1600px) rotateX(${depthView.tiltAngle}deg)`;
+  for (let layer = 0; layer < LAYER_COUNT; layer++) {
+    const c = tiltContainer.children[layer] as HTMLCanvasElement;
+    const zOffset = (layer - (LAYER_COUNT - 1) / 2) * depthView.layerSpacing;
+    c.style.transform = `translateZ(${zOffset}px)`;
+  }
+}
+
+function setTiltMode(enabled: boolean): void {
+  if (enabled) ensureTiltCanvases();
+  if (tiltContainer) tiltContainer.style.display = enabled ? 'block' : 'none';
+  canvasEl.style.display = enabled ? 'none' : 'block';
+}
+
+function resizeTiltCanvases(): void {
+  for (const lrs of layerRenderers) {
+    initCanvas(lrs, sim.grid.width, sim.grid.height);
+  }
+}
+
 function syncCanvasSize(): void {
   let w: number, h: number;
   if (mobileView) {
@@ -210,8 +265,26 @@ setupCameraHandlers(canvasEl, canvasWrap, cam, () => renderFrame());
 attachDepthSliderHandlers(
   depthView,
   () => renderFrame(),
-  () => renderFrame(),
+  (enabled: boolean) => {
+    setTiltMode(enabled);
+    renderFrame();
+  },
 );
+
+canvasWrap.addEventListener('wheel', (e) => {
+  if (!depthView.tiltEnabled) return;
+  if (e.shiftKey) {
+    e.preventDefault();
+    const delta = e.deltaY > 0 ? -2 : 2;
+    depthView.layerSpacing = Math.max(8, Math.min(120, depthView.layerSpacing + delta));
+    renderFrame();
+  } else if (e.altKey) {
+    e.preventDefault();
+    const delta = e.deltaY > 0 ? -2 : 2;
+    depthView.tiltAngle = Math.max(0, Math.min(55, depthView.tiltAngle + delta));
+    renderFrame();
+  }
+}, { passive: false });
 
 window.addEventListener('resize', () => {
   syncCanvasSize();
@@ -373,13 +446,23 @@ function doStep(): void {
 
 function renderFrame(): void {
   updateCamera(cam);
-  render(rs, sim.grid, sim.evoStats, sim.season.current, sim.generation, depthView.focusLayer);
-  if (currentHeatmap !== 'none') {
-    drawHeatmapOverlay(rs.ctx, sim.grid, sim.evoStats, currentHeatmap);
+  if (depthView.tiltEnabled) {
+    for (let layer = 0; layer < LAYER_COUNT; layer++) {
+      const lrs = layerRenderers[layer];
+      const opacity = depthView.focusLayer === -1 ? 0.85
+        : layer === depthView.focusLayer ? 1.0 : 0.25;
+      renderLayer(lrs, sim.grid, sim.evoStats, sim.season.current, sim.generation, layer, opacity);
+    }
+    applyTiltTransforms();
+  } else {
+    render(rs, sim.grid, sim.evoStats, sim.season.current, sim.generation, depthView.focusLayer);
+    if (currentHeatmap !== 'none') {
+      drawHeatmapOverlay(rs.ctx, sim.grid, sim.evoStats, currentHeatmap);
+    }
+    tickParticles(rs);
+    drawParticles(rs);
+    applyCamera();
   }
-  tickParticles(rs);
-  drawParticles(rs);
-  applyCamera();
   minimapCtx.clearRect(0, 0, minimapCanvas.width, minimapCanvas.height);
   drawMinimap(minimapCtx, cam, sim.grid.species, sim.grid.width, sim.grid.height, COLOR_RGB);
 }
@@ -579,6 +662,7 @@ btnLoad.addEventListener('click', async () => {
     _autoSaveAttempted = false;
     _lastScoreGen = 0;
     initCanvas(rs, sim.grid.width, sim.grid.height);
+    resizeTiltCanvases();
     fitToView(cam);
     renderFrame();
     updateUI();
@@ -600,6 +684,7 @@ btnDashboard.addEventListener('click', () => {
         _autoSaveAttempted = true;
         _lastScoreGen = 0;
         initCanvas(rs, sim.grid.width, sim.grid.height);
+        resizeTiltCanvases();
         fitToView(cam);
         renderFrame();
         updateUI();
@@ -693,6 +778,7 @@ btnSettings.addEventListener('click', () => {
       _autoSaveAttempted = false;
       _lastScoreGen = 0;
       initCanvas(rs, sim.grid.width, sim.grid.height);
+      resizeTiltCanvases();
       fitToView(cam);
       seedGrid(sim.grid);
       seedBalancedRockReefs(sim.grid);

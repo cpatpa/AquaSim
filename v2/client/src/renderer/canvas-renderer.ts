@@ -567,3 +567,96 @@ export function render(
   // Blit the pixel buffer to canvas
   rs.ctx.putImageData(rs.imgData, 0, 0);
 }
+
+// ---------------------------------------------------------------------------
+// renderLayer -- single-layer render for 3D stacked tilt view
+// ---------------------------------------------------------------------------
+
+/**
+ * Render only cells belonging to a specific layer (plus environment/transient
+ * cells which have layer -1). Background is transparent so layers can stack
+ * with depth offsets in CSS.
+ */
+export function renderLayer(
+  rs: RendererState,
+  grid: GridState,
+  _evoStats: Record<number, EvoStats>,
+  _season: string,
+  _generation: number,
+  targetLayer: number,
+  opacity: number,
+): void {
+  const cw = grid.width;
+  const ch = grid.height;
+  const cs = CELL_SIZE;
+  const gap = GRID_GAP;
+  const pw = rs.canvas.width;
+  const ph = rs.canvas.height;
+  const data = rs.imgPixels;
+  const innerSize = cs - gap;
+  const { species } = grid;
+
+  // Clear buffer (transparent)
+  for (let i = 0; i < data.length; i += 4) {
+    data[i] = 0;
+    data[i + 1] = 0;
+    data[i + 2] = 0;
+    data[i + 3] = 0;
+  }
+
+  // Subtle layer-tinted water background
+  if (targetLayer >= 0 && targetLayer < LAYER_RGB.length) {
+    const tintR = LAYER_RGB[targetLayer][0];
+    const tintG = LAYER_RGB[targetLayer][1];
+    const tintB = LAYER_RGB[targetLayer][2];
+    const bgAlpha = (40 * opacity) | 0;
+    for (let py = 0; py < ph; py++) {
+      const dt = py / ph;
+      const fade = 0.85 + 0.15 * (1 - dt);
+      const r = (tintR * fade) | 0;
+      const g = (tintG * fade) | 0;
+      const b = (tintB * fade) | 0;
+      const rowOff = py * pw * 4;
+      for (let px = 0; px < pw; px++) {
+        const off = rowOff + px * 4;
+        data[off] = r;
+        data[off + 1] = g;
+        data[off + 2] = b;
+        data[off + 3] = bgAlpha;
+      }
+    }
+  }
+
+  // Render only cells matching this layer
+  const cellAlpha = (255 * opacity) | 0;
+  for (let cy = 0; cy < ch; cy++) {
+    for (let cx = 0; cx < cw; cx++) {
+      const idx = cy * cw + cx;
+      const sid = species[idx];
+      if (sid === 0) continue;
+      const sLayer = layerOf(sid);
+      if (sLayer !== targetLayer && sLayer !== -1) continue;
+
+      const rgb = COLOR_RGB[sid];
+      if (!rgb) continue;
+      const baseR = rgb[0];
+      const baseG = rgb[1];
+      const baseB = rgb[2];
+
+      const px0 = cx * cs;
+      const py0 = cy * cs;
+      for (let py = py0; py < py0 + innerSize; py++) {
+        const rowOff = py * pw * 4;
+        for (let px = px0; px < px0 + innerSize; px++) {
+          const off = rowOff + px * 4;
+          data[off] = baseR;
+          data[off + 1] = baseG;
+          data[off + 2] = baseB;
+          data[off + 3] = cellAlpha;
+        }
+      }
+    }
+  }
+
+  rs.ctx.putImageData(rs.imgData, 0, 0);
+}
