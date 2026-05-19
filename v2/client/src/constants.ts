@@ -25,9 +25,9 @@ export const OIL_DECAY_AGE = 40;
 export const ICE_THAW_AGE = 60;
 export const TOXIC_BLOOM_SPREAD = 0.08;
 export const TOXIC_BLOOM_DECAY = 50;
-export const LAVA_COOL_AGE = 40;
-export const LAVA_SPREAD_MAX_AGE = 20;
-export const LAVA_HEAT_RADIUS = 2;
+export const LAVA_COOL_AGE = 50;
+export const LAVA_SPREAD_MAX_AGE = 35;
+export const LAVA_HEAT_RADIUS = 3;
 
 // Feeding and survival
 export const HUNGER_RESTORE_FRACTION = 0.65;

@@ -229,53 +229,115 @@ export function triggerVolcano(
 ): void {
   const plane = planeSize(grid);
   const layers = grid.layers;
+  const cw = grid.width;
 
-  // Build a cone shape: full radius at z=0 (Abyssal), tapering to ~30% at top layers.
-  // Each layer gets a progressively smaller radius, creating a volcanic cone.
+  const bigR = radius * 4;
+
+  // Build an irregular volcanic cone with noise-driven edges
   for (let z = 0; z < layers; z++) {
     const layerFrac = z / Math.max(1, layers - 1);
-    const layerRadius = Math.max(1, Math.round(radius * (1.0 - layerFrac * 0.7)));
+    const layerRadius = Math.max(2, Math.round(bigR * (1.0 - layerFrac * 0.65)));
     const zOff = z * plane;
 
-    // Only fill the cone volume: lower layers wider, upper layers narrower
-    const r2 = layerRadius * layerRadius;
     for (let dy = -layerRadius; dy <= layerRadius; dy++) {
       for (let dx = -layerRadius; dx <= layerRadius; dx++) {
         const dist2 = dx * dx + dy * dy;
-        if (dist2 > r2) continue;
+        const dist = Math.sqrt(dist2);
+        if (dist > layerRadius) continue;
+        // Irregular edge using cheap angular hash
+        const angle = Math.atan2(dy, dx);
+        const edgeNoise = 0.85 + 0.30 * Math.sin(angle * 5.7 + cellX * 0.13) * Math.cos(angle * 3.1 + cellY * 0.17);
+        if (dist > layerRadius * edgeNoise) continue;
+
         const x = wrapX(grid, cellX + dx);
         const y = wrapY(grid, cellY + dy);
-        const idx = zOff + y * grid.width + x;
-        // Core of the cone is lava, outer ring is rock (cooled lava)
-        const distFrac = Math.sqrt(dist2) / Math.max(1, layerRadius);
-        if (z <= 1 && distFrac > 0.7) {
-          grid.species[idx] = 1; // Rock shell at base layers
+        const idx = zOff + y * cw + x;
+        const distFrac = dist / Math.max(1, layerRadius);
+
+        if (z <= 1 && distFrac > 0.65) {
+          grid.species[idx] = 1;
           grid.age[idx] = 0;
         } else {
-          grid.species[idx] = 7; // Lava
-          grid.age[idx] = 0;
+          grid.species[idx] = 7;
+          grid.age[idx] = z <= 1 ? 0 : ((distFrac * 15) | 0);
         }
         grid.hunger[idx] = 0;
       }
     }
   }
 
-  // Place vents near the summit (top layers) for ongoing eruption
-  const ventCount = 1 + ((Math.random() * 3) | 0);
+  // Lava rivers: 3-6 flows radiating outward from the core
+  const riverCount = 3 + ((Math.random() * 4) | 0);
+  for (let ri = 0; ri < riverCount; ri++) {
+    let angle = (ri / riverCount) * Math.PI * 2 + (Math.random() - 0.5) * 0.8;
+    let rx = cellX;
+    let ry = cellY;
+    const riverLen = bigR + ((Math.random() * bigR * 0.8) | 0);
+    const width = 2 + ((Math.random() * 2) | 0);
+
+    for (let s = 0; s < riverLen; s++) {
+      angle += (Math.random() - 0.5) * 0.3;
+      rx += Math.cos(angle);
+      ry += Math.sin(angle);
+      const riverAge = Math.min(40, ((s / riverLen) * 30) | 0);
+
+      for (let dw = -width; dw <= width; dw++) {
+        const perpAngle = angle + Math.PI / 2;
+        const fx = wrapX(grid, Math.round(rx + Math.cos(perpAngle) * dw));
+        const fy = wrapY(grid, Math.round(ry + Math.sin(perpAngle) * dw));
+        // Rivers flow at lower layers (0-2)
+        const maxZ = Math.min(layers - 1, 2);
+        for (let z = 0; z <= maxZ; z++) {
+          const idx = z * plane + fy * cw + fx;
+          if (grid.species[idx] === 1) continue;
+          grid.species[idx] = 7;
+          grid.age[idx] = riverAge;
+          grid.hunger[idx] = 0;
+        }
+      }
+
+      // Branching: 8% chance per step to fork a sub-river
+      if (Math.random() < 0.08 && s > 5) {
+        let branchAngle = angle + (Math.random() < 0.5 ? 0.6 : -0.6) + (Math.random() - 0.5) * 0.3;
+        let bx = rx;
+        let by = ry;
+        const branchLen = 5 + ((Math.random() * 12) | 0);
+        for (let bs = 0; bs < branchLen; bs++) {
+          branchAngle += (Math.random() - 0.5) * 0.4;
+          bx += Math.cos(branchAngle);
+          by += Math.sin(branchAngle);
+          const bfx = wrapX(grid, Math.round(bx));
+          const bfy = wrapY(grid, Math.round(by));
+          for (let z = 0; z <= Math.min(layers - 1, 1); z++) {
+            const bIdx = z * plane + bfy * cw + bfx;
+            if (grid.species[bIdx] !== 1) {
+              grid.species[bIdx] = 7;
+              grid.age[bIdx] = ((riverAge + bs) | 0);
+              grid.hunger[bIdx] = 0;
+            }
+          }
+        }
+      }
+    }
+  }
+
+  // Place multiple vents around the caldera for sustained eruption
+  const ventCount = 3 + ((Math.random() * 4) | 0);
   for (let v = 0; v < ventCount; v++) {
-    const spread = radius * 0.3;
-    const vx = wrapX(grid, cellX + ((Math.random() - 0.5) * spread) | 0);
-    const vy = wrapY(grid, cellY + ((Math.random() - 0.5) * spread) | 0);
+    const ventDist = Math.random() * bigR * 0.5;
+    const ventAngle = Math.random() * Math.PI * 2;
+    const vx = wrapX(grid, cellX + Math.round(Math.cos(ventAngle) * ventDist));
+    const vy = wrapY(grid, cellY + Math.round(Math.sin(ventAngle) * ventDist));
     const angles: number[] = [];
-    const numAngles = 3 + ((Math.random() * 5) | 0);
+    const numAngles = 4 + ((Math.random() * 6) | 0);
     for (let a = 0; a < numAngles; a++) {
       angles.push(Math.random() * Math.PI * 2);
     }
     state.activeVents.push({
       x: vx,
       y: vy,
-      ticksLeft: 60 + ((Math.random() * 30) | 0),
-      radius: radius,
+      ticksLeft: 80 + ((Math.random() * 60) | 0),
+      radius: bigR,
       angles,
     });
   }

@@ -572,8 +572,9 @@ export function step(ctx: StepContext): StepResult {
         hunger[ni] = 0;
         age[ni] = 0;
       }
-      // Lava flow
-      const spreadChance = age[idx] < 6 ? 0.12 : age[idx] < LAVA_SPREAD_MAX_AGE ? 0.03 : 0;
+      // Lava flow: young lava spreads aggressively, older lava creeps
+      const lavaAge = age[idx];
+      const spreadChance = lavaAge < 8 ? 0.22 : lavaAge < 18 ? 0.12 : lavaAge < LAVA_SPREAD_MAX_AGE ? 0.05 : 0;
       if (spreadChance > 0 && Math.random() < spreadChance) {
         let adjLava = 0;
         for (let d = 0; d < 4; d++) {
@@ -582,6 +583,7 @@ export function step(ctx: StepContext): StepResult {
           if (species[ni] === 7 || species[ni] === 1) adjLava++;
         }
         if (adjLava < 3) {
+          // Score each direction: prefer flowing away from vents (outward) and toward open space
           let bestD = -1;
           let bestScore = -1;
           for (let d = 0; d < 4; d++) {
@@ -596,7 +598,7 @@ export function step(ctx: StepContext): StepResult {
               const v = activeVents[vi];
               const dxV = nx - v.x;
               const dyV = ny - v.y;
-              score += Math.sqrt(dxV * dxV + dyV * dyV) * 0.02;
+              score += Math.sqrt(dxV * dxV + dyV * dyV) * 0.03;
             }
             if (score > bestScore) {
               bestScore = score;
@@ -612,6 +614,19 @@ export function step(ctx: StepContext): StepResult {
             hunger[ni] = 0;
             age[ni] = 0;
             processed[ni] = 1;
+          }
+        }
+        // Young lava can also flow diagonally (8-connected), creating wider spread
+        if (lavaAge < 12 && adjLava < 2 && Math.random() < 0.10) {
+          const nd = NEIGHBOURS_8[((Math.random() * 8) | 0)];
+          const dnx = wrapX(cx + nd[0], cw);
+          const dny = wrapY(cy + nd[1], ch);
+          const dni = zOff + dny * cw + dnx;
+          if (species[dni] !== 1 && species[dni] !== 7) {
+            species[dni] = 7;
+            hunger[dni] = 0;
+            age[dni] = 0;
+            processed[dni] = 1;
           }
         }
       }
@@ -687,7 +702,7 @@ export function step(ctx: StepContext): StepResult {
         breedChance = pes.breedRate * 1.0;
       }
 
-      // Coral grows faster near rock
+      // Coral grows faster near rock and above rock foundations
       let nearRock = false;
       if (sid === 12) {
         let adjCoral = 0;
@@ -698,7 +713,13 @@ export function step(ctx: StepContext): StepResult {
           if (ns === 1) nearRock = true;
           if (ns === 12) adjCoral++;
         }
-        if (nearRock) breedChance *= 3;
+        // Rock below provides a foundation bonus
+        let rockBelow = false;
+        if (cz > 0) {
+          const belowIdx = (cz - 1) * planeSize + xyIdx;
+          if (species[belowIdx] === 1) rockBelow = true;
+        }
+        if (nearRock || rockBelow) breedChance *= rockBelow ? 4 : 3;
 
         // Coral calcification: dense old coral turns to rock
         if (adjCoral >= 3 && age[idx] > 40 && Math.random() < 0.02) {
@@ -710,13 +731,33 @@ export function step(ctx: StepContext): StepResult {
         }
 
         // Coral vertical growth: dense colonies push upward into next layer
-        if (adjCoral >= 2 && cz < layers - 1 && Math.random() < 0.008) {
+        // Also grows upward when sitting on rock (foundation support)
+        const vertGrowChance = rockBelow ? 0.015 : (adjCoral >= 2 ? 0.008 : 0);
+        if (vertGrowChance > 0 && cz < layers - 1 && Math.random() < vertGrowChance) {
           const aboveIdx = (cz + 1) * planeSize + xyIdx;
           if (species[aboveIdx] === 0) {
             species[aboveIdx] = 12;
             hunger[aboveIdx] = 0;
             age[aboveIdx] = 0;
             processed[aboveIdx] = 1;
+          }
+        }
+
+        // Coral colonisation: empty cells above rock attract new coral growth
+        if (cz > 0 && rockBelow && adjCoral >= 1 && Math.random() < 0.012) {
+          for (let n = 0; n < 4; n++) {
+            const dir = CARDINAL[n];
+            const ni = zOff + wrapY(cy + dir[1], ch) * cw + wrapX(cx + dir[0], cw);
+            if (species[ni] === 0) {
+              const niBelow = (cz - 1) * planeSize + wrapY(cy + dir[1], ch) * cw + wrapX(cx + dir[0], cw);
+              if (species[niBelow] === 1) {
+                species[ni] = 12;
+                hunger[ni] = 0;
+                age[ni] = 0;
+                processed[ni] = 1;
+                break;
+              }
+            }
           }
         }
       }
@@ -2048,13 +2089,13 @@ export function step(ctx: StepContext): StepResult {
       activeVents.splice(vi, 1);
       continue;
     }
-    const emitCount = v.ticksLeft > 60 ? 3 : v.ticksLeft > 30 ? 2 : 1;
+    // More emissions when fresh, tapering off over time
+    const emitCount = v.ticksLeft > 80 ? 6 : v.ticksLeft > 50 ? 4 : v.ticksLeft > 20 ? 2 : 1;
     for (let e = 0; e < emitCount; e++) {
-      const a = v.angles[(Math.random() * v.angles.length) | 0] + (Math.random() - 0.5) * 0.8;
-      const dist = v.coreR + 1 + ((Math.random() * 3) | 0);
+      const a = v.angles[(Math.random() * v.angles.length) | 0] + (Math.random() - 0.5) * 1.2;
+      const dist = v.coreR * 0.3 + 1 + ((Math.random() * v.coreR * 0.6) | 0);
       const lx = wrapX(v.x + Math.round(Math.cos(a) * dist), cw);
       const ly = wrapY(v.y + Math.round(Math.sin(a) * dist), ch);
-      // Emit lava at a random layer, biased towards lower layers
       const emitZ = Math.min(layers - 1, ((Math.random() * Math.random() * layers) | 0));
       const li = emitZ * planeSize + ly * cw + lx;
       if (species[li] !== 1 && species[li] !== 7) {

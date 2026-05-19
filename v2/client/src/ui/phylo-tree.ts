@@ -1,6 +1,8 @@
 import type { EvoStats, SpeciesDefinition } from '../types';
 import { SPECIES, getLivingIds, getDynamicSpeciesIds } from '../species/registry';
 import { BIO_TIERS } from '../species/species-types';
+import { getScientificName } from '../evolution/taxonomy';
+import { dnaFromGenes, NUCLEOTIDE_COLOURS, GENE_LENGTH } from '../evolution/dna';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -16,6 +18,8 @@ export interface PhyloNode {
   depth: number;
   extinct: boolean;
   population: number;
+  sciName: string;
+  dna: Uint8Array | null;
 }
 
 export interface PhyloLayout {
@@ -47,10 +51,10 @@ function getExt(id: number): ExtendedSpecies {
   return SPECIES[id] as ExtendedSpecies;
 }
 
-const NODE_W = 120;
-const NODE_H = 28;
-const H_SPACING = 160;
-const V_SPACING = 36;
+const NODE_W = 140;
+const NODE_H = 46;
+const H_SPACING = 176;
+const V_SPACING = 52;
 const MARGIN_LEFT = 100;
 const MARGIN_TOP = 20;
 
@@ -77,6 +81,9 @@ export function buildPhyloTree(
     if (BIO_TIERS.indexOf(sp.tier as never) === -1) continue;
 
     const ext = sp;
+    const es = evoStats[id];
+    const sciName = getScientificName(id, es?.genes || null, es?.traits || []);
+    const dna = es?.genes ? dnaFromGenes(es.genes) : null;
     nodeMap.set(id, {
       id,
       name: sp.name,
@@ -87,6 +94,8 @@ export function buildPhyloTree(
       depth: ext.lineageDepth ?? 0,
       extinct: ext._extinct === true,
       population: counts[id] ?? 0,
+      sciName,
+      dna,
     });
   }
 
@@ -97,6 +106,9 @@ export function buildPhyloTree(
     const sp = getExt(id);
     if (!sp) continue;
     if (BIO_TIERS.indexOf(sp.tier as never) === -1) continue;
+    const es2 = evoStats[id];
+    const sciName2 = getScientificName(id, es2?.genes || null, es2?.traits || []);
+    const dna2 = es2?.genes ? dnaFromGenes(es2.genes) : null;
     nodeMap.set(id, {
       id,
       name: sp.name,
@@ -107,6 +119,8 @@ export function buildPhyloTree(
       depth: sp.lineageDepth ?? 0,
       extinct: sp._extinct === true,
       population: counts[id] ?? 0,
+      sciName: sciName2,
+      dna: dna2,
     });
   }
 
@@ -334,18 +348,49 @@ export function drawPhyloTree(
     ctx.stroke();
     ctx.setLineDash([]);
 
-    // Species name
+    // Species name (top line)
     ctx.font = '11px sans-serif';
     ctx.fillStyle = node.extinct ? '#888888' : '#FFFFFF';
     ctx.textAlign = 'left';
-    const nameText = node.name.length > 10 ? node.name.slice(0, 9) + '…' : node.name;
-    ctx.fillText(nameText, x + 6, y + h / 2 + 4);
+    const nameText = node.name.length > 14 ? node.name.slice(0, 13) + '…' : node.name;
+    ctx.fillText(nameText, x + 6, y + 12);
 
-    // Population count on the right
+    // Population count on the right of first line
     ctx.font = '9px monospace';
     ctx.fillStyle = '#999999';
     ctx.textAlign = 'right';
-    ctx.fillText(String(node.population), x + w - 5, y + h / 2 + 3);
+    ctx.fillText(String(node.population), x + w - 5, y + 12);
+
+    // Scientific name (second line, italic)
+    if (node.sciName) {
+      ctx.font = 'italic 9px sans-serif';
+      ctx.fillStyle = node.extinct ? '#666666' : '#8ab0c8';
+      ctx.textAlign = 'left';
+      const sciText = node.sciName.length > 20 ? node.sciName.slice(0, 19) + '…' : node.sciName;
+      ctx.fillText(sciText, x + 6, y + 24);
+    }
+
+    // DNA strip (third line, compact coloured blocks)
+    if (node.dna) {
+      const stripX = x + 4;
+      const stripY = y + 30;
+      const stripW = w - 8;
+      const blockW = stripW / node.dna.length;
+      for (let i = 0; i < node.dna.length; i++) {
+        const nucleotide = node.dna[i];
+        ctx.fillStyle = NUCLEOTIDE_COLOURS[nucleotide];
+        ctx.fillRect(stripX + i * blockW, stripY, Math.max(0.8, blockW - 0.2), 4);
+        // Thin gap between gene regions
+        if (i > 0 && i % GENE_LENGTH === 0) {
+          ctx.fillStyle = 'rgba(0,0,0,0.6)';
+          ctx.fillRect(stripX + i * blockW - 0.5, stripY, 1, 4);
+        }
+      }
+      // Border around strip
+      ctx.strokeStyle = 'rgba(255,255,255,0.15)';
+      ctx.lineWidth = 0.5;
+      ctx.strokeRect(stripX, stripY, stripW, 4);
+    }
 
     if (node.extinct) {
       ctx.globalAlpha = 1.0;

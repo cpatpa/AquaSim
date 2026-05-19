@@ -271,6 +271,11 @@ function handleDisaster(worldX: number, worldY: number): void {
     case -5: triggerToxicBloom(sim.grid, cellX, cellY, r); break;
     case -6: triggerVolcano(sim.grid, _disasterState, cellX, cellY, r); break;
   }
+  // Transfer any newly spawned vents into the scheduler's active vent list
+  while (_disasterState.activeVents.length > 0) {
+    const dv = _disasterState.activeVents.pop()!;
+    activeVents.push({ x: dv.x, y: dv.y, ticksLeft: dv.ticksLeft, coreR: dv.radius, angles: dv.angles });
+  }
   renderFrame();
 }
 
