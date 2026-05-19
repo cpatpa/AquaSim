@@ -671,28 +671,38 @@ const phyloCanvas = document.getElementById('phylo-canvas') as HTMLCanvasElement
 const phyloCloseBtn = document.getElementById('phylo-close')!;
 let phyloView: PhyloViewState | null = null;
 let phyloCleanup: (() => void) | null = null;
+let phyloInterval: ReturnType<typeof setInterval> | null = null;
+let phyloLayout: ReturnType<typeof layoutPhyloTree> | null = null;
 
-function openPhyloTree(): void {
-  phyloOverlay.classList.remove('overlay-hidden');
+function refreshPhyloTree(): void {
+  if (!phyloView) return;
   const counts = getCellCounts();
   const roots = buildPhyloTree(sim.evoStats, counts);
-  const layout = layoutPhyloTree(roots);
-  phyloView = createPhyloView();
+  phyloLayout = layoutPhyloTree(roots);
   if (phyloCleanup) phyloCleanup();
-  phyloCleanup = setupPhyloInteraction(phyloCanvas, phyloView, layout, (id) => {
+  phyloCleanup = setupPhyloInteraction(phyloCanvas, phyloView, phyloLayout, (id) => {
     const psp = SPECIES[id];
     const pp = psp ? generateCreaturePortrait(id, psp, sim.evoStats[id], COLOR_RGB[id] || [128, 128, 128]) : null;
     openSpeciesInfo(speciesInfoState, id, sim.evoStats, counts, pp);
   }, () => {
-    renderPhyloView(phyloCanvas, phyloView!, layout);
+    renderPhyloView(phyloCanvas, phyloView!, phyloLayout!);
   });
-  renderPhyloView(phyloCanvas, phyloView, layout);
+  renderPhyloView(phyloCanvas, phyloView, phyloLayout);
+}
+
+function openPhyloTree(): void {
+  phyloOverlay.classList.remove('overlay-hidden');
+  phyloView = createPhyloView();
+  refreshPhyloTree();
+  phyloInterval = setInterval(refreshPhyloTree, 2000);
 }
 
 function closePhyloTree(): void {
   phyloOverlay.classList.add('overlay-hidden');
+  if (phyloInterval) { clearInterval(phyloInterval); phyloInterval = null; }
   if (phyloCleanup) { phyloCleanup(); phyloCleanup = null; }
   phyloView = null;
+  phyloLayout = null;
 }
 
 btnTree.addEventListener('click', openPhyloTree);
