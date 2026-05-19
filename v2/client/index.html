@@ -67,12 +67,10 @@
     }
 
     #canvas-wrap {
-      flex: 1; display: flex; align-items: center; justify-content: center;
-      overflow: hidden; background: #060e18;
+      flex: 1; position: relative; overflow: hidden; background: #060e18;
     }
-    #canvas-wrap::-webkit-scrollbar { width: 6px; height: 6px; }
-    #canvas-wrap::-webkit-scrollbar-thumb { background: #1a3a5c; border-radius: 3px; }
-    #grid-canvas { image-rendering: pixelated; }
+    #grid-canvas { position: absolute; left: 0; top: 0; image-rendering: pixelated; transform-origin: 0 0; touch-action: none; }
+    #minimap-canvas { position: absolute; top: 8px; right: 8px; pointer-events: none; z-index: 5; }
 
     #bottom-bar {
       height: 44px; min-height: 44px;

@@ -66,12 +66,6 @@ const MOBILE_STYLES = `
       height: 100% !important;
       display: block !important;
     }
-    #grid-canvas {
-      display: block;
-      width: 100% !important;
-      height: 100% !important;
-    }
-
     #mobile-tabs {
       position: fixed; top: 0; left: 0; right: 0; z-index: 790;
       display: flex; height: ${TABS_HEIGHT}px; background: #0a1628; border-bottom: 1px solid #1a3a5c;

@@ -17,7 +17,7 @@ import { buildExportData, downloadExport } from './data/export';
 import { evolve, speciate, nicheShift } from './evolution/evolution-engine';
 import type { EvoContext } from './evolution/evolution-engine';
 import { serialise, deserialise, downloadSave, uploadSave } from './data/serialisation';
-import { createCamera, setupCameraHandlers, updateCamera, screenToWorld, drawMinimap, fitToView } from './ui/camera';
+import { createCamera, setupCameraHandlers, updateCamera, drawMinimap, fitToView } from './ui/camera';
 import type { CameraState } from './ui/camera';
 import { createUndoState, beginStroke, commitStroke, undo, redo } from './ui/undo';
 import { COLOR_RGB, SPECIES, getDynamicSpeciesIds } from './species/registry';
@@ -101,6 +101,7 @@ app.innerHTML = `
   <div id="centre">
     <div id="canvas-wrap">
       <canvas id="grid-canvas"></canvas>
+      <canvas id="minimap-canvas" width="136" height="136"></canvas>
     </div>
     <div id="bottom-bar">
       <button id="btn-play" title="Start or pause the simulation (Space)">Play</button>
@@ -166,6 +167,8 @@ const worldH = sim.grid.height * CELL_SIZE;
 const cam: CameraState = createCamera(worldW, worldH, viewW, viewH);
 
 const canvasWrap = document.getElementById('canvas-wrap')!;
+const minimapCanvas = document.getElementById('minimap-canvas') as HTMLCanvasElement;
+const minimapCtx = minimapCanvas.getContext('2d')!;
 
 function syncCanvasSize(): void {
   let w: number, h: number;
@@ -178,15 +181,20 @@ function syncCanvasSize(): void {
     h = canvasWrap.clientHeight;
   }
   if (w > 0 && h > 0) {
-    canvasEl.style.width = w + 'px';
-    canvasEl.style.height = h + 'px';
     cam.viewW = w;
     cam.viewH = h;
   }
 }
 
+function applyCamera(): void {
+  const tx = -cam.x * cam.zoom;
+  const ty = -cam.y * cam.zoom;
+  canvasEl.style.transform = `translate(${tx}px, ${ty}px) scale(${cam.zoom})`;
+}
+
 syncCanvasSize();
-setupCameraHandlers(canvasEl, cam, () => renderFrame());
+applyCamera();
+setupCameraHandlers(canvasEl, canvasWrap, cam, () => renderFrame());
 
 window.addEventListener('resize', () => {
   syncCanvasSize();
@@ -201,7 +209,7 @@ setResizeCallback(() => {
 const paint = createPaintState();
 const palette = createPaletteState();
 
-setupCellTooltip(canvasEl, cam, sim.grid, sim.evoStats, () => paint.painting || cam.isDragging);
+setupCellTooltip(canvasEl, canvasWrap, cam, sim.grid, sim.evoStats, () => paint.painting || cam.isDragging);
 
 const genEl = document.getElementById('gen-counter')!;
 const seasonEl = document.getElementById('season-display')!;
@@ -235,10 +243,9 @@ function getCellCounts(): Record<number, number> {
   return counts;
 }
 
-function handleDisaster(canvasX: number, canvasY: number): void {
-  const [wx, wy] = screenToWorld(cam, canvasX, canvasY);
-  const cellX = (wx / CELL_SIZE) | 0;
-  const cellY = (wy / CELL_SIZE) | 0;
+function handleDisaster(worldX: number, worldY: number): void {
+  const cellX = (worldX / CELL_SIZE) | 0;
+  const cellY = (worldY / CELL_SIZE) | 0;
   const r = 8 + paint.brushSize;
   switch (palette.selectedType) {
     case -1: triggerBomb(sim.grid, cellX, cellY, r); break;
@@ -251,7 +258,7 @@ function handleDisaster(canvasX: number, canvasY: number): void {
   renderFrame();
 }
 
-setupPaintHandlers(canvasEl, paint, sim.grid, renderFrame, handleDisaster);
+setupPaintHandlers(canvasEl, canvasWrap, cam, paint, sim.grid, renderFrame, handleDisaster);
 
 canvasEl.addEventListener('mousedown', () => {
   if (paint.selectedType >= 0) {
@@ -347,9 +354,11 @@ function renderFrame(): void {
   if (currentHeatmap !== 'none') {
     drawHeatmapOverlay(rs.ctx, sim.grid, sim.evoStats, currentHeatmap);
   }
-  drawMinimap(rs.ctx, cam, sim.grid.species, sim.grid.width, sim.grid.height, COLOR_RGB, mobileView);
   tickParticles(rs);
   drawParticles(rs);
+  applyCamera();
+  minimapCtx.clearRect(0, 0, minimapCanvas.width, minimapCanvas.height);
+  drawMinimap(minimapCtx, cam, sim.grid.species, sim.grid.width, sim.grid.height, COLOR_RGB);
 }
 
 function updateUI(): void {

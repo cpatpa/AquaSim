@@ -2,6 +2,8 @@ import type { GridState } from '../types';
 import { CELL_SIZE } from '../constants';
 import { wrapX, wrapY } from '../core/grid';
 import { isMobile, isPaintMode } from './mobile';
+import type { CameraState } from './camera';
+import { screenToWorld } from './camera';
 
 export interface PaintState {
   painting: boolean;
@@ -67,30 +69,29 @@ export function paintAt(
   }
 }
 
-export function getCanvasCoords(
-  canvas: HTMLCanvasElement,
+export function getWorldCoords(
+  container: HTMLElement,
+  cam: CameraState,
   e: MouseEvent | Touch,
 ): [number, number] {
-  const rect = canvas.getBoundingClientRect();
-  const scaleX = canvas.width / rect.width;
-  const scaleY = canvas.height / rect.height;
-  const x = (e.clientX - rect.left) * scaleX;
-  const y = (e.clientY - rect.top) * scaleY;
-  return [x, y];
+  const rect = container.getBoundingClientRect();
+  return screenToWorld(cam, e.clientX - rect.left, e.clientY - rect.top);
 }
 
 export function setupPaintHandlers(
   canvas: HTMLCanvasElement,
+  container: HTMLElement,
+  cam: CameraState,
   state: PaintState,
   grid: GridState,
   onPaint: () => void,
-  onDisaster: (x: number, y: number) => void,
+  onDisaster: (worldX: number, worldY: number) => void,
 ): void {
   canvas.addEventListener('mousedown', (e) => {
     state.painting = true;
     state.lastPaintX = -1;
     state.lastPaintY = -1;
-    const [x, y] = getCanvasCoords(canvas, e);
+    const [x, y] = getWorldCoords(container, cam, e);
     if (state.selectedType < 0) {
       onDisaster(x, y);
     } else {
@@ -101,7 +102,7 @@ export function setupPaintHandlers(
 
   canvas.addEventListener('mousemove', (e) => {
     if (!state.painting || state.selectedType < 0) return;
-    const [x, y] = getCanvasCoords(canvas, e);
+    const [x, y] = getWorldCoords(container, cam, e);
     paintAt(state, grid, x, y);
     onPaint();
   });
@@ -115,7 +116,7 @@ export function setupPaintHandlers(
     state.lastPaintX = -1;
     state.lastPaintY = -1;
     const touch = e.touches[0];
-    const [x, y] = getCanvasCoords(canvas, touch);
+    const [x, y] = getWorldCoords(container, cam, touch);
     if (state.selectedType < 0) {
       onDisaster(x, y);
     } else {
@@ -129,7 +130,7 @@ export function setupPaintHandlers(
     e.preventDefault();
     if (!state.painting || state.selectedType < 0) return;
     const touch = e.touches[0];
-    const [x, y] = getCanvasCoords(canvas, touch);
+    const [x, y] = getWorldCoords(container, cam, touch);
     paintAt(state, grid, x, y);
     onPaint();
   }, { passive: false });

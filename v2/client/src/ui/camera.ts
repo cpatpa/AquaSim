@@ -118,6 +118,7 @@ export function setSingleFingerPan(v: boolean): void { singleFingerPanEnabled = 
 
 export function setupCameraHandlers(
   canvas: HTMLCanvasElement,
+  container: HTMLElement,
   cam: CameraState,
   onUpdate: () => void,
 ): void {
@@ -125,7 +126,7 @@ export function setupCameraHandlers(
   canvas.addEventListener('wheel', (e: WheelEvent) => {
     e.preventDefault();
 
-    const rect = canvas.getBoundingClientRect();
+    const rect = container.getBoundingClientRect();
     const mx = e.clientX - rect.left;
     const my = e.clientY - rect.top;
 
@@ -230,7 +231,7 @@ export function setupCameraHandlers(
       // Pinch zoom.
       if (lastTouchDist > 0) {
         const scale = dist / lastTouchDist;
-        const rect = canvas.getBoundingClientRect();
+        const rect = container.getBoundingClientRect();
         const mx = midX - rect.left;
         const my = midY - rect.top;
         const [wx, wy] = screenToWorld(cam, mx, my);

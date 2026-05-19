@@ -156,6 +156,7 @@ function buildContent(
 
 export function setupCellTooltip(
   canvas: HTMLCanvasElement,
+  container: HTMLElement,
   cam: CameraState,
   grid: GridState,
   evoStats: Record<number, EvoStats>,
@@ -167,13 +168,11 @@ export function setupCellTooltip(
 
     cancelHide();
 
-    const rect = canvas.getBoundingClientRect();
-    const scaleX = canvas.width / rect.width;
-    const scaleY = canvas.height / rect.height;
-    const canvasX = (e.clientX - rect.left) * scaleX;
-    const canvasY = (e.clientY - rect.top) * scaleY;
+    const rect = container.getBoundingClientRect();
+    const mx = e.clientX - rect.left;
+    const my = e.clientY - rect.top;
 
-    const [wx, wy] = screenToWorld(cam, canvasX, canvasY);
+    const [wx, wy] = screenToWorld(cam, mx, my);
     const cellX = (wx / CELL_SIZE) | 0;
     const cellY = (wy / CELL_SIZE) | 0;
 
