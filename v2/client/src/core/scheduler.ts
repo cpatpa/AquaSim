@@ -387,11 +387,11 @@ export function step(ctx: StepContext): StepResult {
 
     // Current overlay is handled separately (no species ID 2 in grid)
 
-    // ----- Dead cell: sink toward abyssal, decay, rare fossilisation -----
+    // ----- Dead cell: sink slowly, decay, rare fossilisation -----
     if (sid === 3) {
       age[idx]++;
-      // Sink: dead matter falls one layer per tick until it reaches z=0
-      if (cz > 0) {
+      // Sink: dead matter falls one layer every ~4 ticks (not every tick)
+      if (cz > 0 && age[idx] % 4 === 0) {
         const belowXY = (cz - 1) * planeSize + xyIdx;
         if (species[belowXY] === 0) {
           species[belowXY] = 3;

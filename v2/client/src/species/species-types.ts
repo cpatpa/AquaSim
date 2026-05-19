@@ -23,7 +23,7 @@ export const SPECIES: Record<number, SpeciesDefinition> = {
   41: { name: 'Octopus',        color: '#CC3366', tier: 'apex',        layer: 1, breedRate: 0.02, moveRate: 0.58, hungerMax: 44, eats: [30, 31, 32], desc: 'Benthic apex — hunts consumers above', layerReach: 2 },
   42: { name: 'Whale',          color: '#6688AA', tier: 'megafauna',   layer: 4, breedRate: 0.008, moveRate: 0.30, hungerMax: 60, eats: [30, 31, 10, 3], desc: 'Filter feeder — eats consumers and plankton', layerReach: 5 },
   43: { name: 'Dolphin',        color: '#55BBEE', tier: 'megafauna',   layer: 5, breedRate: 0.012, moveRate: 0.92, hungerMax: 42, eats: [30, 31, 32], desc: 'Fast social hunter — hunts consumers', layerReach: 4 },
-  50: { name: 'Bacteria',       color: '#88FFCC', tier: 'decomposer',  layer: 0, breedRate: 0.28, moveRate: 0.28, hungerMax: 32, eats: [3],       desc: 'Rapidly consumes dead matter in the abyss' },
+  50: { name: 'Bacteria',       color: '#88FFCC', tier: 'decomposer',  layer: 0, breedRate: 0.10, moveRate: 0.28, hungerMax: 32, eats: [3],       desc: 'Consumes dead matter in the abyss' },
   51: { name: 'Sea Worm',       color: '#DDBB44', tier: 'decomposer',  layer: 1, breedRate: 0.025, moveRate: 0.34, hungerMax: 30, eats: [3, 50],   desc: 'Benthic decomposer — feeds on dead cells and bacteria' },
 };
 

@@ -52,7 +52,7 @@ export const HUNGER_RESTORE_BY_TIER: Record<LivingTier, number> = {
 export const DOMINANCE_THRESHOLD = 0.20;
 export const DOMINANCE_DEATH_BASE = 0.02;
 export const DOMINANCE_HARD_CAP = 0.35;
-export const DECOMPOSER_BREED_CAP = 0.14;
+export const DECOMPOSER_BREED_CAP = 0.08;
 export const SCAVENGE_RESTORE_BY_TIER: Partial<Record<LivingTier, number>> = {
   herbivore: 0.55,
   consumer: 0.50,
