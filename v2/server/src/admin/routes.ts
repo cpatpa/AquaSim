@@ -5,7 +5,8 @@ import { eq, sql, like, desc, ne, and } from 'drizzle-orm';
 import { adminOnly, getCsrfToken } from '../middleware/admin.js';
 import { getHealthMetrics } from '../lib/health.js';
 import { getDailyActiveUsers, getMonthlyActiveUsers, getDauHistory, getLiveUserCount } from '../lib/analytics.js';
-import { dashboardView, usersView, healthView, statsView, analyticsView, deployView } from './views.js';
+import { dashboardView, usersView, healthView, statsView, analyticsView, deployView, updateCheckFragment } from './views.js';
+import { BUILD_INFO } from '../lib/build-info.js';
 import fs from 'node:fs';
 
 export const adminRoutes = new Hono();
@@ -173,9 +174,63 @@ function getDeployStatus(): { lastDeploy: string; watcherLog: string } {
   return { lastDeploy, watcherLog };
 }
 
+async function checkRemoteForUpdate(): Promise<{
+  latestHash: string;
+  available: boolean;
+  branch: string;
+  error?: string;
+  checkedAt: string;
+}> {
+  const remoteUrl = process.env.GIT_REMOTE_URL;
+  const branch = process.env.GIT_DEPLOY_BRANCH || 'main';
+  const checkedAt = new Date().toISOString();
+
+  if (!remoteUrl) {
+    return { latestHash: '', available: false, branch, error: 'GIT_REMOTE_URL not configured', checkedAt };
+  }
+
+  try {
+    const url = remoteUrl.replace(/\/+$/, '') + '/info/refs?service=git-upload-pack';
+    const res = await fetch(url, { signal: AbortSignal.timeout(10_000) });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const text = await res.text();
+
+    const refPattern = `refs/heads/${branch}`;
+    for (const line of text.split('\n')) {
+      if (line.includes(refPattern)) {
+        const match = line.match(/([0-9a-f]{40})\s+refs\/heads\//);
+        if (match) {
+          const latestHash = match[1].slice(0, 7);
+          const runningHash = BUILD_INFO.commitHash.slice(0, 7);
+          return {
+            latestHash,
+            available: latestHash !== runningHash && BUILD_INFO.commitHash !== 'dev',
+            branch,
+            checkedAt,
+          };
+        }
+      }
+    }
+    return { latestHash: '', available: false, branch, error: `Branch '${branch}' not found on remote`, checkedAt };
+  } catch (e) {
+    return { latestHash: '', available: false, branch, error: (e as Error).message, checkedAt };
+  }
+}
+
 adminRoutes.get('/deploy', async (c) => {
   const status = getDeployStatus();
-  return c.html(deployView({ log: status.watcherLog, lastDeploy: status.lastDeploy, csrf: getCsrfToken(c) }));
+  const update = await checkRemoteForUpdate();
+  return c.html(deployView({
+    log: status.watcherLog,
+    lastDeploy: status.lastDeploy,
+    csrf: getCsrfToken(c),
+    update,
+  }));
+});
+
+adminRoutes.get('/deploy/check-update', async (c) => {
+  const update = await checkRemoteForUpdate();
+  return c.html(updateCheckFragment(update));
 });
 
 adminRoutes.post('/deploy', async (c) => {

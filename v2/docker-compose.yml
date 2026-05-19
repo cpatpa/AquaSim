@@ -17,6 +17,8 @@ services:
       - SMTP_USER=${SMTP_USER:-}
       - SMTP_PASS=${SMTP_PASS:-}
       - SMTP_FROM=${SMTP_FROM:-}
+      - GIT_REMOTE_URL=${GIT_REMOTE_URL:-}
+      - GIT_DEPLOY_BRANCH=${GIT_DEPLOY_BRANCH:-main}
       - NODE_ENV=production
     volumes:
       - ./deploy-trigger:/app/deploy-trigger

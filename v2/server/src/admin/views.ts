@@ -333,10 +333,52 @@ export function analyticsView(data: {
   `);
 }
 
+export type UpdateCheckResult = {
+  latestHash: string;
+  available: boolean;
+  branch: string;
+  error?: string;
+  checkedAt: string;
+};
+
+export function updateCheckFragment(update: UpdateCheckResult): Html {
+  if (update.error) {
+    return html`
+      <div class="card" style="border-color: #d97706;">
+        <div class="label">Remote Check</div>
+        <div class="value" style="font-size:0.85rem; color:#d97706;">Unable to check</div>
+        <div style="font-size:0.7rem; color:#5a7a9a; margin-top:0.25rem;">${update.error}</div>
+        <div style="font-size:0.65rem; color:#5a7a9a; margin-top:0.15rem;">Checked: ${update.checkedAt}</div>
+      </div>
+    `;
+  }
+
+  if (update.available) {
+    return html`
+      <div class="card" style="border-color: #22c55e; background: #0d2a1a;">
+        <div class="label">Update Available</div>
+        <div class="value" style="font-size:1rem; color:#22c55e;">${update.latestHash}</div>
+        <div style="font-size:0.7rem; color:#5a7a9a; margin-top:0.25rem;">on ${update.branch}</div>
+        <div style="font-size:0.65rem; color:#5a7a9a; margin-top:0.15rem;">Checked: ${update.checkedAt}</div>
+      </div>
+    `;
+  }
+
+  return html`
+    <div class="card">
+      <div class="label">Remote (${update.branch})</div>
+      <div class="value health-ok" style="font-size:0.9rem;">Up to date</div>
+      <div style="font-size:0.7rem; color:#5a7a9a; margin-top:0.25rem;">${update.latestHash || BUILD_INFO.commitHash}</div>
+      <div style="font-size:0.65rem; color:#5a7a9a; margin-top:0.15rem;">Checked: ${update.checkedAt}</div>
+    </div>
+  `;
+}
+
 export function deployView(data: {
   log: string;
   lastDeploy: string;
   csrf: string;
+  update: UpdateCheckResult;
 }): Html {
   return layout('Deploy', html`
     <h2 style="margin-bottom: 1.5rem;">Deploy</h2>
@@ -354,6 +396,12 @@ export function deployView(data: {
         <div class="label">Last Deploy</div>
         <div class="value" style="font-size:0.85rem;">${data.lastDeploy || 'None recorded'}</div>
       </div>
+      <div id="update-check"
+           hx-get="/admin/deploy/check-update"
+           hx-trigger="load, every 60s"
+           hx-swap="innerHTML">
+        ${updateCheckFragment(data.update)}
+      </div>
     </div>
 
     <div style="display:flex; gap:1rem; align-items:center; margin-bottom:2rem; flex-wrap:wrap;">
@@ -369,9 +417,9 @@ export function deployView(data: {
     </div>
 
     <p style="color:#5a7a9a; font-size:0.8rem; margin-bottom:1.5rem;">
-      Clicking "Pull & Deploy" will pull the latest code from GitHub and rebuild the application.
-      The deploy watcher service on the host must be running.
-      Alternatively, pushes to main trigger automatic deploys via the GitHub webhook:
+      The update check polls the git remote every 60 seconds.
+      Set <code>GIT_REMOTE_URL</code> and <code>GIT_DEPLOY_BRANCH</code> in your environment to enable it.
+      Pushes to the deploy branch also trigger automatic deploys via the GitHub webhook:
       <code>${process.env.APP_URL || 'https://localhost'}/api/webhooks/github-deploy</code>
     </p>
 
