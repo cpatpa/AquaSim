@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { db } from '../db/index.js';
 import { users, simulations, leaderboardEntries } from '../db/schema.js';
-import { eq, sql, like, desc } from 'drizzle-orm';
+import { eq, sql, like, desc, ne, and } from 'drizzle-orm';
 import { adminOnly } from '../middleware/admin.js';
 import { getHealthMetrics } from '../lib/health.js';
 import { getDailyActiveUsers, getMonthlyActiveUsers, getDauHistory, getLiveUserCount } from '../lib/analytics.js';
@@ -12,13 +12,15 @@ export const adminRoutes = new Hono();
 adminRoutes.use('*', adminOnly);
 
 adminRoutes.get('/', async (c) => {
-  const [{ count: totalUsers }] = await db.select({ count: sql<number>`count(*)` }).from(users);
+  const [{ count: registeredUsers }] = await db.select({ count: sql<number>`count(*)` }).from(users).where(ne(users.role, 'guest'));
+  const [{ count: guestUsers }] = await db.select({ count: sql<number>`count(*)` }).from(users).where(eq(users.role, 'guest'));
   const [{ count: totalSims }] = await db.select({ count: sql<number>`count(*)` }).from(simulations);
   const dau = await getDailyActiveUsers();
   const mau = await getMonthlyActiveUsers();
 
   return c.html(dashboardView({
-    totalUsers,
+    totalUsers: registeredUsers,
+    guestUsers,
     dau,
     mau,
     liveUsers: getLiveUserCount(),
@@ -33,9 +35,10 @@ adminRoutes.get('/users', async (c) => {
   const limit = 20;
   const offset = (page - 1) * limit;
 
+  const notGuest = ne(users.role, 'guest');
   const whereClause = search
-    ? like(users.username, `%${search}%`)
-    : undefined;
+    ? and(notGuest, like(users.username, `%${search}%`))
+    : notGuest;
 
   const [{ count: total }] = await db
     .select({ count: sql<number>`count(*)` })

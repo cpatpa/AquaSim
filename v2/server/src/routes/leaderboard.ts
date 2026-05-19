@@ -2,7 +2,7 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import { db } from '../db/index.js';
 import { leaderboardEntries, users, simulations } from '../db/schema.js';
-import { eq, desc, sql } from 'drizzle-orm';
+import { eq, desc, sql, ne, and } from 'drizzle-orm';
 import { authRequired } from '../middleware/auth.js';
 import { validateBody } from '../middleware/validate.js';
 
@@ -35,7 +35,7 @@ leaderboardRoutes.get('/:type', async (c) => {
     .from(leaderboardEntries)
     .innerJoin(users, eq(leaderboardEntries.userId, users.id))
     .innerJoin(simulations, eq(leaderboardEntries.simulationId, simulations.id))
-    .where(eq(leaderboardEntries.scoreType, type))
+    .where(and(eq(leaderboardEntries.scoreType, type), ne(users.role, 'guest')))
     .orderBy(desc(leaderboardEntries.score))
     .limit(limit);
 
@@ -51,6 +51,9 @@ leaderboardRoutes.get('/:type', async (c) => {
 
 leaderboardRoutes.post('/', authRequired, validateBody(submitScoreSchema), async (c) => {
   const user = c.get('user');
+  if (user.role === 'guest') {
+    return c.json({ error: 'Guests cannot submit scores' }, 403);
+  }
   const body = submitScoreSchema.parse(await c.req.json());
 
   const [sim] = await db

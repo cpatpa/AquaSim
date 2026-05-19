@@ -86,6 +86,7 @@ export function layout(title: string, content: Html): Html {
 
 export function dashboardView(data: {
   totalUsers: number;
+  guestUsers: number;
   dau: number;
   mau: number;
   liveUsers: number;
@@ -96,8 +97,12 @@ export function dashboardView(data: {
     <h2 style="margin-bottom: 1.5rem;">Dashboard</h2>
     <div class="cards">
       <div class="card">
-        <div class="label">Total Users</div>
+        <div class="label">Registered Users</div>
         <div class="value">${data.totalUsers}</div>
+      </div>
+      <div class="card">
+        <div class="label">Guest Sessions</div>
+        <div class="value">${data.guestUsers}</div>
       </div>
       <div class="card">
         <div class="label">DAU (Today)</div>
