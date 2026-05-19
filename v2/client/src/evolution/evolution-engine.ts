@@ -39,6 +39,7 @@ import {
   EMPTY_NICHE_THRESHOLD,
   EMPTY_NICHE_SHIFT_BOOST,
   EMPTY_NICHE_MIN_DRIFT,
+  GENE_VARIANCE_FLOOR,
 } from '../constants';
 
 import {
@@ -245,6 +246,81 @@ function shiftColour(
 }
 
 // ---------------------------------------------------------------------------
+// reassignPrey() -- fix empty eats lists for predators
+// ---------------------------------------------------------------------------
+
+const PREY_TIER_MAP: Record<string, string[]> = {
+  herbivore: ['producer'],
+  consumer: ['herbivore'],
+  apex: ['consumer', 'herbivore'],
+  megafauna: ['consumer', 'herbivore', 'apex'],
+  decomposer: [],
+};
+
+export function reassignPrey(
+  evoStats: Record<number, EvoStats>,
+  popHistory: PopSnapshot[],
+  generation: number,
+  history: SimHistory,
+): void {
+  if (popHistory.length < 2) return;
+  const now = popHistory[popHistory.length - 1];
+  const livingIds = getLivingIds();
+
+  for (const id of livingIds) {
+    const sp = SPECIES[id];
+    const es = evoStats[id];
+    if (!sp || !es) continue;
+    if ((now[id] || 0) === 0) continue;
+    if (!sp.hungerMax && !sp.eats?.length) continue;
+
+    const preyTiers = PREY_TIER_MAP[sp.tier];
+    if (!preyTiers || !preyTiers.length) continue;
+
+    const hasLivePrey = es.eats.some(pid => (now[pid] || 0) > 0);
+    if (hasLivePrey) continue;
+
+    const candidates: number[] = [];
+    for (const lid of livingIds) {
+      if (lid === id) continue;
+      const lsp = SPECIES[lid];
+      if (!lsp) continue;
+      if (preyTiers.indexOf(lsp.tier) === -1) continue;
+      if ((now[lid] || 0) === 0) continue;
+      if (es.eats.indexOf(lid) !== -1) continue;
+      candidates.push(lid);
+    }
+
+    if (candidates.length === 0) continue;
+
+    shuffle(candidates);
+    const toAdd = Math.min(candidates.length, 2);
+    for (let i = 0; i < toAdd; i++) {
+      es.eats.push(candidates[i]);
+    }
+    const preyNames = candidates.slice(0, toAdd).map(pid => SPECIES[pid]?.name || `#${pid}`).join(', ');
+    addEvoEvent(history, generation, sp.name + ' adapted diet to ' + preyNames);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// enforceGeneVarianceFloor() -- retroactive floor on all species
+// ---------------------------------------------------------------------------
+
+export function enforceGeneVarianceFloor(evoStats: Record<number, EvoStats>): void {
+  for (const id of getLivingIds()) {
+    const es = evoStats[id];
+    if (!es || !es.geneVar) continue;
+    for (let gi = 0; gi < GENE_KEYS.length; gi++) {
+      const g = GENE_KEYS[gi];
+      if (es.geneVar[g] < GENE_VARIANCE_FLOOR) {
+        es.geneVar[g] = GENE_VARIANCE_FLOOR;
+      }
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
 // evolve()
 // ---------------------------------------------------------------------------
 
@@ -414,7 +490,7 @@ export function evolve(ctx: EvoContext): EvolveResult {
         const gain = 0.002 + 0.004 * Math.min(1, popNow / (avgPop * 3));
         gv[vGene] = Math.min(0.35, gv[vGene] + gain);
       } else if (popNow < 10) {
-        gv[vGene] = Math.max(0.02, gv[vGene] - 0.008);
+        gv[vGene] = Math.max(GENE_VARIANCE_FLOOR, gv[vGene] - 0.008);
       }
     }
 

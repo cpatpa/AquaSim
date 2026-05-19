@@ -32,6 +32,7 @@ import { drawHeatmapOverlay, HEATMAP_MODES } from './renderer/heatmap';
 import type { HeatmapMode } from './renderer/heatmap';
 import { tierImmigration } from './evolution/immigration';
 import type { ImmigrationContext } from './evolution/immigration';
+import { reassignPrey, enforceGeneVarianceFloor } from './evolution/evolution-engine';
 import { generateCreaturePortrait, clearPortraitCache } from './renderer/portraits';
 import { showAuthModal } from './ui/auth';
 import { openDashboard } from './ui/dashboard';
@@ -336,6 +337,12 @@ function doStep(): void {
     onSpeciate: () => { speciate(buildEvoContext()); },
     onNicheShift: () => { nicheShift(buildEvoContext()); },
     onTierImmigration: () => { tierImmigration(buildImmigrationContext()); },
+    onReassignPrey: () => {
+      reassignPrey(sim.evoStats, sim.history.popHistory, sim.generation, sim.history);
+    },
+    onEnforceGeneVarianceFloor: () => {
+      enforceGeneVarianceFloor(sim.evoStats);
+    },
     onClearCreatureCache: () => { clearPortraitCache(); },
   };
 

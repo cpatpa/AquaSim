@@ -10,6 +10,7 @@ import { SPECIES, getLivingIds, resetDynamicSpecies } from '../species/registry'
 import { makeDiploidGene, cloneGenes } from '../evolution/genetics';
 import { createSeasonState, resetSeason, type SeasonState } from '../environment/seasons';
 import { createHistory, resetHistory, type SimHistory } from '../data/history';
+import { resetTierEmptyGens } from '../evolution/immigration';
 
 export interface SimState {
   grid: GridState;
@@ -119,6 +120,7 @@ export function resetSimulation(state: SimState): void {
   state.generation = 0;
   resetSeason(state.season);
   initEvoStats(state);
+  resetTierEmptyGens();
 }
 
 export function startLoop(state: SimState, tickFn: () => void): void {

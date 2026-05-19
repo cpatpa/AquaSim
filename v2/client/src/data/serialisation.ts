@@ -15,6 +15,7 @@ import type { SeasonState } from '../environment/seasons';
 import type { SimHistory } from './history';
 import { GENE_KEYS } from '../constants';
 import { noise2D } from '../environment/terrain';
+import { getTierEmptyGens, setTierEmptyGens } from '../evolution/immigration';
 
 // ---------------------------------------------------------------------------
 // RLE encoding for typed arrays
@@ -116,6 +117,7 @@ export interface SaveData {
   radiationBoost: number;
   prevLivingCount: number;
   maxTraitsPerSpecies: number;
+  tierEmptyGens?: Record<string, number>;
 }
 
 const CURRENT_VERSION = 1;
@@ -247,6 +249,7 @@ export function serialise(sim: SimState): SaveData {
     radiationBoost: sim.radiationBoost,
     prevLivingCount: sim.prevLivingCount,
     maxTraitsPerSpecies: sim.maxTraitsPerSpecies,
+    tierEmptyGens: getTierEmptyGens(),
   };
 }
 
@@ -355,6 +358,11 @@ export function deserialise(data: SaveData, sim: SimState): void {
 
   // EvoStats
   sim.evoStats = deserialiseEvoStats(data.evoStats);
+
+  // Immigration state
+  if (data.tierEmptyGens) {
+    setTierEmptyGens(data.tierEmptyGens);
+  }
 }
 
 // ---------------------------------------------------------------------------

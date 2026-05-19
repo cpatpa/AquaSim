@@ -36,7 +36,7 @@ export const METABOLISM: Record<LivingTier, number> = {
   herbivore: 0.85,
   consumer: 0.8,
   apex: 0.5,
-  megafauna: 0.35,
+  megafauna: 0.45,
   decomposer: 0.9,
 };
 export const HUNGER_RESTORE_BY_TIER: Record<LivingTier, number> = {
@@ -70,7 +70,11 @@ export const IMMIGRATION_CLUSTER_SIZE = 20;
 export const IMMIGRATION_SCALE_GENS = 50;
 export const IMMIGRATION_MAX_CLUSTER = 80;
 export const IMMIGRATION_ESTABLISHMENT_TICKS = 12;
-export const ROCK_EROSION_CHANCE = 0.002;
+export const ROCK_EROSION_CHANCE = 0.005;
+export const ROCK_ISOLATED_EROSION_CHANCE = 0.012;
+export const TIER_DOMINANCE_THRESHOLD = 0.40;
+export const TIER_DOMINANCE_BREED_PENALTY = 0.50;
+export const GENE_VARIANCE_FLOOR = 0.06;
 
 // Evolution
 export const EVO_CHANCE_PER_GEN = 0.18;

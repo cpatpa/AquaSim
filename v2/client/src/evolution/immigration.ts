@@ -83,6 +83,22 @@ const _tierEmptyGens: Record<string, number> = {
   herbivore: 0, consumer: 0, apex: 0, megafauna: 0, decomposer: 0,
 };
 
+export function getTierEmptyGens(): Record<string, number> {
+  return { ..._tierEmptyGens };
+}
+
+export function setTierEmptyGens(data: Record<string, number>): void {
+  for (const tier of Object.keys(_tierEmptyGens)) {
+    _tierEmptyGens[tier] = data[tier] || 0;
+  }
+}
+
+export function resetTierEmptyGens(): void {
+  for (const tier of Object.keys(_tierEmptyGens)) {
+    _tierEmptyGens[tier] = 0;
+  }
+}
+
 function wrapX(x: number, gridW: number): number {
   return ((x % gridW) + gridW) % gridW;
 }

@@ -36,6 +36,9 @@ import {
   LITHIVORE_RESTORE_BY_TIER,
   DIETARY_POVERTY_PENALTY,
   ROCK_EROSION_CHANCE,
+  ROCK_ISOLATED_EROSION_CHANCE,
+  TIER_DOMINANCE_THRESHOLD,
+  TIER_DOMINANCE_BREED_PENALTY,
   CARDINAL,
   NEIGHBOURS_8,
   POP_SNAPSHOT_INTERVAL,
@@ -103,6 +106,8 @@ export interface StepContext {
   onSpeciate?: () => void;
   onNicheShift?: () => void;
   onTierImmigration?: () => void;
+  onReassignPrey?: () => void;
+  onEnforceGeneVarianceFloor?: () => void;
   onClearCreatureCache?: () => void;
   onSpawnDeathParticles?: (idx: number, sid: number) => void;
 }
@@ -311,6 +316,16 @@ export function step(ctx: StepContext): StepResult {
   }
   const dominantThreshold = totalLiving * DOMINANCE_THRESHOLD;
 
+  // --- Pre-count tier populations for tier-level dominance ---
+  const tierPops: Record<string, number> = {};
+  for (let i = 0; i < indexCount; i++) {
+    const _ts = species[indices[i]];
+    if (_ts >= 10) {
+      const _tsp = SPECIES[_ts];
+      if (_tsp) tierPops[_tsp.tier] = (tierPops[_tsp.tier] || 0) + 1;
+    }
+  }
+
   // =========================================================================
   // Main entity processing loop
   // =========================================================================
@@ -334,7 +349,7 @@ export function step(ctx: StepContext): StepResult {
         if (ns === 1) adjRock++;
         else if (ns === 0) adjEmpty++;
       }
-      if ((adjRock <= 1 && Math.random() < 0.008) || (adjEmpty >= 3 && Math.random() < ROCK_EROSION_CHANCE)) {
+      if ((adjRock === 0 && Math.random() < ROCK_ISOLATED_EROSION_CHANCE) || (adjRock <= 1 && Math.random() < 0.008) || (adjEmpty >= 3 && Math.random() < ROCK_EROSION_CHANCE)) {
         species[idx] = 0;
         hunger[idx] = 0;
         age[idx] = 0;
@@ -1228,6 +1243,8 @@ export function step(ctx: StepContext): StepResult {
 
     if (!ate && hasTrait('scavenger')) {
       const _scavRestore = SCAVENGE_RESTORE_BY_TIER[sp.tier as LivingTier] ?? 0.55;
+      const _scavChance = sp.tier === 'megafauna' ? 0.3 : sp.tier === 'apex' ? 0.5 : 1.0;
+      if (Math.random() < _scavChance) {
       const sdirs = shuffleDirs8();
       for (let d = 0; d < 8; d++) {
         const dir = NEIGHBOURS_8[sdirs[d]];
@@ -1243,6 +1260,7 @@ export function step(ctx: StepContext): StepResult {
           ate = true;
           break;
         }
+      }
       }
     }
 
@@ -1620,6 +1638,10 @@ export function step(ctx: StepContext): StepResult {
     if (sp.tier === 'decomposer' && breedRate > DECOMPOSER_BREED_CAP) {
       breedRate = DECOMPOSER_BREED_CAP;
     }
+    const _tierTotal = tierPops[sp.tier] || 0;
+    if (_tierTotal > totalLiving * TIER_DOMINANCE_THRESHOLD) {
+      breedRate *= TIER_DOMINANCE_BREED_PENALTY;
+    }
     if (es.eats && es.eats.length > 0) {
       let hasLivePrey = false;
       for (let ei = 0; ei < es.eats.length; ei++) {
@@ -1807,6 +1829,16 @@ export function step(ctx: StepContext): StepResult {
     // Immigration: reintroduce species into empty tiers
     if (generation % 10 === 0) {
       if (ctx.onTierImmigration) ctx.onTierImmigration();
+    }
+
+    // Reassign prey for predators with empty food webs
+    if (generation % 50 === 0) {
+      if (ctx.onReassignPrey) ctx.onReassignPrey();
+    }
+
+    // Enforce gene variance floor on all species
+    if (generation % 20 === 0) {
+      if (ctx.onEnforceGeneVarianceFloor) ctx.onEnforceGeneVarianceFloor();
     }
 
     // Extinction cleanup: free slots for extinct evolved species
