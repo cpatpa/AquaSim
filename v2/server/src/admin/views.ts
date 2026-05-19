@@ -14,20 +14,21 @@ export function layout(title: string, content: Html): Html {
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family: system-ui, -apple-system, sans-serif; background: #0a1628; color: #e0e8f0; line-height: 1.6; }
-    .header { background: #0d1f3c; border-bottom: 1px solid #1a3a5c; padding: 1rem 2rem; display: flex; justify-content: space-between; align-items: center; }
-    .header h1 { font-size: 1.25rem; color: #4da6ff; }
-    .build-info { font-size: 0.75rem; color: #5a7a9a; }
-    .nav { display: flex; gap: 1rem; padding: 0.75rem 2rem; background: #0d1a2e; border-bottom: 1px solid #1a3a5c; }
-    .nav a { color: #8ab4e0; text-decoration: none; padding: 0.5rem 1rem; border-radius: 0.25rem; transition: background 0.2s; }
+    .header { background: #0d1f3c; border-bottom: 1px solid #1a3a5c; padding: 0.75rem 1rem; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem; }
+    .header h1 { font-size: 1.1rem; color: #4da6ff; }
+    .build-info { font-size: 0.7rem; color: #5a7a9a; }
+    .nav { display: flex; gap: 0.5rem; padding: 0.5rem 1rem; background: #0d1a2e; border-bottom: 1px solid #1a3a5c; flex-wrap: wrap; }
+    .nav a { color: #8ab4e0; text-decoration: none; padding: 0.4rem 0.75rem; border-radius: 0.25rem; transition: background 0.2s; font-size: 0.85rem; white-space: nowrap; }
     .nav a:hover, .nav a.active { background: #1a3a5c; color: #fff; }
-    .content { padding: 2rem; max-width: 1200px; margin: 0 auto; }
-    .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 2rem; }
-    .card { background: #0d1f3c; border: 1px solid #1a3a5c; border-radius: 0.5rem; padding: 1.5rem; }
-    .card .label { font-size: 0.8rem; color: #5a7a9a; text-transform: uppercase; letter-spacing: 0.05em; }
-    .card .value { font-size: 2rem; font-weight: 700; color: #4da6ff; margin-top: 0.25rem; }
-    table { width: 100%; border-collapse: collapse; margin-top: 1rem; }
-    th, td { padding: 0.75rem 1rem; text-align: left; border-bottom: 1px solid #1a3a5c; }
-    th { color: #5a7a9a; font-size: 0.8rem; text-transform: uppercase; }
+    .content { padding: 1.5rem 1rem; max-width: 1200px; margin: 0 auto; }
+    .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 0.75rem; margin-bottom: 1.5rem; }
+    .card { background: #0d1f3c; border: 1px solid #1a3a5c; border-radius: 0.5rem; padding: 1rem; }
+    .card .label { font-size: 0.75rem; color: #5a7a9a; text-transform: uppercase; letter-spacing: 0.05em; }
+    .card .value { font-size: 1.5rem; font-weight: 700; color: #4da6ff; margin-top: 0.25rem; word-break: break-all; }
+    .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+    table { width: 100%; border-collapse: collapse; margin-top: 0.75rem; min-width: 500px; }
+    th, td { padding: 0.6rem 0.75rem; text-align: left; border-bottom: 1px solid #1a3a5c; font-size: 0.85rem; }
+    th { color: #5a7a9a; font-size: 0.75rem; text-transform: uppercase; }
     .btn { padding: 0.4rem 0.8rem; border: none; border-radius: 0.25rem; cursor: pointer; font-size: 0.8rem; transition: background 0.2s; }
     .btn-danger { background: #cc3333; color: #fff; }
     .btn-danger:hover { background: #e04040; }
@@ -42,11 +43,25 @@ export function layout(title: string, content: Html): Html {
     .badge-banned { background: #dc2626; color: #fff; }
     .health-ok { color: #22c55e; }
     .health-bad { color: #ef4444; }
-    pre { background: #0d1a2e; border: 1px solid #1a3a5c; border-radius: 0.5rem; padding: 1rem; overflow-x: auto; font-size: 0.85rem; max-height: 400px; overflow-y: auto; }
-    .search { padding: 0.5rem 1rem; background: #0d1a2e; border: 1px solid #1a3a5c; border-radius: 0.25rem; color: #e0e8f0; width: 300px; }
-    .pagination { display: flex; gap: 0.5rem; margin-top: 1rem; }
+    pre { background: #0d1a2e; border: 1px solid #1a3a5c; border-radius: 0.5rem; padding: 0.75rem; overflow-x: auto; font-size: 0.8rem; max-height: 400px; overflow-y: auto; word-break: break-all; white-space: pre-wrap; }
+    .search { padding: 0.5rem 0.75rem; background: #0d1a2e; border: 1px solid #1a3a5c; border-radius: 0.25rem; color: #e0e8f0; width: 100%; max-width: 300px; font-size: 0.85rem; }
+    .pagination { display: flex; gap: 0.5rem; margin-top: 1rem; flex-wrap: wrap; }
     .pagination a { padding: 0.4rem 0.8rem; background: #0d1f3c; border: 1px solid #1a3a5c; border-radius: 0.25rem; color: #8ab4e0; text-decoration: none; }
     .pagination a.active { background: #2563eb; border-color: #2563eb; color: #fff; }
+    .actions { display: flex; gap: 0.25rem; flex-wrap: wrap; }
+    code { font-size: 0.75rem; word-break: break-all; }
+    @media (max-width: 600px) {
+      .header { padding: 0.5rem 0.75rem; }
+      .header h1 { font-size: 0.95rem; }
+      .nav { gap: 0.25rem; padding: 0.4rem 0.5rem; }
+      .nav a { padding: 0.35rem 0.5rem; font-size: 0.75rem; }
+      .content { padding: 1rem 0.5rem; }
+      .cards { grid-template-columns: repeat(2, 1fr); gap: 0.5rem; }
+      .card { padding: 0.75rem; }
+      .card .value { font-size: 1.2rem; }
+      h2 { font-size: 1.1rem; }
+      h3 { font-size: 0.95rem; }
+    }
   </style>
 </head>
 <body>
@@ -130,6 +145,7 @@ export function usersView(data: {
       <input type="text" name="search" class="search" placeholder="Search by username..." value="${data.search}">
     </form>
     <p style="color: #5a7a9a; margin-bottom: 0.5rem;">${data.total} users total</p>
+    <div class="table-wrap">
     <table>
       <thead>
         <tr>
@@ -154,30 +170,33 @@ export function usersView(data: {
             <td>${u.mfaEnabled ? 'Yes' : 'No'}</td>
             <td>${u.createdAt}</td>
             <td>${u.lastLogin || 'Never'}</td>
-            <td style="display: flex; gap: 0.25rem;">
-              <form method="post" action="/admin/users/${u.id}/ban" style="display:inline;">
-                <button class="btn ${u.isBanned ? 'btn-primary' : 'btn-warn'}" type="submit">
-                  ${u.isBanned ? 'Unban' : 'Ban'}
-                </button>
-              </form>
-              ${u.role !== 'admin' ? html`
-                <form method="post" action="/admin/users/${u.id}/promote" style="display:inline;">
-                  <button class="btn btn-primary" type="submit">Promote</button>
+            <td>
+              <div class="actions">
+                <form method="post" action="/admin/users/${u.id}/ban">
+                  <button class="btn ${u.isBanned ? 'btn-primary' : 'btn-warn'}" type="submit">
+                    ${u.isBanned ? 'Unban' : 'Ban'}
+                  </button>
                 </form>
-              ` : html`
-                <form method="post" action="/admin/users/${u.id}/promote" style="display:inline;">
-                  <button class="btn btn-warn" type="submit">Demote</button>
+                ${u.role !== 'admin' ? html`
+                  <form method="post" action="/admin/users/${u.id}/promote">
+                    <button class="btn btn-primary" type="submit">Promote</button>
+                  </form>
+                ` : html`
+                  <form method="post" action="/admin/users/${u.id}/promote">
+                    <button class="btn btn-warn" type="submit">Demote</button>
+                  </form>
+                `}
+                <form method="post" action="/admin/users/${u.id}/delete"
+                      onsubmit="return confirm('Delete this user? This cannot be undone.')">
+                  <button class="btn btn-danger" type="submit">Delete</button>
                 </form>
-              `}
-              <form method="post" action="/admin/users/${u.id}/delete" style="display:inline;"
-                    onsubmit="return confirm('Delete this user? This cannot be undone.')">
-                <button class="btn btn-danger" type="submit">Delete</button>
-              </form>
+              </div>
             </td>
           </tr>
         `)}
       </tbody>
     </table>
+    </div>
     ${totalPages > 1 ? html`
       <div class="pagination">
         ${Array.from({ length: totalPages }, (_, i) => i + 1).map(p => html`
@@ -260,6 +279,7 @@ export function statsView(data: {
       </div>
     </div>
     <h3 style="margin: 1.5rem 0 1rem;">Leaderboard Entries</h3>
+    <div class="table-wrap">
     <table>
       <thead><tr><th>Category</th><th>Entries</th></tr></thead>
       <tbody>
@@ -268,6 +288,7 @@ export function statsView(data: {
         `)}
       </tbody>
     </table>
+    </div>
   `);
 }
 
@@ -289,6 +310,7 @@ export function analyticsView(data: {
       </div>
     </div>
     <h3 style="margin: 1.5rem 0 1rem;">Daily Active Users (Last 90 Days)</h3>
+    <div class="table-wrap">
     <table>
       <thead><tr><th>Date</th><th>Active Users</th></tr></thead>
       <tbody>
@@ -297,6 +319,7 @@ export function analyticsView(data: {
         `)}
       </tbody>
     </table>
+    </div>
   `);
 }
 
