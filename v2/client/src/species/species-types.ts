@@ -28,14 +28,12 @@ export const SPECIES: Record<number, SpeciesDefinition> = {
 };
 
 export const DISASTERS: Record<string, DisasterDefinition> = {
-  '-1': { name: 'Bomb',       color: '#FF4400', desc: 'Obliterates all life and terrain in blast radius' },
-  '-2': { name: 'Oil Spill',  color: '#2A1800', desc: 'Toxic sludge that spreads, kills, and slowly decays' },
-  '-3': { name: 'Heatwave',   color: '#FF8800', desc: 'Kills all animals in radius — plants survive' },
-  '-4': { name: 'Red Tide',   color: '#CC0033', desc: 'Algal bloom floods area — suffocates all animals' },
-  '-5': { name: 'Whirlpool',  color: '#0088CC', desc: 'Vortex pulls creatures inward — Shell/Armored/DeepRoot resist' },
-  '-6': { name: 'Ice Age',    color: '#AADDFF', desc: 'Freezing wave — Cold Adapted survive, ice thaws over time' },
-  '-7': { name: 'Toxic Bloom', color: '#99FF00', desc: 'Poison algae — Toxic species immune & thrive, spreads and decays' },
-  '-8': { name: 'Volcano',    color: '#FF4400', desc: 'Subsea eruption — lava spreads, cools to rock, reshapes terrain' },
+  '-1': { name: 'Bomb',        color: '#FF4400', desc: 'Obliterates all life and terrain in blast radius' },
+  '-2': { name: 'Oil Spill',   color: '#2A1800', desc: 'Toxic sludge that spreads, kills, and slowly decays' },
+  '-3': { name: 'Heatwave',    color: '#FF8800', desc: 'Kills all animals in radius — plants survive' },
+  '-4': { name: 'Ice Age',     color: '#AADDFF', desc: 'Freezing wave — Cold Adapted survive, ice thaws over time' },
+  '-5': { name: 'Toxic Bloom', color: '#99FF00', desc: 'Poison algae — Toxic species immune & thrive, spreads and decays' },
+  '-6': { name: 'Volcano',     color: '#FF4400', desc: 'Subsea eruption — lava spreads, cools to rock, reshapes terrain' },
 };
 
 export const TIER_ORDER: Array<{ label: string; ids: number[] }> = [

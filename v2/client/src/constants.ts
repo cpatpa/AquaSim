@@ -20,6 +20,7 @@ export const GRAPH_RECORD_INTERVAL = 2;
 export const DEAD_DECAY_AGE = 14;
 export const DEAD_FOSSILIZE_AGE = 120;
 export const OIL_SPREAD_RATE = 0.06;
+export const OIL_SPREAD_MAX_AGE = 15;
 export const OIL_DECAY_AGE = 40;
 export const ICE_THAW_AGE = 60;
 export const TOXIC_BLOOM_SPREAD = 0.08;

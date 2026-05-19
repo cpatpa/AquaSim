@@ -17,6 +17,7 @@ import type {
 import {
   DEAD_FOSSILIZE_AGE,
   OIL_SPREAD_RATE,
+  OIL_SPREAD_MAX_AGE,
   OIL_DECAY_AGE,
   ICE_THAW_AGE,
   TOXIC_BLOOM_SPREAD,
@@ -346,7 +347,7 @@ export function step(ctx: StepContext): StepResult {
       continue;
     }
 
-    // ----- Oil: spread, kill neighbours, decay -----
+    // ----- Oil: spread while young, then decay -----
     if (sid === 4) {
       age[idx]++;
       if (age[idx] >= OIL_DECAY_AGE) {
@@ -355,20 +356,22 @@ export function step(ctx: StepContext): StepResult {
         age[idx] = 0;
         continue;
       }
-      const dirs = shuffleDirs4();
-      for (let d = 0; d < 4; d++) {
-        const dir = CARDINAL[dirs[d]];
-        const nx = wrapX(cx + dir[0], cw);
-        const ny = wrapY(cy + dir[1], ch);
-        const ni = ny * cw + nx;
-        const nSid = species[ni];
-        if (nSid === 0 || nSid === 1 || nSid === 4) continue;
-        if (Math.random() < OIL_SPREAD_RATE) {
-          species[ni] = 4;
-          hunger[ni] = 0;
-          age[ni] = 0;
-          processed[ni] = 1;
-          break;
+      if (age[idx] <= OIL_SPREAD_MAX_AGE) {
+        const dirs = shuffleDirs4();
+        for (let d = 0; d < 4; d++) {
+          const dir = CARDINAL[dirs[d]];
+          const nx = wrapX(cx + dir[0], cw);
+          const ny = wrapY(cy + dir[1], ch);
+          const ni = ny * cw + nx;
+          const nSid = species[ni];
+          if (nSid === 0 || nSid === 1 || nSid === 4) continue;
+          if (Math.random() < OIL_SPREAD_RATE) {
+            species[ni] = 4;
+            hunger[ni] = 0;
+            age[ni] = 0;
+            processed[ni] = 1;
+            break;
+          }
         }
       }
       continue;
