@@ -42,7 +42,7 @@ function drawRadarChart(
   const n = GENE_KEYS.length;
   const angleStep = (Math.PI * 2) / n;
 
-  ctx.fillStyle = '#04090F';
+  ctx.fillStyle = '#0a1628';
   ctx.fillRect(0, 0, size, size);
 
   for (let ring = 4; ring >= 1; ring--) {
@@ -56,7 +56,7 @@ function drawRadarChart(
       else ctx.lineTo(px, py);
     }
     ctx.closePath();
-    ctx.strokeStyle = ring === 2 ? '#1A3A4B' : '#0D1B2A';
+    ctx.strokeStyle = ring === 2 ? '#1a3a5c' : '#0d1f3c';
     ctx.lineWidth = 1;
     ctx.stroke();
   }
@@ -66,7 +66,7 @@ function drawRadarChart(
     ctx.beginPath();
     ctx.moveTo(cx, cy);
     ctx.lineTo(cx + Math.cos(a) * radius, cy + Math.sin(a) * radius);
-    ctx.strokeStyle = '#0D1B2A';
+    ctx.strokeStyle = '#0d1f3c';
     ctx.lineWidth = 1;
     ctx.stroke();
   }
@@ -86,7 +86,7 @@ function drawRadarChart(
       else ctx.lineTo(px, py);
     }
     ctx.closePath();
-    ctx.fillStyle = 'rgba(0, 229, 255, 0.08)';
+    ctx.fillStyle = 'rgba(77, 166, 255, 0.08)';
     ctx.fill();
   }
 
@@ -103,9 +103,9 @@ function drawRadarChart(
     else ctx.lineTo(px, py);
   }
   ctx.closePath();
-  ctx.fillStyle = 'rgba(0, 229, 255, 0.2)';
+  ctx.fillStyle = 'rgba(77, 166, 255, 0.2)';
   ctx.fill();
-  ctx.strokeStyle = '#00E5FF';
+  ctx.strokeStyle = '#4da6ff';
   ctx.lineWidth = 1.5;
   ctx.stroke();
 
@@ -129,7 +129,7 @@ function drawRadarChart(
     const labelR = radius + 14;
     const lx = cx + Math.cos(a) * labelR;
     const ly = cy + Math.sin(a) * labelR;
-    ctx.fillStyle = '#4A7A8A';
+    ctx.fillStyle = '#5a7a9a';
     const shortName = GENE_NAMES[g].slice(0, 4);
     ctx.fillText(shortName, lx, ly);
   }
@@ -216,7 +216,7 @@ export function openSpeciesInfo(
         </div>
         <div class="species-modal-right">
           <canvas id="gene-radar"></canvas>
-          ${es?.genes ? buildGeneBarHtml(es) : '<div style="color:#4A7A8A;">No genetic data</div>'}
+          ${es?.genes ? buildGeneBarHtml(es) : '<div style="color:#5a7a9a;">No genetic data</div>'}
         </div>
       </div>
     </div>
@@ -311,45 +311,45 @@ export function injectSpeciesInfoStyles(): void {
       display: flex; align-items: center; justify-content: center;
     }
     .species-modal {
-      background: #0A1520; border: 1px solid #1A3A4B; border-radius: 8px;
+      background: #0d1f3c; border: 1px solid #1a3a5c; border-radius: 8px;
       max-width: 700px; width: 90vw; max-height: 85vh; overflow-y: auto;
-      font-family: 'Share Tech Mono', monospace; color: #7EE8FA;
+      font-family: 'Share Tech Mono', monospace; color: #e0e8f0;
     }
     .species-modal-header {
       display: flex; justify-content: space-between; align-items: center;
-      padding: 12px 16px; border-bottom: 1px solid #1A3A4B;
+      padding: 12px 16px; border-bottom: 1px solid #1a3a5c;
     }
     .species-modal-title { font-family: 'Orbitron', monospace; font-size: 1.1rem; letter-spacing: 1px; }
     .species-modal-close {
-      background: none; border: none; color: #4A7A8A; font-size: 1.5rem; cursor: pointer;
+      background: none; border: none; color: #5a7a9a; font-size: 1.5rem; cursor: pointer;
       padding: 0 4px; line-height: 1;
     }
-    .species-modal-close:hover { color: #FF6B6B; }
+    .species-modal-close:hover { color: #ef4444; }
     .species-modal-body {
       display: flex; gap: 16px; padding: 16px; flex-wrap: wrap;
     }
     .species-modal-left { flex: 1; min-width: 200px; }
     .species-modal-right { flex: 1; min-width: 200px; }
     .species-meta { display: flex; flex-direction: column; gap: 4px; margin-bottom: 10px; font-size: 0.85rem; }
-    .meta-label { color: #4A7A8A; margin-right: 6px; }
-    .species-desc { color: #4A7A8A; font-size: 0.8rem; margin-bottom: 10px; font-style: italic; }
+    .meta-label { color: #5a7a9a; margin-right: 6px; }
+    .species-desc { color: #5a7a9a; font-size: 0.8rem; margin-bottom: 10px; font-style: italic; }
     .species-diet { font-size: 0.8rem; margin-bottom: 8px; }
     .species-traits { margin-bottom: 8px; }
     .trait-list { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
     .trait-badge {
-      background: #0D2438; border: 1px solid #1A3A4B; border-radius: 4px;
+      background: #162d4a; border: 1px solid #1a3a5c; border-radius: 4px;
       padding: 2px 8px; font-size: 0.75rem; white-space: nowrap;
     }
     .trait-badge.novel { border-color: #FFD700; color: #FFD700; }
     .trait-badge.synergy { border-color: #FF8844; color: #FF8844; }
     .species-lineage { font-size: 0.8rem; margin-bottom: 8px; }
-    .lineage-chain { color: #4A7A8A; margin-top: 2px; font-size: 0.75rem; }
+    .lineage-chain { color: #5a7a9a; margin-top: 2px; font-size: 0.75rem; }
     .gene-cluster { margin-bottom: 8px; }
     .gene-cluster-label { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 3px; }
     .gene-row { display: flex; align-items: center; gap: 6px; margin-bottom: 2px; }
     .gene-label { font-size: 0.7rem; width: 70px; text-align: right; flex-shrink: 0; }
     .gene-bar-track {
-      flex: 1; height: 6px; background: #0D1B2A; border-radius: 3px;
+      flex: 1; height: 6px; background: #0d1f3c; border-radius: 3px;
       position: relative; overflow: hidden;
     }
     .gene-bar-fill { height: 100%; border-radius: 3px; transition: width 0.3s; }
@@ -357,7 +357,7 @@ export function injectSpeciesInfoStyles(): void {
       position: absolute; top: 0; height: 100%; border: 1px solid; border-radius: 3px;
       opacity: 0.3; pointer-events: none;
     }
-    .gene-val { font-size: 0.7rem; color: #4A7A8A; width: 28px; text-align: right; }
+    .gene-val { font-size: 0.7rem; color: #5a7a9a; width: 28px; text-align: right; }
     #gene-radar { display: block; margin: 0 auto 12px; }
   `;
   document.head.appendChild(style);

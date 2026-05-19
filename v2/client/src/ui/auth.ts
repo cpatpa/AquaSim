@@ -4,27 +4,27 @@ import type { PublicKeyCredentialRequestOptionsJSON } from '@simplewebauthn/brow
 
 const OVERLAY_STYLES = `
   .auth-overlay { position:fixed; inset:0; background:rgba(0,0,0,0.8); z-index:1000; display:flex; align-items:center; justify-content:center; }
-  .auth-panel { background:#0A1520; border:1px solid #1A3A4B; border-radius:8px; width:380px; max-width:90vw; padding:24px; }
-  .auth-panel h2 { font-family:'Orbitron',monospace; color:#00E5FF; letter-spacing:1px; margin-bottom:16px; font-size:1.1rem; }
+  .auth-panel { background:#0d1f3c; border:1px solid #1a3a5c; border-radius:8px; width:380px; max-width:90vw; padding:24px; }
+  .auth-panel h2 { font-family:'Orbitron',monospace; color:#4da6ff; letter-spacing:1px; margin-bottom:16px; font-size:1.1rem; }
   .auth-field { margin-bottom:10px; }
-  .auth-label { display:block; color:#4A7A8A; font-size:0.75rem; margin-bottom:3px; padding-left:2px; }
-  .auth-panel input { width:100%; padding:8px 12px; background:#0D1B2A; border:1px solid #1B3A4B; color:#7EE8FA; font-family:inherit; font-size:13px; border-radius:4px; }
-  .auth-panel input::placeholder { color:#3A5A6A; }
-  .auth-panel input:focus { outline:none; border-color:#00E5FF; }
+  .auth-label { display:block; color:#5a7a9a; font-size:0.75rem; margin-bottom:3px; padding-left:2px; }
+  .auth-panel input { width:100%; padding:8px 12px; background:#0d1f3c; border:1px solid #1a3a5c; color:#e0e8f0; font-family:inherit; font-size:13px; border-radius:4px; }
+  .auth-panel input::placeholder { color:#3a5a7a; }
+  .auth-panel input:focus { outline:none; border-color:#4da6ff; }
   .auth-btn { width:100%; padding:10px; border:none; border-radius:4px; font-family:inherit; font-size:13px; cursor:pointer; margin-bottom:8px; }
-  .auth-btn-primary { background:#00E5FF; color:#0A1520; font-weight:bold; }
-  .auth-btn-primary:hover { background:#33EEFF; }
-  .auth-btn-secondary { background:#0D1B2A; border:1px solid #1B3A4B; color:#7EE8FA; }
-  .auth-btn-secondary:hover { background:#1B3A4B; }
-  .auth-btn-ghost { background:none; border:1px solid #1B3A4B; color:#4A7A8A; }
-  .auth-btn-ghost:hover { background:#0D1B2A; color:#7EE8FA; }
-  .auth-error { color:#FF6B6B; font-size:0.8rem; margin-bottom:8px; min-height:18px; }
-  .auth-link { color:#00E5FF; cursor:pointer; font-size:0.8rem; }
+  .auth-btn-primary { background:#4da6ff; color:#0d1f3c; font-weight:bold; }
+  .auth-btn-primary:hover { background:#6db8ff; }
+  .auth-btn-secondary { background:#0d1f3c; border:1px solid #1a3a5c; color:#e0e8f0; }
+  .auth-btn-secondary:hover { background:#1a3a5c; }
+  .auth-btn-ghost { background:none; border:1px solid #1a3a5c; color:#5a7a9a; }
+  .auth-btn-ghost:hover { background:#0d1f3c; color:#e0e8f0; }
+  .auth-error { color:#ef4444; font-size:0.8rem; margin-bottom:8px; min-height:18px; }
+  .auth-link { color:#4da6ff; cursor:pointer; font-size:0.8rem; }
   .auth-link:hover { text-decoration:underline; }
-  .auth-divider { text-align:center; color:#3A5A6A; margin:12px 0; font-size:0.8rem; }
+  .auth-divider { text-align:center; color:#3a5a7a; margin:12px 0; font-size:0.8rem; }
   .auth-tabs { display:flex; gap:0; margin-bottom:16px; }
-  .auth-tab { flex:1; padding:8px; text-align:center; cursor:pointer; border-bottom:2px solid transparent; color:#4A7A8A; font-size:0.85rem; }
-  .auth-tab.active { border-color:#00E5FF; color:#00E5FF; }
+  .auth-tab { flex:1; padding:8px; text-align:center; cursor:pointer; border-bottom:2px solid transparent; color:#5a7a9a; font-size:0.85rem; }
+  .auth-tab.active { border-color:#4da6ff; color:#4da6ff; }
   .auth-mfa-input { letter-spacing:0.5em; text-align:center; font-size:1.2rem; }
   .auth-skip { text-align:center; margin-top:4px; }
 `;
@@ -59,7 +59,7 @@ export function showAuthModal(): Promise<AuthResult> {
         overlay.innerHTML = `
           <div class="auth-panel">
             <h2>Reset Password</h2>
-            <p style="color:#4A7A8A;font-size:0.8rem;margin-bottom:12px;">Enter the email address you registered with and we'll send you a reset link.</p>
+            <p style="color:#5a7a9a;font-size:0.8rem;margin-bottom:12px;">Enter the email address you registered with and we'll send you a reset link.</p>
             <div class="auth-error" id="auth-err"></div>
             <div class="auth-field">
               <label class="auth-label">Email address</label>
@@ -77,7 +77,7 @@ export function showAuthModal(): Promise<AuthResult> {
           if (!email) { errEl.textContent = 'Enter your email'; return; }
           try {
             const msg = await forgotPassword(email);
-            errEl.style.color = '#88FF88';
+            errEl.style.color = '#22c55e';
             errEl.textContent = msg;
           } catch (e) {
             errEl.textContent = (e as Error).message;
@@ -208,7 +208,7 @@ export function showAuthModal(): Promise<AuthResult> {
               (overlay.querySelector('#auth-mfa-row') as HTMLElement).style.display = 'block';
               (overlay.querySelector('#auth-mfa') as HTMLInputElement).focus();
               errEl.textContent = 'Enter your MFA code';
-              errEl.style.color = '#88FF88';
+              errEl.style.color = '#22c55e';
               return;
             }
             close({ action: 'login', response: resp });

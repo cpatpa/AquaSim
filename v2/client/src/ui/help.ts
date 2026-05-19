@@ -401,27 +401,27 @@ function disastersSection(): string {
 
     <table class="help-table">
       <tr>
-        <td class="help-key" style="color:#FF6B6B">Bomb</td>
+        <td class="help-key" style="color:#ef4444">Bomb</td>
         <td>Obliterates all life and terrain in a radius. Creates a clean slate. Nothing survives.</td>
       </tr>
       <tr>
-        <td class="help-key" style="color:#FF6B6B">Oil Spill</td>
+        <td class="help-key" style="color:#ef4444">Oil Spill</td>
         <td>Spreads slowly across the water (6% chance per direction per tick), killing adjacent life. Persists for 40 ticks before decaying. Creates dead zones that take generations to recover.</td>
       </tr>
       <tr>
-        <td class="help-key" style="color:#FF6B6B">Heatwave</td>
+        <td class="help-key" style="color:#ef4444">Heatwave</td>
         <td>Kills animals in the affected radius. Plants survive. Species with warm adaptation or thermosensing traits have a 50% chance of survival, creating strong selection pressure for heat tolerance.</td>
       </tr>
       <tr>
-        <td class="help-key" style="color:#FF6B6B">Ice Age</td>
+        <td class="help-key" style="color:#ef4444">Ice Age</td>
         <td>Freezes all non-empty cells in the radius. Cold-adapted species are unaffected. Frozen organisms thaw after 60 ticks. Favours cold-adapted species and can completely reshape which species dominate.</td>
       </tr>
       <tr>
-        <td class="help-key" style="color:#FF6B6B">Toxic Bloom</td>
+        <td class="help-key" style="color:#ef4444">Toxic Bloom</td>
         <td>Spreading toxic algae (8% per direction per tick). Damages non-toxic species. Species with the toxic trait are immune and thrive. Biofilm clusters have 35% resistance. Persists for 50 ticks.</td>
       </tr>
       <tr>
-        <td class="help-key" style="color:#FF6B6B">Volcano</td>
+        <td class="help-key" style="color:#ef4444">Volcano</td>
         <td>The most complex disaster. Creates a lava core that spreads aggressively in early ticks (12% spread rate), slows as it ages, and eventually cools into rock after 40 ticks. Spawns 1 to 3 active vents that continue erupting for 60 to 90 ticks. Radiates lethal heat 2 tiles out (35% kill chance). Warm-adapted and thermosensing species have 60% heat immunity. Cooled lava near existing rock formations permanently becomes rock, literally reshaping the terrain.</td>
       </tr>
     </table>
@@ -438,7 +438,7 @@ function seasonsSection(): string {
 
     <table class="help-table wide-table">
       <tr><th>Season</th><th>Breeding</th><th>Hunger</th><th>Movement</th><th>Producers</th></tr>
-      <tr><td class="help-key" style="color:#88FF88">Spring</td><td>1.3x</td><td>0.9x</td><td>1.0x</td><td>1.5x</td></tr>
+      <tr><td class="help-key" style="color:#22c55e">Spring</td><td>1.3x</td><td>0.9x</td><td>1.0x</td><td>1.5x</td></tr>
       <tr><td class="help-key" style="color:#FFDD44">Summer</td><td>1.1x</td><td>1.0x</td><td>1.1x</td><td>1.0x</td></tr>
       <tr><td class="help-key" style="color:#DD8844">Autumn</td><td>0.8x</td><td>1.2x</td><td>0.9x</td><td>0.7x</td></tr>
       <tr><td class="help-key" style="color:#88BBFF">Winter</td><td>0.5x</td><td>1.4x</td><td>0.7x</td><td>0.4x</td></tr>
@@ -618,71 +618,71 @@ export function injectHelpStyles(): void {
       display: flex; align-items: center; justify-content: center;
     }
     .help-panel {
-      background: #0A1520; border: 1px solid #1A3A4B; border-radius: 8px;
+      background: #0d1f3c; border: 1px solid #1a3a5c; border-radius: 8px;
       width: 720px; max-width: 95vw; max-height: 85vh;
-      font-family: 'Share Tech Mono', monospace; color: #7EE8FA;
+      font-family: 'Share Tech Mono', monospace; color: #e0e8f0;
       display: flex; flex-direction: column;
     }
     .help-header {
       display: flex; justify-content: space-between; align-items: center;
-      padding: 12px 16px; border-bottom: 1px solid #1A3A4B;
-      font-family: 'Orbitron', monospace; color: #00E5FF; letter-spacing: 1px;
+      padding: 12px 16px; border-bottom: 1px solid #1a3a5c;
+      font-family: 'Orbitron', monospace; color: #4da6ff; letter-spacing: 1px;
       flex-shrink: 0;
     }
     .help-header button {
-      background: none; border: none; color: #4A7A8A; font-size: 1.5rem; cursor: pointer;
+      background: none; border: none; color: #5a7a9a; font-size: 1.5rem; cursor: pointer;
     }
-    .help-header button:hover { color: #FF6B6B; }
+    .help-header button:hover { color: #ef4444; }
     .help-nav {
-      display: flex; flex-wrap: wrap; gap: 0; border-bottom: 1px solid #1A3A4B;
+      display: flex; flex-wrap: wrap; gap: 0; border-bottom: 1px solid #1a3a5c;
       flex-shrink: 0; overflow-x: auto;
     }
     .help-nav-btn {
       background: none; border: none; border-bottom: 2px solid transparent;
-      color: #4A7A8A; font-family: 'Share Tech Mono', monospace; font-size: 0.75rem;
+      color: #5a7a9a; font-family: 'Share Tech Mono', monospace; font-size: 0.75rem;
       padding: 8px 12px; cursor: pointer; white-space: nowrap;
     }
-    .help-nav-btn:hover { color: #7EE8FA; }
-    .help-nav-btn.active { color: #00E5FF; border-bottom-color: #00E5FF; }
+    .help-nav-btn:hover { color: #e0e8f0; }
+    .help-nav-btn.active { color: #4da6ff; border-bottom-color: #4da6ff; }
     .help-body {
       padding: 16px 20px; overflow-y: auto; flex: 1;
     }
     .help-body::-webkit-scrollbar { width: 6px; }
-    .help-body::-webkit-scrollbar-thumb { background: #0C2D40; border-radius: 3px; }
+    .help-body::-webkit-scrollbar-thumb { background: #1a3a5c; border-radius: 3px; }
     .help-body h3 {
-      font-family: 'Orbitron', monospace; color: #00E5FF; font-size: 1rem;
+      font-family: 'Orbitron', monospace; color: #4da6ff; font-size: 1rem;
       letter-spacing: 1px; margin: 0 0 12px;
     }
     .help-body h4 {
-      color: #7EE8FA; font-size: 0.85rem; margin: 16px 0 8px;
-      padding-top: 10px; border-top: 1px solid #0D1B2A;
+      color: #e0e8f0; font-size: 0.85rem; margin: 16px 0 8px;
+      padding-top: 10px; border-top: 1px solid #0d1f3c;
     }
     .help-body h4:first-of-type { border-top: none; padding-top: 0; }
     .help-body p {
-      color: #8AB4C4; font-size: 0.8rem; line-height: 1.55; margin: 0 0 8px;
+      color: #8ab0c8; font-size: 0.8rem; line-height: 1.55; margin: 0 0 8px;
     }
     .help-body ul {
-      color: #8AB4C4; font-size: 0.8rem; line-height: 1.55;
+      color: #8ab0c8; font-size: 0.8rem; line-height: 1.55;
       margin: 0 0 8px; padding-left: 18px;
     }
     .help-body li { margin-bottom: 4px; }
-    .help-body b { color: #7EE8FA; }
+    .help-body b { color: #e0e8f0; }
     .help-table { width: 100%; border-collapse: collapse; margin-bottom: 8px; }
     .help-table td, .help-table th {
       padding: 4px 8px; font-size: 0.78rem; vertical-align: top;
-      border-bottom: 1px solid #0A1622;
+      border-bottom: 1px solid #0d1f3c;
     }
     .help-table th {
-      color: #4A7A8A; font-size: 0.7rem; text-transform: uppercase;
+      color: #5a7a9a; font-size: 0.7rem; text-transform: uppercase;
       letter-spacing: 0.5px; text-align: left; padding-bottom: 6px;
     }
     .help-key {
-      color: #00E5FF; min-width: 110px; font-weight: bold;
+      color: #4da6ff; min-width: 110px; font-weight: bold;
       white-space: nowrap;
     }
-    .help-table td:last-child { color: #8AB4C4; }
+    .help-table td:last-child { color: #8ab0c8; }
     .gene-cluster {
-      color: #4A7A8A !important; font-size: 0.7rem !important;
+      color: #5a7a9a !important; font-size: 0.7rem !important;
       text-transform: uppercase; letter-spacing: 1px;
       padding-top: 10px !important; font-weight: bold;
     }

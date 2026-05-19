@@ -2,27 +2,27 @@ import { getLeaderboard, type LeaderboardEntry } from '../api/client';
 
 const LB_STYLES = `
   .lb-overlay { position:fixed; inset:0; background:rgba(0,0,0,0.8); z-index:960; display:flex; align-items:center; justify-content:center; }
-  .lb-panel { background:#0A1520; border:1px solid #1A3A4B; border-radius:8px; width:640px; max-width:90vw; max-height:80vh; display:flex; flex-direction:column; }
-  .lb-header { display:flex; justify-content:space-between; align-items:center; padding:16px 20px; border-bottom:1px solid #1A3A4B; }
-  .lb-header h2 { font-family:'Orbitron',monospace; color:#00E5FF; font-size:1rem; letter-spacing:1px; }
-  .lb-close { background:none; border:none; color:#4A7A8A; font-size:1.5rem; cursor:pointer; }
-  .lb-close:hover { color:#FF6B6B; }
-  .lb-tabs { display:flex; gap:0; border-bottom:1px solid #1A3A4B; padding:0 20px; overflow-x:auto; }
-  .lb-tab { padding:10px 14px; cursor:pointer; color:#4A7A8A; font-size:0.8rem; white-space:nowrap; border-bottom:2px solid transparent; }
-  .lb-tab:hover { color:#7EE8FA; }
-  .lb-tab.active { border-color:#00E5FF; color:#00E5FF; }
+  .lb-panel { background:#0d1f3c; border:1px solid #1a3a5c; border-radius:8px; width:640px; max-width:90vw; max-height:80vh; display:flex; flex-direction:column; }
+  .lb-header { display:flex; justify-content:space-between; align-items:center; padding:16px 20px; border-bottom:1px solid #1a3a5c; }
+  .lb-header h2 { font-family:'Orbitron',monospace; color:#4da6ff; font-size:1rem; letter-spacing:1px; }
+  .lb-close { background:none; border:none; color:#5a7a9a; font-size:1.5rem; cursor:pointer; }
+  .lb-close:hover { color:#ef4444; }
+  .lb-tabs { display:flex; gap:0; border-bottom:1px solid #1a3a5c; padding:0 20px; overflow-x:auto; }
+  .lb-tab { padding:10px 14px; cursor:pointer; color:#5a7a9a; font-size:0.8rem; white-space:nowrap; border-bottom:2px solid transparent; }
+  .lb-tab:hover { color:#e0e8f0; }
+  .lb-tab.active { border-color:#4da6ff; color:#4da6ff; }
   .lb-body { padding:16px 20px; overflow-y:auto; flex:1; }
   .lb-table { width:100%; border-collapse:collapse; font-size:0.8rem; }
-  .lb-table th { text-align:left; color:#4A7A8A; padding:6px 8px; border-bottom:1px solid #1A3A4B; font-weight:normal; }
-  .lb-table td { padding:6px 8px; color:#7EE8FA; border-bottom:1px solid #0D1B2A; }
-  .lb-table tr:hover td { background:#0D1B2A; }
-  .lb-rank { color:#00E5FF; font-weight:bold; width:40px; }
+  .lb-table th { text-align:left; color:#5a7a9a; padding:6px 8px; border-bottom:1px solid #1a3a5c; font-weight:normal; }
+  .lb-table td { padding:6px 8px; color:#e0e8f0; border-bottom:1px solid #0d1f3c; }
+  .lb-table tr:hover td { background:#0d1f3c; }
+  .lb-rank { color:#4da6ff; font-weight:bold; width:40px; }
   .lb-rank-1 { color:#FFD700; }
   .lb-rank-2 { color:#C0C0C0; }
   .lb-rank-3 { color:#CD7F32; }
   .lb-score { color:#22c55e; font-variant-numeric:tabular-nums; }
-  .lb-empty { text-align:center; color:#4A7A8A; padding:40px 0; }
-  .lb-loading { text-align:center; color:#4A7A8A; padding:40px 0; }
+  .lb-empty { text-align:center; color:#5a7a9a; padding:40px 0; }
+  .lb-loading { text-align:center; color:#5a7a9a; padding:40px 0; }
 `;
 
 let stylesInjected = false;

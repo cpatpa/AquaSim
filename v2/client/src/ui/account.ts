@@ -7,32 +7,32 @@ import type { PublicKeyCredentialCreationOptionsJSON } from '@simplewebauthn/bro
 
 const ACCT_STYLES = `
   .acct-overlay { position:fixed; inset:0; background:rgba(0,0,0,0.8); z-index:970; display:flex; align-items:center; justify-content:center; }
-  .acct-panel { background:#0A1520; border:1px solid #1A3A4B; border-radius:8px; width:420px; max-width:90vw; max-height:80vh; display:flex; flex-direction:column; }
-  .acct-header { display:flex; justify-content:space-between; align-items:center; padding:16px 20px; border-bottom:1px solid #1A3A4B; }
-  .acct-header h2 { font-family:'Orbitron',monospace; color:#00E5FF; font-size:1rem; letter-spacing:1px; }
-  .acct-close { background:none; border:none; color:#4A7A8A; font-size:1.5rem; cursor:pointer; }
-  .acct-close:hover { color:#FF6B6B; }
+  .acct-panel { background:#0d1f3c; border:1px solid #1a3a5c; border-radius:8px; width:420px; max-width:90vw; max-height:80vh; display:flex; flex-direction:column; }
+  .acct-header { display:flex; justify-content:space-between; align-items:center; padding:16px 20px; border-bottom:1px solid #1a3a5c; }
+  .acct-header h2 { font-family:'Orbitron',monospace; color:#4da6ff; font-size:1rem; letter-spacing:1px; }
+  .acct-close { background:none; border:none; color:#5a7a9a; font-size:1.5rem; cursor:pointer; }
+  .acct-close:hover { color:#ef4444; }
   .acct-body { padding:16px 20px; overflow-y:auto; flex:1; }
   .acct-section { margin-bottom:20px; }
-  .acct-section-title { color:#7EE8FA; font-size:0.85rem; font-weight:bold; margin-bottom:10px; border-bottom:1px solid #1A3A4B; padding-bottom:6px; }
-  .acct-field { color:#4A7A8A; font-size:0.8rem; margin-bottom:6px; }
-  .acct-field span { color:#7EE8FA; }
-  .acct-input { width:100%; padding:8px 12px; background:#0D1B2A; border:1px solid #1B3A4B; color:#7EE8FA; font-family:inherit; font-size:13px; border-radius:4px; margin-bottom:8px; }
-  .acct-input:focus { outline:none; border-color:#00E5FF; }
-  .acct-input::placeholder { color:#3A5A6A; }
+  .acct-section-title { color:#e0e8f0; font-size:0.85rem; font-weight:bold; margin-bottom:10px; border-bottom:1px solid #1a3a5c; padding-bottom:6px; }
+  .acct-field { color:#5a7a9a; font-size:0.8rem; margin-bottom:6px; }
+  .acct-field span { color:#e0e8f0; }
+  .acct-input { width:100%; padding:8px 12px; background:#0d1f3c; border:1px solid #1a3a5c; color:#e0e8f0; font-family:inherit; font-size:13px; border-radius:4px; margin-bottom:8px; }
+  .acct-input:focus { outline:none; border-color:#4da6ff; }
+  .acct-input::placeholder { color:#3a5a7a; }
   .acct-btn { padding:8px 16px; border:none; border-radius:4px; font-family:inherit; font-size:0.8rem; cursor:pointer; margin-right:6px; margin-bottom:6px; }
-  .acct-btn-primary { background:#00E5FF; color:#0A1520; font-weight:bold; }
-  .acct-btn-primary:hover { background:#33EEFF; }
-  .acct-btn-danger { background:#FF6B6B22; color:#FF6B6B; border:1px solid #FF6B6B33; }
-  .acct-btn-danger:hover { background:#FF6B6B44; }
-  .acct-btn-secondary { background:#0D1B2A; color:#7EE8FA; border:1px solid #1B3A4B; }
-  .acct-btn-secondary:hover { background:#1B3A4B; }
+  .acct-btn-primary { background:#4da6ff; color:#0d1f3c; font-weight:bold; }
+  .acct-btn-primary:hover { background:#6db8ff; }
+  .acct-btn-danger { background:#ef444422; color:#ef4444; border:1px solid #ef444433; }
+  .acct-btn-danger:hover { background:#ef444444; }
+  .acct-btn-secondary { background:#0d1f3c; color:#e0e8f0; border:1px solid #1a3a5c; }
+  .acct-btn-secondary:hover { background:#1a3a5c; }
   .acct-msg { font-size:0.8rem; margin-bottom:8px; min-height:18px; }
-  .acct-msg-ok { color:#88FF88; }
-  .acct-msg-err { color:#FF6B6B; }
+  .acct-msg-ok { color:#22c55e; }
+  .acct-msg-err { color:#ef4444; }
   .acct-badge { display:inline-block; padding:2px 8px; border-radius:8px; font-size:0.7rem; margin-left:6px; }
   .acct-badge-on { background:#22c55e33; color:#22c55e; }
-  .acct-badge-off { background:#1B3A4B; color:#4A7A8A; }
+  .acct-badge-off { background:#1a3a5c; color:#5a7a9a; }
   .acct-qr { display:block; margin:8px auto; max-width:200px; border-radius:4px; }
   .acct-mfa-code { letter-spacing:0.5em; text-align:center; font-size:1.1rem; }
 `;
@@ -136,7 +136,7 @@ export function openAccount(callbacks: AccountCallbacks): void {
             </div>
           ` : ''}
 
-          <div class="acct-section" style="border-top:1px solid #1A3A4B; padding-top:16px;">
+          <div class="acct-section" style="border-top:1px solid #1a3a5c; padding-top:16px;">
             <button class="acct-btn acct-btn-danger" id="acct-logout">Logout</button>
           </div>
         </div>

@@ -49,8 +49,9 @@ initMobile();
 const mobileView = isMobile();
 const viewW = Math.min(mobileView ? window.innerWidth : window.innerWidth - 400, MAX_GRID_PX);
 const viewH = Math.min(mobileView ? window.innerHeight - 76 : window.innerHeight - 60, MAX_GRID_PX);
-const gridW = Math.max(Math.floor(Math.max(viewW, MIN_GRID_PX) / CELL_SIZE), 60);
-const gridH = Math.max(Math.floor(Math.max(viewH, MIN_GRID_PX) / CELL_SIZE), 60);
+const mobileGridMult = mobileView ? 2 : 1;
+const gridW = Math.max(Math.floor(Math.max(viewW, MIN_GRID_PX) / CELL_SIZE), 60) * mobileGridMult;
+const gridH = Math.max(Math.floor(Math.max(viewH, MIN_GRID_PX) / CELL_SIZE), 60) * mobileGridMult;
 
 const sim: SimState = createSimState({ gridWidth: gridW, gridHeight: gridH });
 const _disasterState: DisasterState = createDisasterState();
@@ -323,7 +324,7 @@ function renderFrame(): void {
   if (currentHeatmap !== 'none') {
     drawHeatmapOverlay(rs.ctx, sim.grid, sim.evoStats, currentHeatmap);
   }
-  drawMinimap(rs.ctx, cam, sim.grid.species, sim.grid.width, sim.grid.height, COLOR_RGB);
+  drawMinimap(rs.ctx, cam, sim.grid.species, sim.grid.width, sim.grid.height, COLOR_RGB, mobileView ? 100 : 0);
   tickParticles(rs);
   drawParticles(rs);
 }

@@ -34,48 +34,48 @@ const MOBILE_STYLES = `
 
     #mobile-tabs {
       position: fixed; top: 0; left: 0; right: 0; z-index: 790;
-      display: flex; height: 36px; background: #04090F; border-bottom: 1px solid #0C2D40;
+      display: flex; height: 36px; background: #0a1628; border-bottom: 1px solid #1a3a5c;
     }
     .mob-tab {
       flex: 1; display: flex; align-items: center; justify-content: center;
-      color: #4A7A8A; font-size: 0.7rem; cursor: pointer; border-bottom: 2px solid transparent;
+      color: #5a7a9a; font-size: 0.7rem; cursor: pointer; border-bottom: 2px solid transparent;
       font-family: 'Share Tech Mono', monospace;
     }
-    .mob-tab.active { color: #00E5FF; border-color: #00E5FF; }
+    .mob-tab.active { color: #4da6ff; border-color: #4da6ff; }
 
     #mobile-bar {
       position: fixed; bottom: 0; left: 0; right: 0; z-index: 900;
       display: flex; height: calc(44px + env(safe-area-inset-bottom, 0px));
       align-items: center; padding: 0 8px env(safe-area-inset-bottom, 0px) 8px; gap: 4px;
-      background: #04090F; border-top: 1px solid #0C2D40;
+      background: #0a1628; border-top: 1px solid #1a3a5c;
     }
     #mobile-bar button {
       font-family: 'Share Tech Mono', monospace; font-size: 0.7rem;
-      padding: 6px 10px; border: 1px solid #0C2D40; background: #0A1622; color: #7EE8FA;
+      padding: 6px 10px; border: 1px solid #1a3a5c; background: #0d1f3c; color: #e0e8f0;
       cursor: pointer; border-radius: 3px; white-space: nowrap;
     }
     #mobile-bar .bar-spacer { flex: 1; }
-    #mobile-bar .mob-season { color: #88FF88; font-size: 0.7rem; }
-    #mobile-bar .mob-gen { color: #00E5FF; font-size: 0.7rem; }
+    #mobile-bar .mob-season { color: #22c55e; font-size: 0.7rem; }
+    #mobile-bar .mob-gen { color: #4da6ff; font-size: 0.7rem; }
 
     #mobile-drawer {
       position: fixed; bottom: calc(44px + env(safe-area-inset-bottom, 0px)); left: 0; right: 0;
-      max-height: 55vh; background: #04090F; border-top: 1px solid #0C2D40;
+      max-height: 55vh; background: #0a1628; border-top: 1px solid #1a3a5c;
       z-index: 850; overflow-y: auto; padding: 8px;
       display: none;
     }
     #mobile-drawer.open { display: block; }
     #mobile-drawer::-webkit-scrollbar { width: 4px; }
-    #mobile-drawer::-webkit-scrollbar-thumb { background: #0C2D40; border-radius: 2px; }
+    #mobile-drawer::-webkit-scrollbar-thumb { background: #1a3a5c; border-radius: 2px; }
 
     #paint-fab {
-      position: fixed; bottom: calc(56px + env(safe-area-inset-bottom, 0px)); right: 12px; z-index: 810;
+      position: fixed; bottom: calc(56px + env(safe-area-inset-bottom, 0px)); left: 12px; z-index: 810;
       width: 52px; height: 52px; border-radius: 50%;
-      background: #0A1622; border: 2px solid #0C2D40; color: #7EE8FA;
+      background: #0d1f3c; border: 2px solid #1a3a5c; color: #e0e8f0;
       font-family: 'Share Tech Mono', monospace; font-size: 0.6rem;
       cursor: pointer; display: flex; align-items: center; justify-content: center;
     }
-    #paint-fab.active { background: #0D2438; border-color: #00E5FF; color: #00E5FF; }
+    #paint-fab.active { background: #162d4a; border-color: #4da6ff; color: #4da6ff; }
   }
 
   @media (min-width: 769px) {
@@ -227,38 +227,38 @@ function buildMenuDrawer(): string {
       <button class="mob-menu-btn" data-action="seed" title="Populate grid with a balanced random ecosystem">Seed</button>
       <button class="mob-menu-btn" data-action="balance" title="Add rock reef formations">Balance</button>
       <button class="mob-menu-btn" data-action="biome" title="Reset and generate a terrain-driven biome">Biome</button>
-      <button class="mob-menu-btn" data-action="clear" style="color:#FF6B6B;" title="Wipe the entire grid">Clear</button>
+      <button class="mob-menu-btn" data-action="clear" style="color:#ef4444;" title="Wipe the entire grid">Clear</button>
     </div>
-    <div style="display:flex;flex-wrap:wrap;gap:6px;padding:8px 0;border-top:1px solid #0C2D40;margin-top:8px;">
+    <div style="display:flex;flex-wrap:wrap;gap:6px;padding:8px 0;border-top:1px solid #1a3a5c;margin-top:8px;">
       <button class="mob-menu-btn" data-action="save" title="Save simulation to your account or download">Save</button>
       <button class="mob-menu-btn" data-action="load" title="Load a simulation from file">Load</button>
       <button class="mob-menu-btn" data-action="dashboard" title="Browse your saved simulations">My Sims</button>
       <button class="mob-menu-btn" data-action="leaderboard" title="View top scores leaderboard">Ranks</button>
       <button class="mob-menu-btn" data-action="export" title="Download detailed data export">Export</button>
     </div>
-    <div style="display:flex;flex-wrap:wrap;gap:6px;padding:8px 0;border-top:1px solid #0C2D40;margin-top:8px;">
+    <div style="display:flex;flex-wrap:wrap;gap:6px;padding:8px 0;border-top:1px solid #1a3a5c;margin-top:8px;">
       <button class="mob-menu-btn" data-action="tree" title="View phylogenetic tree of species lineages">Tree</button>
       <button class="mob-menu-btn" data-action="settings" title="Adjust simulation parameters">Settings</button>
       <button class="mob-menu-btn" data-action="help" title="Open the comprehensive help guide">Help</button>
       <button class="mob-menu-btn" data-action="account" title="Login, register or manage your account">Account</button>
     </div>
     ${isAdmin() ? `
-    <div style="display:flex;flex-wrap:wrap;gap:6px;padding:8px 0;border-top:1px solid #0C2D40;margin-top:8px;">
+    <div style="display:flex;flex-wrap:wrap;gap:6px;padding:8px 0;border-top:1px solid #1a3a5c;margin-top:8px;">
       <button class="mob-menu-btn" data-action="admin" style="color:#FFD700;" title="Open the admin console">Admin</button>
     </div>
     ` : ''}
-    <div style="display:flex;align-items:center;gap:6px;padding:8px 0;border-top:1px solid #0C2D40;margin-top:8px;">
-      <label style="color:#4A7A8A;font-size:0.7rem;display:flex;align-items:center;gap:4px;">
-        <input type="checkbox" id="mob-evo" style="accent-color:#00E5FF;"> Evolution
+    <div style="display:flex;align-items:center;gap:6px;padding:8px 0;border-top:1px solid #1a3a5c;margin-top:8px;">
+      <label style="color:#5a7a9a;font-size:0.7rem;display:flex;align-items:center;gap:4px;">
+        <input type="checkbox" id="mob-evo" style="accent-color:#4da6ff;"> Evolution
       </label>
     </div>
     <style>
       .mob-menu-btn {
         font-family: 'Share Tech Mono', monospace; font-size: 0.7rem;
-        padding: 6px 14px; border: 1px solid #0C2D40; background: #0A1622; color: #7EE8FA;
+        padding: 6px 14px; border: 1px solid #1a3a5c; background: #0d1f3c; color: #e0e8f0;
         cursor: pointer; border-radius: 3px;
       }
-      .mob-menu-btn:active { background: #1B3A4B; }
+      .mob-menu-btn:active { background: #1a3a5c; }
     </style>
   `;
 }

@@ -17,7 +17,7 @@ const TIER_COLORS: Record<string, string> = {
   apex: '#FF4466',
   megafauna: '#6688CC',
   decomposer: '#88FFCC',
-  environment: '#4A7A8A',
+  environment: '#5a7a9a',
   transient: '#8B7355',
 };
 
@@ -66,7 +66,7 @@ function buildContent(
   const parts: string[] = [];
 
   if (sp) {
-    const tc = TIER_COLORS[sp.tier] || '#7EE8FA';
+    const tc = TIER_COLORS[sp.tier] || '#e0e8f0';
     parts.push(`<div class="tt-name" style="color:${sp.color}">${sp.name}</div>`);
 
     if (sp.tier !== 'none') {
@@ -95,7 +95,7 @@ function buildContent(
 
   if (isAnimal) {
     const hPct = Math.round((hunger / es.hungerMax) * 100);
-    const hColor = hPct > 75 ? '#FF4444' : hPct > 40 ? '#FFAA44' : '#88FF88';
+    const hColor = hPct > 75 ? '#FF4444' : hPct > 40 ? '#FFAA44' : '#22c55e';
     parts.push(`<div class="tt-stat">Hunger: <span style="color:${hColor}">${hunger}/${es.hungerMax}</span></div>`);
     parts.push(`<div class="tt-stat">Speed: ${Math.round(es.moveRate * 100)}% · Breed: ${(es.breedRate * 100).toFixed(1)}%</div>`);
   } else if (isProducer) {
@@ -138,7 +138,7 @@ function buildContent(
 
     const diversity = speciesGeneticDiversity(es.genes);
     const dPct = Math.round(diversity * 100);
-    const dColor = dPct > 25 ? '#88FF88' : dPct > 10 ? '#FFAA44' : '#FF4444';
+    const dColor = dPct > 25 ? '#22c55e' : dPct > 10 ? '#FFAA44' : '#FF4444';
     parts.push(`<div class="tt-stat">Diversity: <span style="color:${dColor}">${dPct}%</span></div>`);
   }
 
@@ -238,14 +238,14 @@ export function injectTooltipStyles(): void {
       position: fixed;
       pointer-events: none;
       z-index: 999;
-      background: rgba(4, 9, 15, 0.95);
-      border: 1px solid #0C2D40;
+      background: rgba(10, 22, 40, 0.95);
+      border: 1px solid #1a3a5c;
       border-radius: 5px;
       padding: 8px 10px;
       max-width: 220px;
       font-family: 'Share Tech Mono', monospace;
       font-size: 0.72rem;
-      color: #7EE8FA;
+      color: #e0e8f0;
       backdrop-filter: blur(6px);
       display: none;
       line-height: 1.4;
@@ -262,11 +262,11 @@ export function injectTooltipStyles(): void {
       margin-bottom: 4px;
     }
     .tt-stat {
-      color: #8AB4C4;
+      color: #8ab0c8;
       margin-bottom: 1px;
     }
     .tt-desc {
-      color: #4A7A8A;
+      color: #5a7a9a;
       font-style: italic;
       font-size: 0.68rem;
       margin-top: 4px;
@@ -278,9 +278,9 @@ export function injectTooltipStyles(): void {
       margin-top: 4px;
     }
     .tt-trait {
-      color: #DDBB44;
+      color: #d97706;
       font-size: 0.65rem;
-      background: rgba(221, 187, 68, 0.1);
+      background: rgba(217, 119, 6, 0.1);
       border-radius: 3px;
       padding: 1px 4px;
     }
@@ -293,7 +293,7 @@ export function injectTooltipStyles(): void {
     }
     .tt-genes {
       margin-top: 5px;
-      border-top: 1px solid #0C2D40;
+      border-top: 1px solid #1a3a5c;
       padding-top: 4px;
     }
     .tt-gene-row {
@@ -303,7 +303,7 @@ export function injectTooltipStyles(): void {
       margin-bottom: 2px;
     }
     .tt-gene-label {
-      color: #4A7A8A;
+      color: #5a7a9a;
       font-size: 0.6rem;
       width: 36px;
       text-align: right;
@@ -312,26 +312,26 @@ export function injectTooltipStyles(): void {
     .tt-gene-track {
       flex: 1;
       height: 4px;
-      background: #0D1B2A;
+      background: #0d1f3c;
       border-radius: 2px;
       overflow: hidden;
     }
     .tt-gene-fill {
       height: 100%;
-      background: #00E5FF;
+      background: #4da6ff;
       border-radius: 2px;
     }
     .tt-gene-pct {
-      color: #4A7A8A;
+      color: #5a7a9a;
       font-size: 0.6rem;
       width: 20px;
       text-align: right;
     }
     .tt-lineage {
-      color: #4A7A8A;
+      color: #5a7a9a;
       font-size: 0.65rem;
       margin-top: 4px;
-      border-top: 1px solid #0C2D40;
+      border-top: 1px solid #1a3a5c;
       padding-top: 3px;
     }
   `;

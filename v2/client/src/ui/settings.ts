@@ -110,34 +110,34 @@ export function injectSettingsStyles(): void {
       display: flex; align-items: center; justify-content: center;
     }
     .settings-panel {
-      background: #0A1520; border: 1px solid #1A3A4B; border-radius: 8px;
+      background: #0d1f3c; border: 1px solid #1a3a5c; border-radius: 8px;
       width: 380px; max-width: 90vw;
-      font-family: 'Share Tech Mono', monospace; color: #7EE8FA;
+      font-family: 'Share Tech Mono', monospace; color: #e0e8f0;
     }
     .settings-header {
       display: flex; justify-content: space-between; align-items: center;
-      padding: 12px 16px; border-bottom: 1px solid #1A3A4B;
-      font-family: 'Orbitron', monospace; color: #00E5FF; letter-spacing: 1px;
+      padding: 12px 16px; border-bottom: 1px solid #1a3a5c;
+      font-family: 'Orbitron', monospace; color: #4da6ff; letter-spacing: 1px;
     }
     .settings-header button {
-      background: none; border: none; color: #4A7A8A; font-size: 1.5rem; cursor: pointer;
+      background: none; border: none; color: #5a7a9a; font-size: 1.5rem; cursor: pointer;
     }
-    .settings-header button:hover { color: #FF6B6B; }
+    .settings-header button:hover { color: #ef4444; }
     .settings-body { padding: 16px; }
     .settings-group { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
-    .settings-label { width: 140px; font-size: 0.85rem; color: #4A7A8A; flex-shrink: 0; }
-    .settings-group input[type="range"] { flex: 1; accent-color: #00E5FF; }
+    .settings-label { width: 140px; font-size: 0.85rem; color: #5a7a9a; flex-shrink: 0; }
+    .settings-group input[type="range"] { flex: 1; accent-color: #4da6ff; }
     .settings-group span { width: 40px; text-align: right; font-size: 0.85rem; }
     .settings-num {
-      width: 70px; background: #0D1B2A; border: 1px solid #1A3A4B; color: #7EE8FA;
+      width: 70px; background: #0d1f3c; border: 1px solid #1a3a5c; color: #e0e8f0;
       padding: 4px 8px; font-family: inherit; font-size: 0.85rem; border-radius: 3px;
     }
     .settings-btn {
-      width: 100%; background: #0D1B2A; border: 1px solid #1A3A4B; color: #FF6B6B;
+      width: 100%; background: #0d1f3c; border: 1px solid #1a3a5c; color: #ef4444;
       padding: 8px; cursor: pointer; font-family: inherit; font-size: 0.85rem;
       border-radius: 3px; margin-top: 8px;
     }
-    .settings-btn:hover { background: #1B3A4B; }
+    .settings-btn:hover { background: #1a3a5c; }
   `;
   document.head.appendChild(style);
 }
