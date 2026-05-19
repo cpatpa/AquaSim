@@ -71,7 +71,7 @@ function _portraitPalette(rgb: [number, number, number], expGenes: ExpressedGene
 // ---------------------------------------------------------------------------
 
 function resolveBody(bid: number, tier: string): number {
-  if ([10, 11, 12, 20, 21, 22, 23, 30, 31, 32, 40, 41, 42, 43, 50, 51].includes(bid)) return bid;
+  if ([10, 11, 12, 20, 21, 22, 23, 30, 31, 32, 40, 41, 42, 43, 50, 51, 60, 61, 62, 63, 64, 65, 66, 67].includes(bid)) return bid;
   const maps: Record<string, number[]> = {
     producer: [10, 11, 12], herbivore: [20, 21, 22, 23], consumer: [30, 31, 32],
     apex: [40, 41], megafauna: [42, 43], decomposer: [50, 51],
@@ -996,6 +996,525 @@ export function generateCreaturePortrait(
     const dolEyeY = startY + 2;
     rect(dolEyeX, dolEyeY, 2, 2, [255, 255, 255]);
     px(dolEyeX + 1, dolEyeY + 1, [0, 0, 0]);
+
+  } else if (bodyPlan === 60) {
+    // Jellyfish: translucent bell with trailing tentacles
+    const bellR = Math.round((10 + ag.f * 3) * evoScale);
+    const bellY = mid - Math.round(bellR * 0.3);
+    // Semi-transparent bell dome (upper half)
+    for (let dy = -bellR; dy <= 0; dy++) {
+      const w = Math.round(Math.sqrt(bellR * bellR - dy * dy));
+      for (let dx = -w; dx <= w; dx++) {
+        const edgeDist = Math.sqrt(dx * dx + dy * dy) / bellR;
+        const alpha = 0.3 + (1 - edgeDist) * 0.35;
+        px(mid + dx, bellY + dy, Math.abs(dx) >= w - 1 ? pal.dark : pal.base, alpha);
+      }
+    }
+    // Bell rim (thicker bottom edge)
+    for (let dx = -bellR; dx <= bellR; dx++) {
+      const d2 = dx * dx;
+      if (d2 <= bellR * bellR) {
+        px(mid + dx, bellY, pal.dark, 0.7);
+        px(mid + dx, bellY + 1, pal.dark, 0.5);
+      }
+    }
+    // Inner bell shading
+    const innerR = Math.round(bellR * 0.6);
+    for (let dy = -innerR; dy <= 0; dy++) {
+      const w = Math.round(Math.sqrt(innerR * innerR - dy * dy));
+      for (let dx = -w; dx <= w; dx++) {
+        px(mid + dx, bellY + dy + 1, pal.light, 0.15);
+      }
+    }
+    // Oral arms (short thick structures below bell centre)
+    const oralCount = 4;
+    for (let oa = 0; oa < oralCount; oa++) {
+      const ox = mid + Math.round((oa - 1.5) * 3);
+      const oLen = Math.round(3 + ag.s * 2);
+      for (let s = 0; s < oLen; s++) {
+        px(ox + Math.round(Math.sin(s * 0.8) * 1), bellY + 2 + s, pal.belly, 0.6);
+      }
+    }
+    // Trailing tentacles
+    const tentCount = 5 + Math.round(ag.v * 4);
+    const tentMaxLen = Math.round((14 + ag.v * 8) * evoScale);
+    for (let t = 0; t < tentCount; t++) {
+      const tx = mid + Math.round((t - (tentCount - 1) / 2) * bellR * 2 / tentCount);
+      const tLen = tentMaxLen - Math.round(rng() * 4);
+      const phase = rng() * Math.PI * 2;
+      const amp = 1.5 + rng() * 2;
+      for (let s = 0; s < tLen; s++) {
+        const waveX = Math.round(Math.sin(s * 0.4 + phase) * amp);
+        const alpha = 0.5 - s / tLen * 0.3;
+        px(tx + waveX, bellY + 2 + s, s % 3 === 0 ? pal.secondary : pal.base, Math.max(0.1, alpha));
+      }
+    }
+    // Bioluminescent dots scattered on bell
+    const glowCount = 4 + Math.round(ag.o * 6);
+    for (let g = 0; g < glowCount; g++) {
+      const ga = rng() * Math.PI;
+      const gd = rng() * (bellR - 2);
+      const gx = mid + Math.round(Math.cos(ga + Math.PI) * gd);
+      const gy = bellY - Math.round(Math.sin(ga) * gd * 0.5);
+      px(gx, gy, pal.light, 0.8);
+      px(gx + 1, gy, pal.light, 0.4);
+    }
+
+  } else if (bodyPlan === 61) {
+    // Sea Turtle: oval shell with hexagonal pattern, head and flippers
+    const shellW = Math.round((13 + ag.f * 3) * evoScale);
+    const shellH = Math.round((9 + ag.f * 2) * evoScale);
+    const shellY = mid;
+    // Shell body (filled oval)
+    for (let dy = -shellH; dy <= shellH; dy++) {
+      const w = Math.round(shellW * Math.sqrt(1 - (dy * dy) / (shellH * shellH)));
+      for (let dx = -w; dx <= w; dx++) {
+        const edgeT = Math.abs(dx) / Math.max(1, w);
+        const col = edgeT > 0.8 ? pal.dark : pal.base;
+        px(mid + dx, shellY + dy, col);
+      }
+    }
+    // Shell outline
+    for (let dy = -shellH; dy <= shellH; dy++) {
+      const w = Math.round(shellW * Math.sqrt(1 - (dy * dy) / (shellH * shellH)));
+      px(mid - w - 1, shellY + dy, pal.outline);
+      px(mid + w + 1, shellY + dy, pal.outline);
+    }
+    for (let dx = -shellW; dx <= shellW; dx++) {
+      const h = Math.round(shellH * Math.sqrt(1 - (dx * dx) / (shellW * shellW)));
+      px(mid + dx, shellY - h - 1, pal.outline);
+      px(mid + dx, shellY + h + 1, pal.outline);
+    }
+    // Hexagonal shell pattern (armour-influenced)
+    const hexSize = Math.round(3 + ag.o * 2);
+    const armourAlpha = 0.25 + ag.o * 0.35;
+    for (let hy = -shellH + hexSize; hy < shellH; hy += hexSize + 1) {
+      const rowOff = ((Math.round((hy + shellH) / (hexSize + 1))) % 2) * Math.round(hexSize * 0.8);
+      for (let hx = -shellW + hexSize + rowOff; hx < shellW; hx += hexSize * 2 + 1) {
+        const w = Math.round(shellW * Math.sqrt(Math.max(0, 1 - (hy * hy) / (shellH * shellH))));
+        if (Math.abs(hx) < w - 1) {
+          // Hex border lines
+          for (let s = -hexSize; s <= hexSize; s++) {
+            px(mid + hx + s, shellY + hy, pal.dark, armourAlpha);
+          }
+          for (let s = 0; s <= hexSize; s++) {
+            px(mid + hx - hexSize, shellY + hy + s, pal.dark, armourAlpha);
+            px(mid + hx + hexSize, shellY + hy + s, pal.dark, armourAlpha);
+          }
+        }
+      }
+    }
+    // Head (poking out right)
+    const headX = mid + shellW + 1;
+    const headR = Math.round(3 + ag.s);
+    fillCircle(headX + headR, shellY - 1, headR, pal.belly);
+    outlineCircle(headX + headR, shellY - 1, headR, pal.outline);
+    // Eye
+    px(headX + headR + 1, shellY - 2, [0, 0, 0]);
+    px(headX + headR + 1, shellY - 3, [255, 255, 255]);
+    // Front flippers
+    for (const fside of [-1, 1]) {
+      const fLen = Math.round(5 + ag.s * 3);
+      for (let f = 0; f < fLen; f++) {
+        const fw = Math.max(1, Math.round(2 * (1 - f / fLen)));
+        for (let dy = -fw; dy <= fw; dy++) {
+          px(mid + Math.round(shellW * 0.4) + f, shellY + fside * (shellH + 1 + Math.round(f * 0.5)) + dy, pal.belly);
+        }
+        px(mid + Math.round(shellW * 0.4) + f, shellY + fside * (shellH + 1 + Math.round(f * 0.5) + 1), pal.outline);
+      }
+    }
+    // Rear flippers (smaller)
+    for (const fside of [-1, 1]) {
+      const fLen = Math.round(3 + ag.s * 2);
+      for (let f = 0; f < fLen; f++) {
+        px(mid - Math.round(shellW * 0.5) - f, shellY + fside * (shellH + 1 + Math.round(f * 0.3)), pal.belly);
+        px(mid - Math.round(shellW * 0.5) - f, shellY + fside * (shellH + 2 + Math.round(f * 0.3)), pal.outline);
+      }
+    }
+    // Small tail
+    for (let t = 0; t < 3; t++) {
+      px(mid - shellW - 1 - t, shellY, pal.belly);
+    }
+    px(mid - shellW - 4, shellY, pal.outline);
+
+  } else if (bodyPlan === 62) {
+    // Manta Ray: wide diamond/wing shape, flat body
+    const wingW = Math.round((20 + ag.f * 5) * evoScale);
+    const wingH = Math.round((8 + ag.f * 2) * evoScale);
+    const mantaY = mid;
+    // Diamond wing body
+    for (let dx = -wingW; dx <= wingW; dx++) {
+      const t = Math.abs(dx) / wingW;
+      const h = Math.round(wingH * (1 - t) * (t < 0.3 ? 0.8 + t * 0.67 : 1));
+      // Wing tip curl upward
+      const tipCurl = t > 0.85 ? -Math.round((t - 0.85) * 20) : 0;
+      for (let dy = -h; dy <= h; dy++) {
+        const col = dy > h * 0.3 ? pal.belly : pal.base;
+        px(mid + dx, mantaY + dy + tipCurl, col);
+      }
+      px(mid + dx, mantaY - h - 1 + tipCurl, pal.dark);
+      px(mid + dx, mantaY + h + 1 + tipCurl, pal.dark);
+    }
+    // Outline left and right tips
+    px(mid - wingW - 1, mantaY, pal.dark);
+    px(mid + wingW + 1, mantaY, pal.dark);
+    // Spotted belly pattern
+    const spotCount = 5 + Math.round(ag.o * 6);
+    for (let s = 0; s < spotCount; s++) {
+      const sx = mid + Math.round((rng() - 0.5) * wingW * 1.2);
+      const sy = mantaY + Math.round(rng() * wingH * 0.5);
+      fillCircle(sx, sy, 1, pal.secondary, 0.3);
+    }
+    // Cephalic fins (two small forward-pointing lobes near mouth)
+    for (const cside of [-1, 1]) {
+      const cfX = mid + cside * Math.round(wingH * 0.4);
+      for (let f = 0; f < 4; f++) {
+        px(cfX + cside * Math.round(f * 0.3), mantaY - wingH + 2 - f, pal.base);
+        px(cfX + cside * Math.round(f * 0.3) + cside, mantaY - wingH + 2 - f, pal.dark);
+      }
+    }
+    // Mouth slit
+    const mouthW = Math.round(3 + ag.s * 2);
+    for (let mx = -mouthW; mx <= mouthW; mx++) {
+      px(mid + mx, mantaY - wingH + 3, pal.dark, 0.6);
+    }
+    // Small eyes
+    for (const eside of [-1, 1]) {
+      px(mid + eside * Math.round(wingH * 0.6), mantaY - Math.round(wingH * 0.5), [0, 0, 0]);
+      px(mid + eside * Math.round(wingH * 0.6), mantaY - Math.round(wingH * 0.5) - 1, [255, 255, 255]);
+    }
+    // Thin tail
+    const tailLen = Math.round(6 + ag.s * 4);
+    for (let t = 0; t < tailLen; t++) {
+      px(mid, mantaY + wingH + 1 + t, pal.dark, 0.7 - t / tailLen * 0.4);
+    }
+    // Dark dorsal shading
+    for (let dx = -Math.round(wingW * 0.3); dx <= Math.round(wingW * 0.3); dx++) {
+      const t = Math.abs(dx) / Math.round(wingW * 0.3);
+      px(mid + dx, mantaY - Math.round(wingH * 0.3 * (1 - t)), pal.dark, 0.15);
+    }
+
+  } else if (bodyPlan === 63) {
+    // Anglerfish: round bulky body, massive jaw, bioluminescent lure
+    const bR = Math.round((11 + ag.f * 3) * evoScale);
+    const anglerY = mid + 1;
+    // Bulky round body
+    for (let dy = -bR; dy <= bR; dy++) {
+      for (let dx = -bR; dx <= bR; dx++) {
+        if (dx * dx + dy * dy <= bR * bR) {
+          // Dark colouring throughout
+          const dist = Math.sqrt(dx * dx + dy * dy) / bR;
+          const col = dist > 0.7 ? pal.dark : pal.base;
+          px(mid + dx, anglerY + dy, col);
+        }
+      }
+    }
+    outlineCircle(mid, anglerY, bR, pal.outline);
+    // Belly region (slightly lighter)
+    for (let dy = Math.round(bR * 0.2); dy <= bR - 1; dy++) {
+      const w = Math.round(Math.sqrt(bR * bR - dy * dy) * 0.6);
+      for (let dx = -w; dx <= w; dx++) {
+        px(mid + dx, anglerY + dy, pal.belly, 0.3);
+      }
+    }
+    // Massive jaw (extends forward and down)
+    const jawLen = Math.round(5 + ag.p * 4);
+    const jawOpen = Math.round(3 + ag.a * 3);
+    const jawX = mid + bR - 2;
+    const jawY = anglerY + Math.round(bR * 0.3);
+    // Upper jaw
+    for (let j = 0; j < jawLen; j++) {
+      px(jawX + j, jawY, pal.dark);
+      px(jawX + j, jawY - 1, pal.base);
+    }
+    // Lower jaw
+    for (let j = 0; j < jawLen; j++) {
+      px(jawX + j, jawY + jawOpen, pal.dark);
+      px(jawX + j, jawY + jawOpen + 1, pal.outline);
+    }
+    // Teeth (jagged along both jaws)
+    const toothCount = Math.round(2 + ag.a * 3);
+    for (let t = 0; t < toothCount; t++) {
+      const tx = jawX + 1 + Math.round(t * (jawLen - 2) / Math.max(1, toothCount - 1));
+      px(tx, jawY + 1, [240, 240, 230]);
+      px(tx, jawY + 2, [240, 240, 230]);
+      px(tx, jawY + jawOpen - 1, [240, 240, 230]);
+      px(tx, jawY + jawOpen - 2, [240, 240, 230]);
+    }
+    // Bioluminescent lure (stalk from top of head, bright dot at end)
+    const stalkLen = Math.round(8 + ag.v * 5);
+    const stalkBaseX = mid + Math.round(bR * 0.3);
+    const stalkBaseY = anglerY - bR;
+    for (let s = 0; s < stalkLen; s++) {
+      const sx = stalkBaseX + Math.round(Math.sin(s * 0.3) * 2 + s * 0.3);
+      const sy = stalkBaseY - s;
+      px(sx, sy, pal.dark, 0.6);
+    }
+    // Bright lure dot
+    const lureX = stalkBaseX + Math.round(Math.sin(stalkLen * 0.3) * 2 + stalkLen * 0.3);
+    const lureY = stalkBaseY - stalkLen;
+    fillCircle(lureX, lureY, 2, [200, 255, 220]);
+    px(lureX, lureY, [255, 255, 200]);
+    px(lureX - 1, lureY - 1, [200, 255, 220], 0.5);
+    px(lureX + 1, lureY - 1, [200, 255, 220], 0.5);
+    // Small beady eye
+    px(mid + Math.round(bR * 0.5), anglerY - Math.round(bR * 0.3), [255, 255, 255]);
+    px(mid + Math.round(bR * 0.5) + 1, anglerY - Math.round(bR * 0.3), [0, 0, 0]);
+    // Small pectoral fin
+    const finLen = Math.round(2 + ag.s * 2);
+    for (let f = 0; f < finLen; f++) {
+      px(mid - bR - 1 - f, anglerY + Math.round(f * 0.5), pal.base);
+      px(mid - bR - 1 - f, anglerY + Math.round(f * 0.5) + 1, pal.dark);
+    }
+
+  } else if (bodyPlan === 64) {
+    // Sea Horse: curved S-shape body, curled tail, elongated snout
+    const bodyH = Math.round((24 + ag.f * 6) * evoScale);
+    const bodyW = Math.round((3 + ag.f * 2) * evoScale);
+    const topY = mid - Math.round(bodyH * 0.35);
+    // S-curve body segments
+    const segCount = bodyH;
+    const ridgeGap = Math.max(2, Math.round(3 - ag.o));
+    for (let s = 0; s < segCount; s++) {
+      const t = s / segCount;
+      // S-curve: top leans right, belly curves left, tail curls right
+      const sOff = Math.round(Math.sin(t * Math.PI * 1.5 - 0.3) * (5 + ag.s * 3));
+      const w = t < 0.15 ? Math.round(bodyW * (0.5 + t * 3.3))
+              : t > 0.7 ? Math.max(1, Math.round(bodyW * (1 - (t - 0.7) * 2.5)))
+              : bodyW;
+      const yy = topY + s;
+      for (let dx = -w; dx <= w; dx++) {
+        const isRidge = (s % ridgeGap === 0);
+        const col = isRidge ? pal.dark : (dx === -w || dx === w ? pal.dark : pal.base);
+        px(mid + sOff + dx, yy, col);
+      }
+      // Belly shading on front side
+      if (t > 0.2 && t < 0.6) {
+        px(mid + sOff + w + 1, yy, pal.belly, 0.3);
+      }
+    }
+    // Curled tail (spiral at bottom)
+    const tailStart = topY + segCount;
+    const tailSegs = Math.round(8 + ag.s * 4);
+    const lastSOff = Math.round(Math.sin(1.0 * Math.PI * 1.5 - 0.3) * (5 + ag.s * 3));
+    for (let t = 0; t < tailSegs; t++) {
+      const angle = t * 0.4;
+      const radius = Math.max(1, 4 - t * 0.3);
+      const tx = mid + lastSOff + Math.round(Math.cos(angle) * radius);
+      const ty = tailStart + Math.round(Math.sin(angle) * radius) + Math.round(t * 0.3);
+      px(tx, ty, pal.base);
+      px(tx, ty + 1, pal.dark);
+    }
+    // Head and snout (at top)
+    const headSOff = Math.round(Math.sin(-0.3) * (5 + ag.s * 3));
+    const headX = mid + headSOff;
+    const headY = topY;
+    // Head bump
+    fillCircle(headX, headY - 2, Math.round(3 * evoScale), pal.base);
+    outlineCircle(headX, headY - 2, Math.round(3 * evoScale), pal.dark);
+    // Elongated snout
+    const snoutLen = Math.round(5 + ag.s * 3);
+    for (let sl = 0; sl < snoutLen; sl++) {
+      px(headX + 3 + sl, headY - 3, pal.base);
+      px(headX + 3 + sl, headY - 2, pal.base);
+      px(headX + 3 + sl, headY - 4, pal.dark);
+      px(headX + 3 + sl, headY - 1, pal.dark);
+    }
+    px(headX + 3 + snoutLen, headY - 3, pal.dark);
+    // Eye
+    px(headX + 2, headY - 3, [255, 255, 255]);
+    px(headX + 2, headY - 2, [0, 0, 0]);
+    // Small dorsal fin (on back curve)
+    const finY = topY + Math.round(bodyH * 0.3);
+    const finSOff = Math.round(Math.sin(0.3 * Math.PI * 1.5 - 0.3) * (5 + ag.s * 3));
+    const dorsalH = Math.round(3 + ag.s * 2);
+    const dorsalW = Math.round(3 + ag.s);
+    for (let f = 0; f < dorsalW; f++) {
+      const fh = Math.round(dorsalH * (1 - f / dorsalW));
+      for (let dy = 0; dy < fh; dy++) {
+        px(mid + finSOff - bodyW - 1 - f, finY + dy, pal.secondary);
+      }
+      px(mid + finSOff - bodyW - 1 - f, finY - 1, pal.dark);
+    }
+    // Crown/coronet at top of head
+    for (let c = 0; c < 3; c++) {
+      px(headX - 1 + c, headY - 5 - Math.round(evoScale), pal.dark);
+      px(headX - 1 + c, headY - 6 - Math.round(evoScale), pal.secondary);
+    }
+
+  } else if (bodyPlan === 65) {
+    // Kelp: tall vertical strand with wavy leaf blades
+    const stemH = Math.round((38 + ag.v * 8) * evoScale);
+    const stemBase = mid + Math.round(stemH * 0.38);
+    const stemTop = stemBase - stemH;
+    const stemW = 1 + Math.round(ag.f);
+    // Holdfast at base
+    const holdW = Math.round(4 + ag.f * 2);
+    for (let hx = -holdW; hx <= holdW; hx++) {
+      const hh = Math.round(2 + Math.abs(hx) * 0.3);
+      for (let hy = 0; hy < hh; hy++) {
+        px(mid + hx, stemBase + 1 + hy, pal.dark);
+      }
+    }
+    for (let hx = -holdW - 1; hx <= holdW + 1; hx++) {
+      px(mid + hx, stemBase + 1, pal.outline);
+    }
+    // Main stem (darker, slightly wavy)
+    const stemPeriod = 20 + Math.round(ag.s * 6);
+    const stemAmp = 1 + Math.round(ag.s);
+    for (let y = 0; y < stemH; y++) {
+      const yy = stemBase - y;
+      const xOff = Math.round(Math.sin(y * Math.PI * 2 / stemPeriod) * stemAmp);
+      for (let dx = -stemW; dx <= stemW; dx++) {
+        px(mid + xOff + dx, yy, dx === -stemW || dx === stemW ? pal.outline : pal.dark);
+      }
+    }
+    // Multiple fronds / leaf blades branching off
+    const frondCount = 5 + Math.round(ag.v * 4);
+    for (let i = 0; i < frondCount; i++) {
+      const fy = stemBase - Math.round((i + 1) * stemH / (frondCount + 1));
+      const fxBase = mid + Math.round(Math.sin((stemBase - fy) * Math.PI * 2 / stemPeriod) * stemAmp);
+      const fside = i % 2 === 0 ? 1 : -1;
+      const fLen = Math.round(7 + ag.f * 5 + rng() * 3);
+      const fW = Math.round(2 + ag.v * 2);
+      const wavePeriod = 5 + Math.round(rng() * 3);
+      for (let s = 0; s < fLen; s++) {
+        const fx = fxBase + fside * (1 + s);
+        const waveOff = Math.round(Math.sin(s * Math.PI * 2 / wavePeriod) * 1.5);
+        const cw = Math.max(1, Math.round(fW * (1 - s / fLen * 0.6)));
+        for (let dw = 0; dw < cw; dw++) {
+          // Lighter leaf tips
+          const tipFactor = s / fLen;
+          const col = tipFactor > 0.7 ? pal.light : (dw === 0 ? pal.light : pal.base);
+          px(fx, fy + waveOff + dw, col);
+        }
+        px(fx, fy + waveOff - 1, pal.dark, 0.4);
+      }
+    }
+    // Gas bladders (small bubbles along stem near top)
+    const bladderCount = 2 + Math.round(ag.o * 3);
+    for (let b = 0; b < bladderCount; b++) {
+      const by = stemTop + Math.round(rng() * stemH * 0.3);
+      const bxBase = mid + Math.round(Math.sin((stemBase - by) * Math.PI * 2 / stemPeriod) * stemAmp);
+      fillCircle(bxBase + (b % 2 === 0 ? 2 : -2), by, 2, pal.light);
+      outlineCircle(bxBase + (b % 2 === 0 ? 2 : -2), by, 2, pal.dark, 0.4);
+    }
+
+  } else if (bodyPlan === 66) {
+    // Anemone: circular base with radiating colourful tentacles
+    const baseR = Math.round((6 + ag.f * 2) * evoScale);
+    const baseY = mid + Math.round(6 * evoScale);
+    // Foot / base column
+    const colH = Math.round(6 + ag.s * 3);
+    for (let y = 0; y < colH; y++) {
+      const w = baseR + Math.round((colH - y) * 0.3);
+      for (let dx = -w; dx <= w; dx++) {
+        px(mid + dx, baseY - y, Math.abs(dx) >= w - 1 ? pal.dark : pal.base);
+      }
+    }
+    // Base attachment
+    for (let dx = -(baseR + 3); dx <= baseR + 3; dx++) {
+      px(mid + dx, baseY + 1, pal.dark);
+      px(mid + dx, baseY + 2, pal.outline);
+    }
+    // Oral disc (top of column)
+    const discY = baseY - colH;
+    const discR = baseR + 1;
+    for (let dx = -discR; dx <= discR; dx++) {
+      for (let dy = -1; dy <= 1; dy++) {
+        if (dx * dx <= discR * discR) {
+          px(mid + dx, discY + dy, pal.belly);
+        }
+      }
+    }
+    // Central mouth
+    fillCircle(mid, discY, 2, pal.dark);
+    px(mid, discY, pal.secondary, 0.6);
+    // Radiating tentacles (colourful and wavy)
+    const tentRings = 2 + Math.round(ag.v * 2);
+    const tentsPerRing = 8 + Math.round(ag.v * 4);
+    for (let ring = 0; ring < tentRings; ring++) {
+      const ringR = discR * (0.5 + ring * 0.4);
+      const tentLen = Math.round((8 + ag.v * 6 - ring * 2) * evoScale);
+      for (let t = 0; t < tentsPerRing; t++) {
+        const angle = (t / tentsPerRing) * Math.PI * 2 + ring * 0.2;
+        const baseX = mid + Math.round(Math.cos(angle) * ringR);
+        const baseTY = discY - Math.round(Math.sin(angle) * ringR * 0.3);
+        const phase = rng() * Math.PI * 2;
+        const amp = 1 + rng() * 1.5;
+        // Alternate colours between base, secondary, and light
+        const tentCol = t % 3 === 0 ? pal.secondary : (t % 3 === 1 ? pal.light : pal.base);
+        for (let s = 0; s < tentLen; s++) {
+          const tt = s / tentLen;
+          const wx = Math.round(Math.sin(s * 0.5 + phase) * amp);
+          const alpha = 0.8 - tt * 0.4;
+          px(baseX + wx, baseTY - s, tentCol, Math.max(0.2, alpha));
+          // Slight thickening at tips
+          if (s >= tentLen - 2) {
+            px(baseX + wx + 1, baseTY - s, tentCol, Math.max(0.15, alpha * 0.5));
+          }
+        }
+      }
+    }
+
+  } else if (bodyPlan === 67) {
+    // Starfish: five-armed star shape, textured surface
+    const armLen = Math.round((12 + ag.f * 4) * evoScale);
+    const armW = Math.round((3 + ag.f * 2) * evoScale);
+    const centreR = Math.round(armW * 1.2);
+    // Central disc
+    fillCircle(mid, mid, centreR, pal.base);
+    outlineCircle(mid, mid, centreR, pal.dark);
+    // Five arms radiating outward
+    for (let arm = 0; arm < 5; arm++) {
+      const angle = arm * Math.PI * 2 / 5 - Math.PI / 2;
+      for (let s = 0; s < armLen; s++) {
+        const t = s / armLen;
+        // Arm tapers from base to tip
+        const w = Math.max(1, Math.round(armW * (1 - t * 0.7)));
+        const ax = mid + Math.round(Math.cos(angle) * (centreR - 1 + s));
+        const ay = mid + Math.round(Math.sin(angle) * (centreR - 1 + s));
+        // Perpendicular direction for arm width
+        const perpX = -Math.sin(angle);
+        const perpY = Math.cos(angle);
+        for (let dw = -w; dw <= w; dw++) {
+          const px2 = ax + Math.round(perpX * dw);
+          const py2 = ay + Math.round(perpY * dw);
+          const isEdge = Math.abs(dw) >= w;
+          px(px2, py2, isEdge ? pal.dark : pal.base);
+        }
+        // Arm tip
+        if (s === armLen - 1) {
+          px(ax + Math.round(Math.cos(angle)), ay + Math.round(Math.sin(angle)), pal.dark);
+        }
+      }
+    }
+    // Textured surface: small bumps/spots on arms
+    const bumpCount = 8 + Math.round(ag.o * 8);
+    for (let b = 0; b < bumpCount; b++) {
+      const bArm = Math.floor(rng() * 5);
+      const bAngle = bArm * Math.PI * 2 / 5 - Math.PI / 2;
+      const bDist = centreR + Math.round(rng() * (armLen - 2));
+      const bx = mid + Math.round(Math.cos(bAngle) * bDist);
+      const by = mid + Math.round(Math.sin(bAngle) * bDist);
+      px(bx, by, pal.secondary, 0.5);
+      px(bx + 1, by, pal.secondary, 0.3);
+    }
+    // Tube feet suggestion: tiny dots along underside of arms
+    for (let arm = 0; arm < 5; arm++) {
+      const angle = arm * Math.PI * 2 / 5 - Math.PI / 2;
+      const perpX = -Math.sin(angle);
+      const perpY = Math.cos(angle);
+      for (let s = 2; s < armLen - 1; s += 2) {
+        const ax = mid + Math.round(Math.cos(angle) * (centreR + s));
+        const ay = mid + Math.round(Math.sin(angle) * (centreR + s));
+        px(ax + Math.round(perpX), ay + Math.round(perpY), pal.belly, 0.4);
+        px(ax - Math.round(perpX), ay - Math.round(perpY), pal.belly, 0.4);
+      }
+    }
+    // Central madreporite (small lighter spot on disc)
+    px(mid + 1, mid - 1, pal.light, 0.6);
+    px(mid + 2, mid - 1, pal.light, 0.4);
 
   } else {
     // Fallback: generic oval creature

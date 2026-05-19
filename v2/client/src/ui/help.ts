@@ -10,6 +10,7 @@ function buildNav(): string {
       ${sectionBtn('overview', 'Overview')}
       ${sectionBtn('species', 'Species')}
       ${sectionBtn('genetics', 'Genetics')}
+      ${sectionBtn('dna', 'DNA')}
       ${sectionBtn('evolution', 'Evolution')}
       ${sectionBtn('traits', 'Traits')}
       ${sectionBtn('disasters', 'Disasters')}
@@ -24,6 +25,7 @@ function buildSection(): string {
     case 'overview': return overviewSection();
     case 'species': return speciesSection();
     case 'genetics': return geneticsSection();
+    case 'dna': return dnaSection();
     case 'evolution': return evolutionSection();
     case 'traits': return traitsSection();
     case 'disasters': return disastersSection();
@@ -51,12 +53,12 @@ function overviewSection(): string {
     <h4>The Food Web</h4>
     <p>Life in AquaSim follows a tiered food chain:</p>
     <table class="help-table">
-      <tr><td class="help-key">Producers</td><td>Phytoplankton, Seaweed, Coral. They reproduce without eating.</td></tr>
-      <tr><td class="help-key">Herbivores</td><td>Shrimp, Snail, Crab, Sea Urchin. They eat producers.</td></tr>
-      <tr><td class="help-key">Consumers</td><td>Small Fish, Squid, Pufferfish. They eat herbivores.</td></tr>
+      <tr><td class="help-key">Producers</td><td>Phytoplankton, Seaweed, Coral, Kelp, Anemone. They reproduce without eating.</td></tr>
+      <tr><td class="help-key">Herbivores</td><td>Shrimp, Snail, Crab, Sea Urchin, Sea Turtle, Sea Horse. They eat producers.</td></tr>
+      <tr><td class="help-key">Consumers</td><td>Small Fish, Squid, Pufferfish, Jellyfish, Manta Ray, Anglerfish. They eat herbivores or plankton.</td></tr>
       <tr><td class="help-key">Apex</td><td>Shark, Octopus. Top predators that eat consumers and herbivores.</td></tr>
       <tr><td class="help-key">Megafauna</td><td>Whale, Dolphin. Massive filter feeders and pack hunters.</td></tr>
-      <tr><td class="help-key">Decomposers</td><td>Bacteria, Sea Worm. They break down dead matter, recycling nutrients.</td></tr>
+      <tr><td class="help-key">Decomposers</td><td>Bacteria, Sea Worm, Starfish. They break down dead matter, recycling nutrients.</td></tr>
     </table>
 
     <h4>Key Concepts</h4>
@@ -89,6 +91,14 @@ function speciesSection(): string {
         <td><span class="sp-dot" style="background:#DD44AA"></span> <b>Coral</b></td>
         <td>Rare reef-building organism. Very slow to establish but creates lasting habitat structure. The only food source for sea urchins. Clusters naturally around rock formations.</td>
       </tr>
+      <tr>
+        <td><span class="sp-dot" style="background:#228844"></span> <b>Kelp</b></td>
+        <td>Tall benthic plant that anchors to rock. Faster-growing than seaweed and provides dense habitat structure in the benthic zone.</td>
+      </tr>
+      <tr>
+        <td><span class="sp-dot" style="background:#FF6688"></span> <b>Anemone</b></td>
+        <td>Sessile reef organism with stinging tentacles. Grows near coral formations and provides symbiotic shelter for compatible species.</td>
+      </tr>
     </table>
 
     <h4 class="tier-heading tier-herbivore">Herbivores (Tier 1)</h4>
@@ -110,6 +120,14 @@ function speciesSection(): string {
         <td><span class="sp-dot" style="background:#886644"></span> <b>Sea Urchin</b></td>
         <td>Specialist coral predator. Very slow and rare, but extremely resilient with high hunger tolerance. The only herbivore that feeds on coral.</td>
       </tr>
+      <tr>
+        <td><span class="sp-dot" style="background:#77AA55"></span> <b>Sea Turtle</b></td>
+        <td>Armoured pelagic grazer that feeds on seaweed and coral. Slow but tough, with a protective shell. Roams the open water column.</td>
+      </tr>
+      <tr>
+        <td><span class="sp-dot" style="background:#FFAA77"></span> <b>Sea Horse</b></td>
+        <td>Camouflaged reef dweller that sips plankton. Very slow but well-hidden among coral structures. Low food requirements.</td>
+      </tr>
     </table>
 
     <h4 class="tier-heading tier-consumer">Consumers (Tier 2)</h4>
@@ -126,6 +144,18 @@ function speciesSection(): string {
       <tr>
         <td><span class="sp-dot" style="background:#44AAAA"></span> <b>Pufferfish</b></td>
         <td>Tough bottom-dwelling consumer that feeds on crabs, snails and urchins. Slower but harder to kill than other consumers.</td>
+      </tr>
+      <tr>
+        <td><span class="sp-dot" style="background:#DD88FF"></span> <b>Jellyfish</b></td>
+        <td>Drifting stinger that feeds on shrimp and plankton. Slow-moving and carried by currents, but its tentacles catch prey passively.</td>
+      </tr>
+      <tr>
+        <td><span class="sp-dot" style="background:#5577AA"></span> <b>Manta Ray</b></td>
+        <td>Graceful filter feeder of the surface zone. Glides through open water consuming plankton and small crustaceans across multiple layers.</td>
+      </tr>
+      <tr>
+        <td><span class="sp-dot" style="background:#663344"></span> <b>Anglerfish</b></td>
+        <td>Bioluminescent deep-sea ambush predator. Lurks in the abyssal zone, luring prey with its glowing appendage. Rarely seen in upper waters.</td>
       </tr>
     </table>
 
@@ -166,6 +196,10 @@ function speciesSection(): string {
         <td><span class="sp-dot" style="background:#667744"></span> <b>Sea Worm</b></td>
         <td>Bottom-dwelling detritivores that feed on dead matter and bacteria. Slower than bacteria but more versatile, with moderate mobility.</td>
       </tr>
+      <tr>
+        <td><span class="sp-dot" style="background:#DD6633"></span> <b>Starfish</b></td>
+        <td>Slow regenerating scavenger that feeds on dead matter and coral. Moves methodically across the seafloor, cleaning up after other species.</td>
+      </tr>
     </table>
 
     <h4>Environmental Elements</h4>
@@ -192,7 +226,7 @@ function speciesSection(): string {
 function geneticsSection(): string {
   return `
     <h3>Genetics</h3>
-    <p>Every species in AquaSim has a genome of 16 genes organised into four functional clusters. When evolution is enabled, these genes mutate, drift and recombine, driving adaptation and speciation.</p>
+    <p>Every species in AquaSim has a genome of 16 genes organised into four functional clusters, all encoded in a DNA strand of 192 nucleotides (see the <b>DNA</b> tab for details). When evolution is enabled, these genes mutate, drift and recombine, driving adaptation and speciation.</p>
 
     <h4>The 16 Genes</h4>
     <table class="help-table">
@@ -242,6 +276,47 @@ function geneticsSection(): string {
   `;
 }
 
+function dnaSection(): string {
+  return `
+    <h3>DNA</h3>
+    <p>Every species in AquaSim carries a strand of DNA that encodes its genome. The DNA is made of 192 nucleotides, split into 16 gene regions of 12 nucleotides each. This is a simplified but functional model of how real DNA works.</p>
+
+    <h4>The Four Nucleotides</h4>
+    <p>Just like real biology, AquaSim DNA uses four building blocks. Each is shown as a coloured letter in the tooltip DNA strip:</p>
+    <table class="help-table">
+      <tr><td class="help-key" style="color:#44CC44">A (Adenine)</td><td>The lowest-value nucleotide. Regions dominated by A produce low gene expression.</td></tr>
+      <tr><td class="help-key" style="color:#FF4444">T (Thymine)</td><td>A low-mid value nucleotide.</td></tr>
+      <tr><td class="help-key" style="color:#4488FF">C (Cytosine)</td><td>A mid-high value nucleotide.</td></tr>
+      <tr><td class="help-key" style="color:#FFAA22">G (Guanine)</td><td>The highest-value nucleotide. G-rich regions produce high gene expression.</td></tr>
+    </table>
+
+    <h4>How DNA Encodes Genes</h4>
+    <p>Each of the 16 genes occupies a region of 12 nucleotides. The gene's expressed value is the average of those 12 nucleotide values, scaled from 0 to 1. For example, a gene region of all G nucleotides would express at 1.0 (maximum), while all A nucleotides would express at 0.0 (minimum). Most genes sit somewhere in between.</p>
+    <p>Think of it like a volume dial. The mix of nucleotides in each gene region sets the dial position. More G and C nucleotides turn it up; more A and T nucleotides turn it down.</p>
+
+    <h4>Mutations</h4>
+    <p>When species reproduce, their DNA can mutate in three ways:</p>
+    <table class="help-table">
+      <tr><td class="help-key">Point Mutation (85%)</td><td>A single nucleotide changes to a different one. This is the most common and gentlest mutation, nudging a gene's expression slightly.</td></tr>
+      <tr><td class="help-key">Insertion (7.5%)</td><td>A group of three nucleotides (a codon) is duplicated within a gene region. The last codon is pushed out. This can cause a bigger shift in gene expression.</td></tr>
+      <tr><td class="help-key">Deletion (7.5%)</td><td>A codon is removed and the gap fills with random nucleotides. Like insertion, this can cause a significant shift.</td></tr>
+    </table>
+    <p>Mutations happen at each nucleotide position independently, so a single reproduction event might produce zero mutations or several. The mutation rate increases during radiation boosts (after mass extinction events), modelling real-world adaptive radiation.</p>
+
+    <h4>DNA Divergence</h4>
+    <p>When two species are compared, their DNA divergence is measured as the fraction of nucleotides that differ (Hamming distance). If two species share 150 of their 192 nucleotides, their divergence is about 22%. High divergence indicates the species have been evolving separately for a long time, like comparing human and chimpanzee DNA in the real world.</p>
+    <p>DNA divergence drives speciation: when a population's DNA drifts far enough from its parent species, it becomes a new species entirely.</p>
+
+    <h4>Reading the DNA Strip</h4>
+    <p>When you hover over a creature, you will see its DNA displayed as a coloured strip of letters in the tooltip. Each letter is colour-coded by nucleotide type. Thin gaps separate the 16 gene regions so you can see where one gene ends and the next begins.</p>
+    <p>Over many generations, you can watch DNA strips change as mutations accumulate. Closely related species will have similar-looking strips, while distantly related species will look quite different. This is AquaSim's version of molecular phylogenetics.</p>
+
+    <h4>Scientific Names</h4>
+    <p>Each species is assigned a Latin binomial name (like <i>Piscis velox</i> or <i>Carcharias ferox</i>). The genus comes from the species' base type, and the epithet is determined by its most prominent gene expression. For example, a large-bodied species gets <i>maximus</i>, a fast one gets <i>velox</i>, and an aggressive one gets <i>ferox</i>. Special epithets like <i>luminosus</i> or <i>venenatus</i> are awarded to species with bioluminescence or venom traits.</p>
+    <p>Scientific names appear in italics in species tooltips, just below the common name.</p>
+  `;
+}
+
 function evolutionSection(): string {
   return `
     <h3>Evolution</h3>
@@ -270,6 +345,15 @@ function evolutionSection(): string {
     </ul>
     <p>Convergent evolution accelerates this process: if a tier has less than 3% of total population, species in adjacent tiers get a 40% boost to niche-shift probability, naturally filling empty ecological roles.</p>
     <p>When a species shifts tier, its genes are nudged to match the new role (for example, increased body shape and aggression for a herbivore becoming a consumer) and it develops a new diet targeting species in the tier below.</p>
+
+    <h4>Radical Morphological Shifts</h4>
+    <p>Under extreme evolutionary pressure, species can undergo dramatic transformation. When a population's DNA diverges more than 50% from its parent and exceeds 40 individuals, it may jump to an entirely different trophic tier. A fish could evolve into an apex predator. A snail could develop fins and become a consumer. A herbivore could grow aggressive enough to hunt. This models real-world macroevolution where lineages have radically changed body plans over geological time.</p>
+
+    <h4>Size Diversification</h4>
+    <p>Established species with enough population can split into larger and smaller variants. A school of small fish might produce a dwarf variant that exploits a different food source, or a giant variant that competes in a higher niche. Size shifts alter body size genes, layer preferences and dietary range.</p>
+
+    <h4>Gene-driven Layer Migration</h4>
+    <p>Species with high pressure adaptation genes tend to drift deeper into the ocean over time, while species with high thermal adaptation tend to move toward the surface. This creates ongoing vertical migration as populations evolve to match their environment.</p>
 
     <h4>Immigration</h4>
     <p>Periodically, new species immigrate into the ecosystem from outside. Different tiers have different immigration intervals (herbivores every 8 generations, consumers and apex every 6, megafauna every 10, decomposers every 15). Immigrants arrive as a cluster of 20 individuals near a food source and may bring novel adaptations. Consumer and apex immigrants co-migrate with prey species.</p>
@@ -532,6 +616,7 @@ function aboutSection(): string {
     <h4>The Science</h4>
     <p>While AquaSim simplifies many real biological processes, it draws on genuine scientific principles:</p>
     <ul>
+      <li><b>Molecular genetics</b>: DNA-encoded genomes with nucleotide-level mutations (point, insertion, deletion).</li>
       <li><b>Mendelian genetics</b>: Diploid genomes with dominant and recessive alleles.</li>
       <li><b>Population genetics</b>: Genetic drift in small populations, allele fixation, and the founder effect during speciation.</li>
       <li><b>Natural selection</b>: Predation pressure, seasonal stress and resource competition drive adaptation.</li>
@@ -697,6 +782,11 @@ export function injectHelpStyles(): void {
     .tier-apex { color: #FF4444 !important; }
     .tier-mega { color: #6666FF !important; }
     .tier-decomp { color: #88AA44 !important; }
+    .dna-demo {
+      font-family: monospace; font-size: 0.85rem; font-weight: bold;
+      letter-spacing: 1px; padding: 6px 8px; background: rgba(0,0,0,0.3);
+      border-radius: 4px; margin: 8px 0; word-break: break-all; line-height: 1.6;
+    }
     @media (max-width: 768px) {
       .help-panel { max-height: 90vh; border-radius: 0; }
       .help-nav-btn { padding: 6px 8px; font-size: 0.65rem; }

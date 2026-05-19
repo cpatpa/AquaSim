@@ -5,6 +5,7 @@ import { expressAllGenes, speciesGeneticDiversity } from '../evolution/genetics'
 import { TRAITS } from '../evolution/traits';
 import { NOVEL_ADAPTATIONS } from '../evolution/novel-adaptations';
 import { getScientificName } from '../evolution/taxonomy';
+import { dnaFromGenes, dnaToHtml } from '../evolution/dna';
 import { screenToWorld } from './camera';
 import type { CameraState } from './camera';
 import { isMobile } from './mobile';
@@ -181,6 +182,9 @@ function buildContent(
       bars.push(`<div class="tt-gene-row"><span class="tt-gene-label">${cl.slice(0, 5)}</span><div class="tt-gene-track"><div class="tt-gene-fill" style="width:${pct}%"></div></div><span class="tt-gene-pct">${pct}</span></div>`);
     }
     parts.push(`<div class="tt-genes">${bars.join('')}</div>`);
+
+    const dna = dnaFromGenes(es.genes);
+    parts.push(`<div class="tt-dna" style="font-size:6px;line-height:8px;word-break:break-all;margin:4px 0;padding:3px;background:rgba(0,0,0,0.3);border-radius:3px;max-width:220px;overflow:hidden">${dnaToHtml(dna)}</div>`);
 
     const diversity = speciesGeneticDiversity(es.genes);
     const dPct = Math.round(diversity * 100);
