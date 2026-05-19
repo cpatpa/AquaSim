@@ -959,13 +959,14 @@ export function step(ctx: StepContext): StepResult {
     const eats = es.eats;
     const eatsSet = eats;
     let ate = false;
+    const _satiated = es.hungerMax > 0 && hunger[idx] < Math.round(es.hungerMax * 0.25);
     const huntRange = (sp.tier === 'apex' || sp.tier === 'megafauna') ? 2 : 1;
     const isPackHunter = hasTrait('packhunter');
     const isTrapJaw = hasTrait('trapjaw');
     const isVenomous = hasTrait('venomous');
     let trapJawUsed = false;
 
-    if (eats && eats.length) {
+    if (eats && eats.length && !_satiated) {
       const scanCells = huntRange >= 2 ? _scanRange2 : _scanRange1;
       shuffleSmall(scanCells);
 
@@ -997,6 +998,10 @@ export function step(ctx: StepContext): StepResult {
             trapJawUsed = true;
             // Skip all defensive checks
           } else {
+            // Prey flight response: gene-based escape chance for all prey
+            const preyExpressed = preyEs._expressed || preyEs;
+            const _flightVal = preyExpressed.flightResponse ?? 0;
+            if (_flightVal > 0.2 && Math.random() < _flightVal * 0.4) continue;
             // Aposematic Warning synergy
             if (hasSynergy(preySynergies, 'avoid') && Math.random() < 0.4) continue;
             // Mimicry
@@ -1243,7 +1248,7 @@ export function step(ctx: StepContext): StepResult {
 
     if (!ate && hasTrait('scavenger')) {
       const _scavRestore = SCAVENGE_RESTORE_BY_TIER[sp.tier as LivingTier] ?? 0.55;
-      const _scavChance = sp.tier === 'megafauna' ? 0.3 : sp.tier === 'apex' ? 0.5 : 1.0;
+      const _scavChance = sp.tier === 'megafauna' ? 0.3 : sp.tier === 'apex' ? 0.5 : sp.tier === 'consumer' ? 0.7 : 1.0;
       if (Math.random() < _scavChance) {
       const sdirs = shuffleDirs8();
       for (let d = 0; d < 8; d++) {
