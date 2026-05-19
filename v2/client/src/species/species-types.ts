@@ -19,12 +19,20 @@ export const SPECIES: Record<number, SpeciesDefinition> = {
   30: { name: 'Small Fish',     color: '#44CCFF', tier: 'consumer',    layer: 3, breedRate: 0.06, moveRate: 0.85, hungerMax: 30, eats: [20, 3],   desc: 'Fast pelagic schooling fish — eats shrimp, scavenges', layerReach: 2 },
   31: { name: 'Squid',          color: '#AA44FF', tier: 'consumer',    layer: 3, breedRate: 0.04, moveRate: 0.62, hungerMax: 28, eats: [20, 21],  desc: 'Agile pelagic predator — dives deep for prey', layerReach: 3 },
   32: { name: 'Pufferfish',     color: '#FFEE22', tier: 'consumer',    layer: 2, breedRate: 0.035, moveRate: 0.38, hungerMax: 32, eats: [22, 21, 23], desc: 'Reef consumer of crabs, snails, urchins', layerReach: 2 },
-  40: { name: 'Shark',          color: '#8899CC', tier: 'apex',        layer: 5, breedRate: 0.02, moveRate: 0.90, hungerMax: 50, eats: [30, 31, 32], desc: 'Top predator — hunts consumers across the column', layerReach: 4 },
+  40: { name: 'Shark',          color: '#8899CC', tier: 'apex',        layer: 5, breedRate: 0.035, moveRate: 0.90, hungerMax: 50, eats: [30, 31, 32], desc: 'Top predator — hunts consumers across the column', layerReach: 4 },
   41: { name: 'Octopus',        color: '#CC3366', tier: 'apex',        layer: 1, breedRate: 0.02, moveRate: 0.58, hungerMax: 44, eats: [30, 31, 32], desc: 'Benthic apex — hunts consumers above', layerReach: 2 },
-  42: { name: 'Whale',          color: '#6688AA', tier: 'megafauna',   layer: 4, breedRate: 0.008, moveRate: 0.30, hungerMax: 60, eats: [30, 31, 10, 3], desc: 'Filter feeder — eats consumers and plankton', layerReach: 5 },
-  43: { name: 'Dolphin',        color: '#55BBEE', tier: 'megafauna',   layer: 5, breedRate: 0.012, moveRate: 0.92, hungerMax: 42, eats: [30, 31, 32], desc: 'Fast social hunter — hunts consumers', layerReach: 4 },
+  42: { name: 'Whale',          color: '#6688AA', tier: 'megafauna',   layer: 4, breedRate: 0.018, moveRate: 0.30, hungerMax: 60, eats: [30, 31, 10, 3], desc: 'Filter feeder — eats consumers and plankton', layerReach: 5 },
+  43: { name: 'Dolphin',        color: '#55BBEE', tier: 'megafauna',   layer: 5, breedRate: 0.022, moveRate: 0.92, hungerMax: 42, eats: [30, 31, 32], desc: 'Fast social hunter — hunts consumers', layerReach: 4 },
   50: { name: 'Bacteria',       color: '#88FFCC', tier: 'decomposer',  layer: 0, breedRate: 0.10, moveRate: 0.28, hungerMax: 32, eats: [3],       desc: 'Consumes dead matter in the abyss' },
   51: { name: 'Sea Worm',       color: '#DDBB44', tier: 'decomposer',  layer: 1, breedRate: 0.025, moveRate: 0.34, hungerMax: 30, eats: [3, 50],   desc: 'Benthic decomposer — feeds on dead cells and bacteria' },
+  60: { name: 'Jellyfish',    color: '#DD88FF', tier: 'consumer',    layer: 3, breedRate: 0.04, moveRate: 0.25, hungerMax: 24, eats: [20, 10],  desc: 'Drifting stinger that feeds on shrimp and plankton', layerReach: 2 },
+  61: { name: 'Sea Turtle',   color: '#77AA55', tier: 'herbivore',   layer: 3, breedRate: 0.025, moveRate: 0.30, hungerMax: 35, eats: [11, 12],  desc: 'Armoured grazer that feeds on seaweed and coral', layerReach: 2 },
+  62: { name: 'Manta Ray',    color: '#5577AA', tier: 'consumer',    layer: 4, breedRate: 0.03, moveRate: 0.45, hungerMax: 34, eats: [10, 20],   desc: 'Graceful filter feeder of the surface zone', layerReach: 3 },
+  63: { name: 'Anglerfish',   color: '#663344', tier: 'consumer',    layer: 0, breedRate: 0.035, moveRate: 0.20, hungerMax: 38, eats: [20, 50],  desc: 'Bioluminescent deep-sea ambush predator', layerReach: 1 },
+  64: { name: 'Sea Horse',    color: '#FFAA77', tier: 'herbivore',   layer: 2, breedRate: 0.04, moveRate: 0.15, hungerMax: 20, eats: [10],       desc: 'Camouflaged reef dweller that sips plankton' },
+  65: { name: 'Kelp',         color: '#228844', tier: 'producer',    layer: 1, breedRate: 0.08, desc: 'Tall benthic plant that anchors to rock' },
+  66: { name: 'Anemone',      color: '#FF6688', tier: 'producer',    layer: 2, breedRate: 0.04, desc: 'Sessile reef organism with stinging tentacles' },
+  67: { name: 'Starfish',     color: '#DD6633', tier: 'decomposer',  layer: 1, breedRate: 0.03, moveRate: 0.12, hungerMax: 28, eats: [3, 12],    desc: 'Slow regenerating scavenger that also consumes coral' },
 };
 
 export const DISASTERS: Record<string, DisasterDefinition> = {
@@ -38,12 +46,12 @@ export const DISASTERS: Record<string, DisasterDefinition> = {
 
 export const TIER_ORDER: Array<{ label: string; ids: number[] }> = [
   { label: 'ENVIRONMENT', ids: [0, 1, 2] },
-  { label: 'PRODUCERS',   ids: [10, 11, 12] },
-  { label: 'HERBIVORES',  ids: [20, 21, 22, 23] },
-  { label: 'CONSUMERS',   ids: [30, 31, 32] },
+  { label: 'PRODUCERS',   ids: [10, 11, 12, 65, 66] },
+  { label: 'HERBIVORES',  ids: [20, 21, 22, 23, 61, 64] },
+  { label: 'CONSUMERS',   ids: [30, 31, 32, 60, 62, 63] },
   { label: 'APEX',        ids: [40, 41] },
   { label: 'MEGAFAUNA',   ids: [42, 43] },
-  { label: 'DECOMPOSERS', ids: [50, 51] },
+  { label: 'DECOMPOSERS', ids: [50, 51, 67] },
 ];
 
 export const TIER_TO_LABEL: Partial<Record<Tier, string>> = {

@@ -22,6 +22,14 @@ const SEED_TARGETS: Array<[number, number]> = [
   [43, 0.0015],
   [50, 0.007],
   [51, 0.003],
+  [60, 0.004],
+  [61, 0.003],
+  [62, 0.003],
+  [63, 0.003],
+  [64, 0.004],
+  [65, 0.020],
+  [66, 0.006],
+  [67, 0.003],
 ];
 
 /** Resolve the home layer for a species ID, clamped to valid range. */
@@ -337,6 +345,30 @@ export function seedBiome(grid: GridState): void {
     }
   }
 
+  // Kelp (65) -- grows alongside seaweed in benthic layer
+  for (let y = 0; y < ch; y++) {
+    for (let x = 0; x < cw; x++) {
+      const idx = kelpZOff + y * cw + x;
+      if (species[idx] !== 0) continue;
+      const kn = (kelpNoise(x, y) + 1) * 0.5;
+      if (kn > 0.66 && Math.random() < 0.15) species[idx] = 65;
+    }
+  }
+
+  // Anemone (66) -- grows near coral in reef layer
+  for (let y = 0; y < ch; y++) {
+    for (let x = 0; x < cw; x++) {
+      const coralIdx = coralZOff + y * cw + x;
+      if (species[coralIdx] !== 12) continue;
+      for (const [dx, dy] of NEIGHBOURS_8) {
+        const nx = wrapX(grid, x + dx);
+        const ny = wrapY(grid, y + dy);
+        const nIdx = coralZOff + ny * cw + nx;
+        if (species[nIdx] === 0 && Math.random() < 0.06) species[nIdx] = 66;
+      }
+    }
+  }
+
   // ==================================================================
   // 5. PHYTOPLANKTON -- surface layer
   // ==================================================================
@@ -390,6 +422,12 @@ export function seedBiome(grid: GridState): void {
     [43, 0.003, null],
     [50, 0.010, null],
     [51, 0.005, [1,  4, 2.0]],
+    [60, 0.004, null],
+    [61, 0.003, [11, 5, 2.0]],
+    [62, 0.003, [10, 5, 2.0]],
+    [63, 0.003, null],
+    [64, 0.004, [12, 4, 2.5]],
+    [67, 0.003, [1,  4, 2.0]],
   ];
 
   for (const [sid, frac, habitat] of animalSeeds) {

@@ -43,7 +43,7 @@ export const HUNGER_RESTORE_BY_TIER: Record<LivingTier, number> = {
   producer: 1.0,
   herbivore: 0.75,
   consumer: 0.70,
-  apex: 0.85,
+  apex: 0.75,
   megafauna: 0.90,
   decomposer: 0.65,
 };
@@ -64,7 +64,7 @@ export const LITHIVORE_RESTORE_BY_TIER: Partial<Record<LivingTier, number>> = {
   herbivore: 0.45,
   decomposer: 0.20,
 };
-export const DIETARY_POVERTY_PENALTY = 0.50;
+export const DIETARY_POVERTY_PENALTY = 0.65;
 export const IMMIGRATION_CHECK_INTERVAL = 150;
 export const IMMIGRATION_CLUSTER_SIZE = 20;
 export const IMMIGRATION_SCALE_GENS = 50;
@@ -72,7 +72,7 @@ export const IMMIGRATION_MAX_CLUSTER = 80;
 export const IMMIGRATION_ESTABLISHMENT_TICKS = 12;
 export const ROCK_EROSION_CHANCE = 0.005;
 export const ROCK_ISOLATED_EROSION_CHANCE = 0.012;
-export const TIER_DOMINANCE_THRESHOLD = 0.40;
+export const TIER_DOMINANCE_THRESHOLD = 0.50;
 export const TIER_DOMINANCE_BREED_PENALTY = 0.50;
 export const GENE_VARIANCE_FLOOR = 0.06;
 
@@ -97,6 +97,7 @@ export const MAX_DYNAMIC_SPECIES = 40;
 export const TRAIT_ACQUIRE_CHANCE = 0.12;
 export const DEFAULT_MAX_TRAITS_PER_SPECIES = 5;
 export const TRAIT_DEGRADE_GENS = 4;
+export const TRAIT_BREED_BONUS_CAP = 2.0;
 export const TRAIT_LOCAL_RADIUS = 8;
 
 // Novel adaptations

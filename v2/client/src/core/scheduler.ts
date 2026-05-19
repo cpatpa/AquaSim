@@ -33,6 +33,7 @@ import {
   DOMINANCE_DEATH_BASE,
   DOMINANCE_HARD_CAP,
   DECOMPOSER_BREED_CAP,
+  TRAIT_BREED_BONUS_CAP,
   SCAVENGE_RESTORE_BY_TIER,
   LITHIVORE_RESTORE_BY_TIER,
   DIETARY_POVERTY_PENALTY,
@@ -175,6 +176,16 @@ for (let dy = -2; dy <= 2; dy++) {
 let _stepProcessed: Uint8Array | null = null;
 let _stepIndices: Uint32Array | null = null;
 let _stepPopCounts: Uint32Array | null = null;
+
+// Pre-allocated eats lookup buffer (reused across entities)
+let _eatsLookup: Uint8Array | null = null;
+
+// Tier string -> numeric ID for fast comparisons in the hot path
+const TIER_ID: Record<string, number> = {
+  none: 0, environment: 1, transient: 2,
+  producer: 3, herbivore: 4, consumer: 5,
+  apex: 6, megafauna: 7, decomposer: 8,
+};
 
 // ---------------------------------------------------------------------------
 // Grid wrapping helpers (inlined for performance -- no GridState lookup)
@@ -359,7 +370,8 @@ export function step(ctx: StepContext): StepResult {
         if (ns === 1) adjRock++;
         else if (ns === 0) adjEmpty++;
       }
-      if ((adjRock === 0 && Math.random() < ROCK_ISOLATED_EROSION_CHANCE) || (adjRock <= 1 && Math.random() < 0.008) || (adjEmpty >= 3 && Math.random() < ROCK_EROSION_CHANCE)) {
+      const layerErosionMult = cz >= 4 ? 2.5 : cz >= 2 ? 1.5 : 1.0;
+      if ((adjRock === 0 && Math.random() < ROCK_ISOLATED_EROSION_CHANCE * layerErosionMult) || (adjRock <= 1 && Math.random() < 0.008 * layerErosionMult) || (adjEmpty >= 3 && Math.random() < ROCK_EROSION_CHANCE * layerErosionMult)) {
         species[idx] = 0;
         hunger[idx] = 0;
         age[idx] = 0;
@@ -387,14 +399,19 @@ export function step(ctx: StepContext): StepResult {
           }
         }
       }
-      // Rock sinks: rock above z=0 without rock below it erodes downward
+      // Rock column support: rock above z=0 without rock below collapses
       if (cz > 0) {
         const belowIdx = (cz - 1) * planeSize + xyIdx;
-        if (species[belowIdx] === 0 && Math.random() < 0.01) {
-          species[belowIdx] = 1;
-          species[idx] = 0;
-          hunger[idx] = 0;
-          age[idx] = 0;
+        if (species[belowIdx] !== 1) {
+          const collapseChance = 0.02 + cz * 0.01;
+          if (Math.random() < collapseChance) {
+            if (species[belowIdx] === 0) {
+              species[belowIdx] = 1;
+            }
+            species[idx] = 0;
+            hunger[idx] = 0;
+            age[idx] = 0;
+          }
         }
       }
       continue;
@@ -817,6 +834,7 @@ export function step(ctx: StepContext): StepResult {
       const bit = TRAIT_BITS[t];
       return bit ? (traitBM & bit) !== 0 : traits.indexOf(t) !== -1;
     };
+    const tierId = TIER_ID[sp.tier] || 0;
     const restoreFrac = (HUNGER_RESTORE_BY_TIER as any)[sp.tier] || HUNGER_RESTORE_FRACTION;
 
     // Compute synergies once per entity
@@ -1070,10 +1088,17 @@ export function step(ctx: StepContext): StepResult {
 
     // --- 3. Eat: scan neighbours for food (layer-aware) ---
     const eats = es.eats;
-    const eatsSet = eats;
+    // Build O(1) eats lookup for this entity
+    if (!_eatsLookup || _eatsLookup.length < 256) {
+      _eatsLookup = new Uint8Array(256);
+    }
+    _eatsLookup.fill(0);
+    if (eats) {
+      for (let ei = 0; ei < eats.length; ei++) _eatsLookup[eats[ei]] = 1;
+    }
     let ate = false;
     const _satiated = es.hungerMax > 0 && hunger[idx] < Math.round(es.hungerMax * 0.25);
-    const huntRange = (sp.tier === 'apex' || sp.tier === 'megafauna') ? 2 : 1;
+    const huntRange = (tierId === 6 /* apex */ || tierId === 7 /* megafauna */) ? 2 : 1;
     const isPackHunter = hasTrait('packhunter');
     const isTrapJaw = hasTrait('trapjaw');
     const isVenomous = hasTrait('venomous');
@@ -1108,7 +1133,7 @@ export function step(ctx: StepContext): StepResult {
         if (dz !== 0) {
           const ni = nzOff + cy * cw + cx;
           const foodId = species[ni];
-          if (eatsSet.indexOf(foodId) !== -1) {
+          if (_eatsLookup![foodId]) {
             // simple vertical kill: no defence checks for column strike
             const _preyPop = popCounts[foodId] || 0;
             if (totalLiving === 0 || _preyPop / totalLiving >= 0.01 || Math.random() >= 0.6) {
@@ -1130,7 +1155,7 @@ export function step(ctx: StepContext): StepResult {
           const ny = wrapY(cy + dy, ch);
           const ni = nzOff + ny * cw + nx;
           const foodId = species[ni];
-          if (eatsSet.indexOf(foodId) !== -1) {
+          if (_eatsLookup![foodId]) {
           // Darkness miss: low-light layers reduce hunt success
           if (darkMissFrac > 0 && Math.random() < darkMissFrac) continue;
           // Density-dependent predation: scarce prey is harder to find
@@ -1198,7 +1223,7 @@ export function step(ctx: StepContext): StepResult {
               continue;
             }
             // Biofilm
-            if (preyTraits.indexOf('biofilm') !== -1 && sp.tier !== 'herbivore') {
+            if (preyTraits.indexOf('biofilm') !== -1 && tierId !== 4 /* herbivore */) {
               let bfCount = 0;
               for (let bn = 0; bn < 8; bn++) {
                 const bdir = NEIGHBOURS_8[bn];
@@ -1211,12 +1236,12 @@ export function step(ctx: StepContext): StepResult {
           // Toxic: predator takes hunger damage
           if (preyTraits.indexOf('toxic') !== -1) {
             const toxDmg = Math.round(4 * tStr(foodId, 'toxic'));
-            hunger[idx] += sp.tier === 'herbivore' ? ((toxDmg * 0.25) | 0) : toxDmg;
+            hunger[idx] += tierId === 4 /* herbivore */ ? ((toxDmg * 0.25) | 0) : toxDmg;
           }
           // Thorns
           if (preyTraits.indexOf('thorns') !== -1) {
             const thDmg = Math.round(7 * tStr(foodId, 'thorns'));
-            hunger[idx] += sp.tier === 'herbivore' ? ((thDmg * 0.25) | 0) : thDmg;
+            hunger[idx] += tierId === 4 /* herbivore */ ? ((thDmg * 0.25) | 0) : thDmg;
           }
           // Venomous predator: extra damage to prey's neighbours
           if (isVenomous) {
@@ -1230,7 +1255,7 @@ export function step(ctx: StepContext): StepResult {
             }
           }
           // Deep Root
-          const _drChance = sp.tier === 'herbivore' ? 0.15 : 0.35;
+          const _drChance = tierId === 4 /* herbivore */ ? 0.15 : 0.35;
           if (preyTraits.indexOf('deeproot') !== -1 && Math.random() < _drChance * tStr(foodId, 'deeproot')) {
             hunger[idx] = Math.max(0, hunger[idx] - ((es.hungerMax * restoreFrac * 0.4) | 0));
             ate = true;
@@ -1381,7 +1406,7 @@ export function step(ctx: StepContext): StepResult {
         const nx = wrapX(cx + dir[0], cw);
         const ny = wrapY(cy + dir[1], ch);
         const ni = zOff + ny * cw + nx;
-        if (eatsSet.indexOf(species[ni]) !== -1 && layersCanReach(sid, layerOf(species[ni]))) {
+        if (_eatsLookup![species[ni]] && layersCanReach(sid, layerOf(species[ni]))) {
           species[ni] = 0;
           hunger[ni] = 0;
           age[ni] = 0;
@@ -1414,7 +1439,7 @@ export function step(ctx: StepContext): StepResult {
 
     if (!ate && hasTrait('scavenger')) {
       const _scavRestore = SCAVENGE_RESTORE_BY_TIER[sp.tier as LivingTier] ?? 0.55;
-      const _scavChance = sp.tier === 'megafauna' ? 0.3 : sp.tier === 'apex' ? 0.5 : sp.tier === 'consumer' ? 0.7 : 1.0;
+      const _scavChance = tierId === 7 /* megafauna */ ? 0.3 : tierId === 6 /* apex */ ? 0.5 : tierId === 5 /* consumer */ ? 0.7 : 1.0;
       if (Math.random() < _scavChance) {
       const sdirs = shuffleDirs8();
       for (let d = 0; d < 8; d++) {
@@ -1443,7 +1468,7 @@ export function step(ctx: StepContext): StepResult {
         const ny = wrapY(cy + dir[1] * 2, ch);
         const ni = zOff + ny * cw + nx;
         const foodId = species[ni];
-        if (eatsSet.indexOf(foodId) !== -1 && layersCanReach(sid, layerOf(foodId))) {
+        if (_eatsLookup![foodId] && layersCanReach(sid, layerOf(foodId))) {
           const preyEs = evo(foodId, evolveEnabled, ctxEvoStats) as any;
           const aPT: string[] = preyEs.traits || [];
           if (aPT.indexOf('mimicry') !== -1 && Math.random() < 0.45) continue;
@@ -1514,7 +1539,7 @@ export function step(ctx: StepContext): StepResult {
           const px = wrapX(cx + dx, cw);
           const py = wrapY(cy + dy, ch);
           const pi = zOff + py * cw + px;
-          if (eatsSet.indexOf(species[pi]) !== -1 && !processed[pi] && layersCanReach(sid, layerOf(species[pi]))) {
+          if (_eatsLookup![species[pi]] && !processed[pi] && layersCanReach(sid, layerOf(species[pi]))) {
             const stepX = dx > 0 ? -1 : dx < 0 ? 1 : 0;
             const stepY = dy > 0 ? -1 : dy < 0 ? 1 : 0;
             const tnx = wrapX(px + stepX, cw);
@@ -1578,7 +1603,7 @@ export function step(ctx: StepContext): StepResult {
             const px = wrapX(cx + dx, cw);
             const py = wrapY(cy + dy, ch);
             const echoSid = species[zOff + py * cw + px];
-            if (eatsSet.indexOf(echoSid) !== -1 && layersCanReach(sid, layerOf(echoSid))) {
+            if (_eatsLookup![echoSid] && layersCanReach(sid, layerOf(echoSid))) {
               bestDist = dist;
               bestDx = dx;
               bestDy = dy;
@@ -1617,7 +1642,7 @@ export function step(ctx: StepContext): StepResult {
             const px = wrapX(cx + dx, cw);
             const py = wrapY(cy + dy, ch);
             const tsSid = species[zOff + py * cw + px];
-            if (eatsSet.indexOf(tsSid) !== -1 && layersCanReach(sid, layerOf(tsSid))) {
+            if (_eatsLookup![tsSid] && layersCanReach(sid, layerOf(tsSid))) {
               const tsTier = SPECIES[tsSid] && SPECIES[tsSid].tier;
               if (tsTier === 'consumer' || tsTier === 'apex' || tsTier === 'herbivore') {
                 bestDist = dist;
@@ -1659,7 +1684,7 @@ export function step(ctx: StepContext): StepResult {
             const px = wrapX(cx + dx, cw);
             const py = wrapY(cy + dy, ch);
             const llSid = species[zOff + py * cw + px];
-            if (eatsSet.indexOf(llSid) !== -1 && layersCanReach(sid, layerOf(llSid))) {
+            if (_eatsLookup![llSid] && layersCanReach(sid, layerOf(llSid))) {
               bestDist = dist;
               bestDx = dx;
               bestDy = dy;
@@ -1698,7 +1723,7 @@ export function step(ctx: StepContext): StepResult {
             const px = wrapX(cx + dx, cw);
             const py = wrapY(cy + dy, ch);
             const erSid = species[zOff + py * cw + px];
-            if (eatsSet.indexOf(erSid) !== -1 && layersCanReach(sid, layerOf(erSid))) {
+            if (_eatsLookup![erSid] && layersCanReach(sid, layerOf(erSid))) {
               bestDist = dist;
               bestDx = dx;
               bestDy = dy;
@@ -1737,7 +1762,7 @@ export function step(ctx: StepContext): StepResult {
             const px = wrapX(cx + dx, cw);
             const py = wrapY(cy + dy, ch);
             const stSid = species[zOff + py * cw + px];
-            if (eatsSet.indexOf(stSid) !== -1 && layersCanReach(sid, layerOf(stSid))) {
+            if (_eatsLookup![stSid] && layersCanReach(sid, layerOf(stSid))) {
               bestDist = dist;
               bestDx = dx;
               bestDy = dy;
@@ -1849,7 +1874,7 @@ export function step(ctx: StepContext): StepResult {
 
     // --- 6. Breed (with seasonal modifier) ---
     let breedRate = es.breedRate * seasonBreedMult;
-    if (sp.tier === 'decomposer' && breedRate > DECOMPOSER_BREED_CAP) {
+    if (tierId === 8 /* decomposer */ && breedRate > DECOMPOSER_BREED_CAP) {
       breedRate = DECOMPOSER_BREED_CAP;
     }
     const _tierTotal = tierPops[sp.tier] || 0;
@@ -1902,6 +1927,11 @@ export function step(ctx: StepContext): StepResult {
       } else if (sameAdjacentCount <= 1) {
         breedRate *= 1 + 0.6 * tStr(sid, 'territorial');
       }
+    }
+
+    const baseBreedRate = es.breedRate * seasonBreedMult;
+    if (baseBreedRate > 0 && breedRate > baseBreedRate * TRAIT_BREED_BONUS_CAP) {
+      breedRate = baseBreedRate * TRAIT_BREED_BONUS_CAP;
     }
 
     if (Math.random() < breedRate) {

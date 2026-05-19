@@ -4,9 +4,49 @@ import { SPECIES } from '../species/registry';
 import { expressAllGenes, speciesGeneticDiversity } from '../evolution/genetics';
 import { TRAITS } from '../evolution/traits';
 import { NOVEL_ADAPTATIONS } from '../evolution/novel-adaptations';
+import { getScientificName } from '../evolution/taxonomy';
 import { screenToWorld } from './camera';
 import type { CameraState } from './camera';
 import { isMobile } from './mobile';
+
+const SIZE_WORDS: string[] = ['tiny', 'small', 'medium', 'large', 'massive'];
+const SPEED_WORDS: string[] = ['sluggish', 'slow', 'moderate', 'swift', 'lightning-fast'];
+
+function buildDynamicDesc(
+  _sid: number,
+  es: EvoStats,
+  tier: string,
+  layerIdx: number,
+): string {
+  const expressed = es._expressed || expressAllGenes(es.genes);
+  const sizeIdx = Math.min(4, (expressed.bodySize * 5) | 0);
+  const speedIdx = Math.min(4, (expressed.bodyShape * 5) | 0);
+  const sizeWord = SIZE_WORDS[sizeIdx];
+  const layerName = layerIdx >= 0 && layerIdx < LAYER_NAMES.length
+    ? LAYER_NAMES[layerIdx].toLowerCase() : 'open water';
+
+  const parts: string[] = [];
+  if (tier === 'producer') {
+    parts.push(`A ${sizeWord} producer in the ${layerName} zone.`);
+  } else {
+    const speedWord = SPEED_WORDS[speedIdx];
+    parts.push(`A ${sizeWord}, ${speedWord} ${tier} inhabiting the ${layerName} zone.`);
+  }
+
+  if (es.eats?.length) {
+    const preyNames = es.eats.slice(0, 3).map(eid => SPECIES[eid]?.name || 'unknown');
+    parts.push(`Feeds on ${preyNames.join(', ')}.`);
+  }
+
+  if (expressed.aggression > 0.6) parts.push('Highly aggressive.');
+  else if (expressed.aggression < 0.2) parts.push('Peaceful temperament.');
+
+  if (expressed.sociality > 0.6) parts.push('Forms social groups.');
+
+  if (expressed.bodyArmour > 0.6) parts.push('Heavily armoured.');
+
+  return parts.join(' ');
+}
 
 const DIR_NAMES = ['', 'North', 'East', 'South', 'West'];
 
@@ -68,6 +108,12 @@ function buildContent(
   if (sp) {
     const tc = TIER_COLORS[sp.tier] || '#e0e8f0';
     parts.push(`<div class="tt-name" style="color:${sp.color}">${sp.name}</div>`);
+
+    const es0 = evoStats[sid];
+    const sciName = getScientificName(sid, es0?.genes || null, es0?.traits || []);
+    if (sciName) {
+      parts.push(`<div class="tt-sci"><i>${sciName}</i></div>`);
+    }
 
     if (sp.tier !== 'none') {
       parts.push(`<div class="tt-tier" style="color:${tc}">${sp.tier}${sp.layer >= 0 ? ` · ${LAYER_NAMES[sp.layer as 0|1|2|3|4|5]}` : ''}</div>`);
@@ -142,11 +188,18 @@ function buildContent(
     parts.push(`<div class="tt-stat">Diversity: <span style="color:${dColor}">${dPct}%</span></div>`);
   }
 
+  if (es.genes) {
+    const dynDesc = buildDynamicDesc(sid, es, sp.tier, sp.layer as number);
+    parts.push(`<div class="tt-desc">${dynDesc}</div>`);
+  } else if (sp.desc) {
+    parts.push(`<div class="tt-desc">${sp.desc}</div>`);
+  }
+
   const spAny = sp as any;
   if (spAny.parentId !== undefined) {
     const parent = SPECIES[spAny.parentId];
     if (parent) {
-      const depth = spAny.depth || 1;
+      const depth = spAny.lineageDepth || 1;
       parts.push(`<div class="tt-lineage">Evolved from ${parent.name}${depth > 1 ? ` (depth ${depth})` : ''}</div>`);
     }
   }

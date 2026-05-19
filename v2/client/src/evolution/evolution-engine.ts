@@ -1077,6 +1077,22 @@ export function nicheShift(ctx: EvoContext): NicheShiftResult {
       }
     }
 
+    // Radical morphological shift: extreme divergence allows any tier transition
+    if (!newTier && sp.tier !== 'producer') {
+      const allTiers: LivingTier[] = ['herbivore', 'consumer', 'apex', 'megafauna'];
+      for (const candidate of allTiers) {
+        if (candidate === sp.tier) continue;
+        const cp = tierPop[candidate] || 0;
+        if (totalLiving > 50 && cp < totalLiving * EMPTY_NICHE_THRESHOLD) {
+          if (divergence > 0.50 && popNow > 40) {
+            newTier = candidate;
+            targetEmpty = true;
+            break;
+          }
+        }
+      }
+    }
+
     if (!newTier) continue;
 
     // Gate checks: relaxed when target niche is empty (convergent evolution)
@@ -1265,6 +1281,12 @@ export function nicheShift(ctx: EvoContext): NicheShiftResult {
         ? TIER_LAYER_MAP[newTier]!
         : sp.layer;
 
+    // Gene-driven layer drift: species with high pressureAdapt go deeper, high thermalAdapt go shallower
+    const nsExpCheck = expressAllGenes(newGenes);
+    let adjustedLayer = newLayer as number;
+    if (nsExpCheck.pressureAdapt > 0.65) adjustedLayer = Math.max(0, adjustedLayer - 1);
+    if (nsExpCheck.thermalAdapt > 0.65) adjustedLayer = Math.min(5, adjustedLayer + 1);
+
     // Register the new species
     const newSpeciesDef: SpeciesDefinition & {
       parentId: number;
@@ -1274,7 +1296,7 @@ export function nicheShift(ctx: EvoContext): NicheShiftResult {
       name: newName,
       color: newHex,
       tier: newTier,
-      layer: newLayer,
+      layer: adjustedLayer as Layer,
       breedRate: sp.breedRate || 0.04,
       moveRate: sp.moveRate || 0.35,
       hungerMax: sp.hungerMax || 20,

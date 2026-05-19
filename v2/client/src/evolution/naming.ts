@@ -3,22 +3,22 @@ import { GENE_KEYS } from '../constants';
 import { geneVal } from './genetics';
 
 export const GENE_NAME_POOLS: Record<GeneKey, string[]> = {
-  bodySize: ['Massive', 'Hulking', 'Titan', 'Colossal', 'Bulky'],
-  bodyArmour: ['Plated', 'Spiny', 'Shielded', 'Thorned', 'Mailed'],
-  bodyShape: ['Swift', 'Darting', 'Fleet', 'Agile', 'Racing'],
-  pigment: ['Vivid', 'Bright', 'Painted', 'Chromatic', 'Iridescent'],
-  metabolicRate: ['Blazing', 'Active', 'Restless', 'Energetic', 'Burning'],
-  fertility: ['Prolific', 'Thriving', 'Fecund', 'Blooming', 'Verdant'],
-  hungerEfficiency: ['Hardy', 'Stalwart', 'Ironclad', 'Enduring', 'Rugged'],
-  growthRate: ['Precocious', 'Rapid', 'Budding', 'Surging', 'Vigorous'],
-  aggression: ['Fierce', 'Razor', 'Fanged', 'Savage', 'Vicious'],
-  sociality: ['Swarming', 'Herding', 'Colonial', 'Gregarious', 'Social'],
-  curiosity: ['Roaming', 'Wandering', 'Explorer', 'Nomadic', 'Drifting'],
-  flightResponse: ['Elusive', 'Wary', 'Skittish', 'Cautious', 'Phantom'],
-  visionRange: ['Keen', 'Watchful', 'Sharp-eyed', 'Sentinel', 'Scanning'],
-  chemosensory: ['Sensing', 'Chemical', 'Tasting', 'Olfactory', 'Sensing'],
-  thermalAdapt: ['Thermal', 'Adapted', 'Temperate', 'Hardened', 'Resilient'],
-  pressureAdapt: ['Deep', 'Abyssal', 'Benthic', 'Crushing', 'Pressure'],
+  bodySize: ['Massive', 'Hulking', 'Titan', 'Colossal', 'Bulky', 'Enormous', 'Miniature', 'Towering'],
+  bodyArmour: ['Plated', 'Spiny', 'Shielded', 'Thorned', 'Mailed', 'Scaled', 'Hardened', 'Carapaced'],
+  bodyShape: ['Swift', 'Darting', 'Fleet', 'Agile', 'Racing', 'Sleek', 'Streamlined', 'Torpedo'],
+  pigment: ['Vivid', 'Bright', 'Painted', 'Chromatic', 'Iridescent', 'Luminous', 'Neon', 'Dazzling'],
+  metabolicRate: ['Blazing', 'Active', 'Restless', 'Energetic', 'Burning', 'Tireless', 'Relentless', 'Hyperactive'],
+  fertility: ['Prolific', 'Thriving', 'Fecund', 'Blooming', 'Verdant', 'Bountiful', 'Swarmer', 'Spawning'],
+  hungerEfficiency: ['Hardy', 'Stalwart', 'Ironclad', 'Enduring', 'Rugged', 'Frugal', 'Efficient', 'Lean'],
+  growthRate: ['Precocious', 'Rapid', 'Budding', 'Surging', 'Vigorous', 'Explosive', 'Bursting', 'Rocketing'],
+  aggression: ['Fierce', 'Razor', 'Fanged', 'Savage', 'Vicious', 'Ruthless', 'Marauding', 'Cunning'],
+  sociality: ['Swarming', 'Herding', 'Colonial', 'Gregarious', 'Social', 'Flocking', 'Solitary', 'Communal'],
+  curiosity: ['Roaming', 'Wandering', 'Explorer', 'Nomadic', 'Drifting', 'Adventurous', 'Questing', 'Seeking'],
+  flightResponse: ['Elusive', 'Wary', 'Skittish', 'Cautious', 'Phantom', 'Fleeting', 'Vanishing', 'Ghostly'],
+  visionRange: ['Keen', 'Watchful', 'Sharp-eyed', 'Sentinel', 'Scanning', 'Eagle-eyed', 'Perceptive', 'Hawkeye'],
+  chemosensory: ['Sensing', 'Chemical', 'Tasting', 'Olfactory', 'Sensing', 'Tracking', 'Scenting', 'Probing'],
+  thermalAdapt: ['Thermal', 'Adapted', 'Temperate', 'Hardened', 'Resilient', 'Volcanic', 'Frostborn', 'Tempered'],
+  pressureAdapt: ['Deep', 'Abyssal', 'Benthic', 'Crushing', 'Pressure', 'Ironhull', 'Depthborn', 'Submariner'],
 };
 
 export const NICHE_SHIFT_NAMES: Record<string, string[]> = {
@@ -32,6 +32,23 @@ export const SIZE_VARIANT_NAMES: Record<string, string[]> = {
   large: ['Greater', 'Grand', 'Large', 'Hefty', 'Broad'],
   small: ['Lesser', 'Minor', 'Slim', 'Petite', 'Pygmy'],
 };
+
+export const LAYER_NAMES_POOL: Record<number, string[]> = {
+  0: ['Abyssal', 'Deep', 'Hadal', 'Trench'],
+  1: ['Benthic', 'Bottom', 'Seafloor', 'Burrowing'],
+  2: ['Reef', 'Coral', 'Lagoon', 'Shoal'],
+  3: ['Pelagic', 'Open-water', 'Midwater', 'Drifting'],
+  4: ['Surface', 'Sunlit', 'Coastal', 'Tidal'],
+  5: ['Canopy', 'Skimming', 'Breaching', 'Cresting'],
+};
+
+export const COMPOUND_NAMES: string[] = [
+  'Reefback', 'Boneshark', 'Stalker', 'Gasopod', 'Peeper',
+  'Boomerang', 'Spadefish', 'Hoverfish', 'Bladderfish', 'Garryfish',
+  'Mesmer', 'Crabsnake', 'Warper', 'Ghostray', 'Ampeel',
+  'Sandshark', 'Crashfish', 'Floater', 'Shocker', 'Biter',
+  'Bleeder', 'Blighter', 'Shuttlebug', 'Rockpuncher', 'Lavazone',
+];
 
 export const DIVERGENT_NAMES: Record<string, string> = {
   coldadapt: 'Frost', warmadapt: 'Sun', nocturnal: 'Night', diurnal: 'Day',
@@ -81,6 +98,12 @@ export function generateSpeciesName(
   }
 
   let candidate = adj + ' ' + rootName;
+
+  // 10% chance to use a compound name for speciation events
+  if (context === 'speciation' && Math.random() < 0.10 && COMPOUND_NAMES.length > 0) {
+    candidate = COMPOUND_NAMES[(Math.random() * COMPOUND_NAMES.length) | 0];
+  }
+
   let attempt = 0;
   while (existingNames.has(candidate) && attempt < 10) {
     const fallbackGene = GENE_KEYS[(Math.random() * GENE_KEYS.length) | 0];
