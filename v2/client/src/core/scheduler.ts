@@ -384,9 +384,23 @@ export function step(ctx: StepContext): StepResult {
 
     // Current overlay is handled separately (no species ID 2 in grid)
 
-    // ----- Dead cell: decay to empty, rare fossilisation near rock -----
+    // ----- Dead cell: sink toward abyssal, decay, rare fossilisation -----
     if (sid === 3) {
       age[idx]++;
+      // Sink: dead matter falls one layer per tick until it reaches z=0
+      if (cz > 0) {
+        const belowXY = (cz - 1) * planeSize + xyIdx;
+        if (species[belowXY] === 0) {
+          species[belowXY] = 3;
+          hunger[belowXY] = 0;
+          age[belowXY] = age[idx];
+          species[idx] = 0;
+          hunger[idx] = 0;
+          age[idx] = 0;
+          processed[belowXY] = 1;
+          continue;
+        }
+      }
       if (age[idx] >= DEAD_FOSSILIZE_AGE) {
         let adjRockD = 0;
         for (let n = 0; n < 4; n++) {
@@ -1729,6 +1743,46 @@ export function step(ctx: StepContext): StepResult {
       }
     }
 
+    // --- 5b. Predation pressure vertical flight ---
+    // Animals with a predator in their layer can flee to an adjacent z-layer.
+    // Higher flightResponse gene increases the chance. This drives vertical
+    // dispersal and layer diversity.
+    if (species[idx] === sid && sp.hungerMax) {
+      let predatorNearby = false;
+      for (let n = 0; n < 8; n++) {
+        const dir = NEIGHBOURS_8[n];
+        const nSid = species[zOff + wrapY(cy + dir[1], ch) * cw + wrapX(cx + dir[0], cw)];
+        if (nSid < 10) continue;
+        const nEs = ctxEvoStats[nSid];
+        const nEats = nEs ? nEs.eats : (SPECIES[nSid]?.eats as number[] | undefined);
+        if (!nEats) continue;
+        if (nEats.indexOf(sid) !== -1) { predatorNearby = true; break; }
+      }
+      if (predatorNearby) {
+        const expressed = es._expressed || es;
+        const flightGene = expressed.flightResponse ?? 0;
+        const fleeChance = 0.04 + flightGene * 0.12;
+        if (Math.random() < fleeChance) {
+          // Try fleeing up or down (prefer direction away from more predators)
+          const tryDirs = Math.random() < 0.5 ? [cz - 1, cz + 1] : [cz + 1, cz - 1];
+          for (const targetZ of tryDirs) {
+            if (targetZ < 0 || targetZ >= layers) continue;
+            const destIdx = targetZ * planeSize + xyIdx;
+            if (species[destIdx] === 0) {
+              species[destIdx] = sid;
+              hunger[destIdx] = hunger[idx];
+              age[destIdx] = age[idx];
+              species[idx] = 0;
+              hunger[idx] = 0;
+              age[idx] = 0;
+              processed[destIdx] = 1;
+              break;
+            }
+          }
+        }
+      }
+    }
+
     // --- 6. Breed (with seasonal modifier) ---
     let breedRate = es.breedRate * seasonBreedMult;
     if (sp.tier === 'decomposer' && breedRate > DECOMPOSER_BREED_CAP) {
@@ -1806,6 +1860,7 @@ export function step(ctx: StepContext): StepResult {
         }
       }
       if (!broodDone) {
+        let bred = false;
         const nbrs = shuffleDirs8();
         for (let n = 0; n < 8; n++) {
           const dir = NEIGHBOURS_8[nbrs[n]];
@@ -1819,6 +1874,7 @@ export function step(ctx: StepContext): StepResult {
               : Math.min(hunger[idx], ((es.hungerMax * 0.3) | 0));
             age[ni] = 0;
             processed[ni] = 1;
+            bred = true;
             // Novel: Budding
             if (hasNovelAdapt(sid, 'budding', ctxEvoStats) && Math.random() < 0.3) {
               for (let b = n + 1; b < 8; b++) {
@@ -1836,6 +1892,24 @@ export function step(ctx: StepContext): StepResult {
               }
             }
             break;
+          }
+        }
+        // Overflow breeding: if same-layer is full, try placing offspring
+        // into an adjacent z-layer at the same xy position
+        if (!bred && species[idx] === sid) {
+          const tryUp = cz + 1 < layers ? (cz + 1) * planeSize + xyIdx : -1;
+          const tryDown = cz - 1 >= 0 ? (cz - 1) * planeSize + xyIdx : -1;
+          const first = Math.random() < 0.5 ? tryUp : tryDown;
+          const second = first === tryUp ? tryDown : tryUp;
+          for (const dest of [first, second]) {
+            if (dest < 0) continue;
+            if (species[dest] === 0) {
+              species[dest] = sid;
+              hunger[dest] = Math.min(hunger[idx], ((es.hungerMax * 0.3) | 0));
+              age[dest] = 0;
+              processed[dest] = 1;
+              break;
+            }
           }
         }
       }
