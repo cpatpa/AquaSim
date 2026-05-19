@@ -39,7 +39,7 @@ import { openLeaderboard } from './ui/leaderboard';
 import { openAccount } from './ui/account';
 import { initMobile, initMobileUI, isMobile, getMobileContentRect, setResizeCallback, setMobileCallbacks, updateMobileBar } from './ui/mobile';
 import {
-  isLoggedIn, getUser, tryRestoreSession,
+  isLoggedIn, isAdmin, getUser, tryRestoreSession,
   saveSimulation, loadSimulation, updateSimulation, submitScore,
 } from './api/client';
 
@@ -125,6 +125,7 @@ app.innerHTML = `
       <button id="btn-dashboard" title="Browse and load your saved simulations">My Sims</button>
       <button id="btn-leaderboard" title="View leaderboard of top scores">Ranks</button>
       <button id="btn-export" title="Download a detailed data export of the current state">Export</button>
+      <button id="btn-log" title="Download full play log for balance analysis" style="display:none">Log</button>
       <div class="bar-divider"></div>
       <button id="btn-tree" title="View the phylogenetic tree of all species lineages">Tree</button>
       <button id="btn-settings" title="Adjust mutation rate, speciation rate, trait limits and grid size">Settings</button>
@@ -401,6 +402,7 @@ const btnLeaderboard = document.getElementById('btn-leaderboard')!;
 const btnAccount = document.getElementById('btn-account')!;
 const userLabel = document.getElementById('user-label')!;
 const btnExport = document.getElementById('btn-export')!;
+const btnLog = document.getElementById('btn-log')!;
 const btnTree = document.getElementById('btn-tree')!;
 const btnSettings = document.getElementById('btn-settings')!;
 const btnHelp = document.getElementById('btn-help')!;
@@ -617,6 +619,7 @@ function updateUserBar(): void {
     userLabel.textContent = '';
     btnAccount.textContent = 'Login';
   }
+  btnLog.style.display = isAdmin() ? '' : 'none';
 }
 
 btnExport.addEventListener('click', () => {
@@ -624,6 +627,35 @@ btnExport.addEventListener('click', () => {
   const bio = calcBiodiversity(counts, sim.evoStats);
   const data = buildExportData(sim.grid, sim.evoStats, sim.generation, sim.evolveEnabled, sim.history.popHistory, sim.history.evoLog, bio);
   downloadExport(data);
+});
+
+btnLog.addEventListener('click', () => {
+  const counts = getCellCounts();
+  const bio = calcBiodiversity(counts, sim.evoStats);
+  const exportData = buildExportData(sim.grid, sim.evoStats, sim.generation, sim.evolveEnabled, sim.history.popHistory, sim.history.evoLog, bio);
+  const playLog = {
+    ...exportData,
+    graphHistory: sim.history.graphHistory,
+    graphEventMarkers: sim.history.graphEventMarkers,
+    config: {
+      gridWidth: sim.config.gridWidth,
+      gridHeight: sim.config.gridHeight,
+      mutationRateMult: sim.config.mutationRateMult,
+      speciationRateMult: sim.config.speciationRateMult,
+      maxTraitsPerSpecies: sim.config.maxTraitsPerSpecies,
+    },
+    season: sim.season.current,
+    seasonTick: sim.season.tick,
+    timestamp: new Date().toISOString(),
+  };
+  const json = JSON.stringify(playLog, null, 2);
+  const blob = new Blob([json], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `aquasim-playlog-gen${sim.generation}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
 });
 
 btnSettings.addEventListener('click', () => {
