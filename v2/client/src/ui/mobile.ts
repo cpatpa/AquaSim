@@ -29,7 +29,7 @@ const MOBILE_STYLES = `
     #left-panel, #right-panel { display: none !important; }
     #bottom-bar { display: none !important; }
 
-    #layout { height: calc(100vh - 36px - 44px); margin-top: 36px; }
+    #layout { height: calc(100vh - 36px - 44px - env(safe-area-inset-bottom, 0px)); margin-top: 36px; }
     #centre { width: 100%; height: 100%; }
 
     #mobile-tabs {
@@ -44,32 +44,32 @@ const MOBILE_STYLES = `
     .mob-tab.active { color: #00E5FF; border-color: #00E5FF; }
 
     #mobile-bar {
-      position: fixed; bottom: 0; left: 0; right: 0; z-index: 790;
-      display: flex; height: 44px; align-items: center; padding: 0 8px; gap: 4px;
+      position: fixed; bottom: 0; left: 0; right: 0; z-index: 900;
+      display: flex; height: calc(44px + env(safe-area-inset-bottom, 0px));
+      align-items: center; padding: 0 8px env(safe-area-inset-bottom, 0px) 8px; gap: 4px;
       background: #04090F; border-top: 1px solid #0C2D40;
     }
-    #mobile-bar button, #mobile-bar select {
+    #mobile-bar button {
       font-family: 'Share Tech Mono', monospace; font-size: 0.7rem;
       padding: 6px 10px; border: 1px solid #0C2D40; background: #0A1622; color: #7EE8FA;
       cursor: pointer; border-radius: 3px; white-space: nowrap;
     }
-    #mobile-bar select { padding: 5px 6px; }
     #mobile-bar .bar-spacer { flex: 1; }
     #mobile-bar .mob-season { color: #88FF88; font-size: 0.7rem; }
     #mobile-bar .mob-gen { color: #00E5FF; font-size: 0.7rem; }
 
     #mobile-drawer {
-      position: fixed; bottom: 44px; left: 0; right: 0;
+      position: fixed; bottom: calc(44px + env(safe-area-inset-bottom, 0px)); left: 0; right: 0;
       max-height: 55vh; background: #04090F; border-top: 1px solid #0C2D40;
-      transform: translateY(100%); transition: transform 0.25s ease;
-      z-index: 800; overflow-y: auto; padding: 8px;
+      z-index: 850; overflow-y: auto; padding: 8px;
+      display: none;
     }
-    #mobile-drawer.open { transform: translateY(0); }
+    #mobile-drawer.open { display: block; }
     #mobile-drawer::-webkit-scrollbar { width: 4px; }
     #mobile-drawer::-webkit-scrollbar-thumb { background: #0C2D40; border-radius: 2px; }
 
     #paint-fab {
-      position: fixed; bottom: 56px; right: 12px; z-index: 810;
+      position: fixed; bottom: calc(56px + env(safe-area-inset-bottom, 0px)); right: 12px; z-index: 810;
       width: 52px; height: 52px; border-radius: 50%;
       background: #0A1622; border: 2px solid #0C2D40; color: #7EE8FA;
       font-family: 'Share Tech Mono', monospace; font-size: 0.6rem;
@@ -133,13 +133,7 @@ function buildMobileUI(): void {
   bar.innerHTML = `
     <button id="mob-play" title="Start or pause the simulation">Play</button>
     <button id="mob-step" title="Advance one tick while paused">Step</button>
-    <select id="mob-speed" title="Simulation speed multiplier">
-      <option value="500">0.5x</option>
-      <option value="100" selected>1x</option>
-      <option value="50">2x</option>
-      <option value="25">4x</option>
-      <option value="8">MAX</option>
-    </select>
+    <button id="mob-speed" title="Simulation speed multiplier">1x</button>
     <div class="bar-spacer"></div>
     <span class="mob-season" id="mob-season">Spring</span>
     <span class="mob-gen" id="mob-gen">GEN 0</span>
@@ -280,16 +274,30 @@ type MobileCallbacks = {
 
 let _callbacks: MobileCallbacks | null = null;
 
+const SPEED_STEPS = [
+  { value: 500, label: '0.5x' },
+  { value: 100, label: '1x' },
+  { value: 50, label: '2x' },
+  { value: 25, label: '4x' },
+  { value: 8, label: 'MAX' },
+];
+let _speedIndex = 1;
+
 export function setMobileCallbacks(cb: MobileCallbacks): void {
   _callbacks = cb;
 
   const playBtn = document.getElementById('mob-play');
   const stepBtn = document.getElementById('mob-step');
-  const speedSel = document.getElementById('mob-speed') as HTMLSelectElement | null;
+  const speedBtn = document.getElementById('mob-speed');
 
   if (playBtn) playBtn.addEventListener('click', () => cb.onPlay());
   if (stepBtn) stepBtn.addEventListener('click', () => cb.onStep());
-  if (speedSel) speedSel.addEventListener('change', () => cb.onSpeed(parseInt(speedSel.value)));
+  if (speedBtn) speedBtn.addEventListener('click', () => {
+    _speedIndex = (_speedIndex + 1) % SPEED_STEPS.length;
+    const step = SPEED_STEPS[_speedIndex];
+    speedBtn.textContent = step.label;
+    cb.onSpeed(step.value);
+  });
 }
 
 export function updateMobileBar(gen: number, season: string, playing: boolean): void {
