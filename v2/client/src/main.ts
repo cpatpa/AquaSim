@@ -442,12 +442,18 @@ btnBalance.addEventListener('click', () => {
 btnBiome.addEventListener('click', () => {
   resetSimulation(sim);
   seedBiome(sim.grid);
+  currentSimId = null;
+  _autoSaveAttempted = false;
+  _lastScoreGen = 0;
   renderFrame();
   updateUI();
 });
 btnClear.addEventListener('click', () => {
   resetSimulation(sim);
   activeVents.length = 0;
+  currentSimId = null;
+  _autoSaveAttempted = false;
+  _lastScoreGen = 0;
   renderFrame();
   updateUI();
   btnPlay.textContent = 'Play';
@@ -455,12 +461,33 @@ btnClear.addEventListener('click', () => {
 
 let currentSimId: string | null = null;
 let _lastScoreGen = 0;
+let _autoSaveAttempted = false;
+let _autoSaving = false;
+
+function autoSaveForTracking(): void {
+  if (_autoSaveAttempted || _autoSaving) return;
+  const user = getUser();
+  if (!user || user.saveCount >= user.saveLimit) return;
+  _autoSaving = true;
+  const data = serialise(sim);
+  const date = new Date().toLocaleDateString('en-AU', { day: '2-digit', month: 'short', year: 'numeric' });
+  saveSimulation(`Session ${date}`, data)
+    .then(({ id }) => { currentSimId = id; })
+    .catch(() => {})
+    .finally(() => { _autoSaveAttempted = true; _autoSaving = false; });
+}
 
 function trySubmitScores(): void {
-  if (!currentSimId || !isLoggedIn()) return;
+  if (!isLoggedIn()) return;
   const user = getUser();
   if (!user || user.role === 'guest') return;
   if (sim.generation - _lastScoreGen < 50) return;
+
+  if (!currentSimId) {
+    autoSaveForTracking();
+    return;
+  }
+
   _lastScoreGen = sim.generation;
 
   const counts = getCellCounts();
@@ -524,6 +551,8 @@ btnLoad.addEventListener('click', async () => {
     if (wasRunning) { stopLoop(sim); btnPlay.textContent = 'Play'; }
     deserialise(data, sim);
     currentSimId = null;
+    _autoSaveAttempted = false;
+    _lastScoreGen = 0;
     initCanvas(rs, sim.grid.width, sim.grid.height);
     fitToView(cam);
     renderFrame();
@@ -543,6 +572,8 @@ btnDashboard.addEventListener('click', () => {
         if (wasRunning) { stopLoop(sim); btnPlay.textContent = 'Play'; }
         deserialise(state as ReturnType<typeof serialise>, sim);
         currentSimId = simId;
+        _autoSaveAttempted = true;
+        _lastScoreGen = 0;
         initCanvas(rs, sim.grid.width, sim.grid.height);
         fitToView(cam);
         renderFrame();
@@ -603,6 +634,9 @@ btnSettings.addEventListener('click', () => {
     onGridResize: (w, h) => {
       if (sim.running) { stopLoop(sim); btnPlay.textContent = 'Play'; }
       Object.assign(sim, createSimState({ ...sim.config, gridWidth: w, gridHeight: h }));
+      currentSimId = null;
+      _autoSaveAttempted = false;
+      _lastScoreGen = 0;
       initCanvas(rs, sim.grid.width, sim.grid.height);
       fitToView(cam);
       seedGrid(sim.grid);
@@ -698,12 +732,18 @@ setupKeyboardShortcuts({
   biome: () => {
     resetSimulation(sim);
     seedBiome(sim.grid);
+    currentSimId = null;
+    _autoSaveAttempted = false;
+    _lastScoreGen = 0;
     renderFrame();
     updateUI();
   },
   clear: () => {
     resetSimulation(sim);
     activeVents.length = 0;
+    currentSimId = null;
+    _autoSaveAttempted = false;
+    _lastScoreGen = 0;
     renderFrame();
     updateUI();
     btnPlay.textContent = 'Play';
