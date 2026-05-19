@@ -70,7 +70,7 @@ function buildContent(
     parts.push(`<div class="tt-name" style="color:${sp.color}">${sp.name}</div>`);
 
     if (sp.tier !== 'none') {
-      parts.push(`<div class="tt-tier" style="color:${tc}">${sp.tier}${sp.layer >= 0 ? ` · ${LAYER_NAMES[sp.layer as 0|1|2|3]}` : ''}</div>`);
+      parts.push(`<div class="tt-tier" style="color:${tc}">${sp.tier}${sp.layer >= 0 ? ` · ${LAYER_NAMES[sp.layer as 0|1|2|3|4|5]}` : ''}</div>`);
     }
   } else if (curDir > 0) {
     parts.push(`<div class="tt-name" style="color:#003D88">Current</div>`);

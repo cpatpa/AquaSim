@@ -11,7 +11,7 @@ export type Tier =
 
 export type LivingTier = Exclude<Tier, 'none' | 'environment' | 'transient'>;
 
-export type Layer = -1 | 0 | 1 | 2 | 3;
+export type Layer = -1 | 0 | 1 | 2 | 3 | 4 | 5;
 
 export type Season = 'Spring' | 'Summer' | 'Autumn' | 'Winter';
 

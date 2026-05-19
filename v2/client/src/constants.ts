@@ -183,6 +183,7 @@ export const NEIGHBOURS_8: readonly [number, number][] = [
   [0, -1], [1, -1], [1, 0], [1, 1], [0, 1], [-1, 1], [-1, 0], [-1, -1],
 ];
 
-// Layer names
-export const LAYER_NAMES = ['Benthic', 'Shallow', 'Mid-water', 'Surface'] as const;
-export const LAYER_COLORS = ['#886644', '#44AA88', '#4488CC', '#88CCFF'] as const;
+// Layer names (6 depth zones from deepest to shallowest)
+export const LAYER_NAMES = ['Abyssal', 'Benthic', 'Reef', 'Pelagic', 'Surface', 'Canopy'] as const;
+export const LAYER_COLORS = ['#334466', '#886644', '#44AA88', '#4488CC', '#88CCFF', '#AAEEFF'] as const;
+export const LAYER_COUNT = 6;

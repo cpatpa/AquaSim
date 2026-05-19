@@ -183,10 +183,12 @@ const TIER_RANK: Record<string, number> = {
 
 /** Layer lookup for niche-shifted species. */
 const TIER_LAYER_MAP: Partial<Record<LivingTier, Layer>> = {
-  herbivore: 1,
-  consumer: 2,
-  apex: 3,
-  megafauna: 3,
+  producer:  4,
+  herbivore: 2,
+  consumer:  3,
+  apex:      5,
+  megafauna: 4,
+  decomposer: 1,
 };
 
 /**

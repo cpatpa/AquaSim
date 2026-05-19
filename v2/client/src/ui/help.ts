@@ -185,7 +185,7 @@ function speciesSection(): string {
     </table>
 
     <h4>Water Layers</h4>
-    <p>The ocean has four vertical layers (0 to 3). Species occupy a home layer and can reach prey a fixed number of layers below them. This means a shark at layer 3 can hunt anything at layers 0 through 3, while a snail at layer 0 can only eat what shares its layer. This creates vertical niche separation and makes depth an important factor in ecosystem dynamics.</p>
+    <p>The ocean has six vertical layers (0 to 5): Abyssal, Benthic, Reef, Pelagic, Surface and Canopy. Species occupy a home layer and can reach prey a fixed number of layers above or below them. A shark in the Canopy can hunt deep into the water column, while a snail in the Benthic zone can only eat what shares its layer. This creates vertical niche separation and makes depth an important factor in ecosystem dynamics.</p>
   `;
 }
 
