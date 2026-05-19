@@ -18,7 +18,7 @@ export const GRAPH_RECORD_INTERVAL = 2;
 
 // Transient entity decay
 export const DEAD_DECAY_AGE = 14;
-export const DEAD_FOSSILIZE_AGE = 120;
+export const DEAD_FOSSILIZE_AGE = 60;
 export const OIL_SPREAD_RATE = 0.06;
 export const OIL_SPREAD_MAX_AGE = 15;
 export const OIL_DECAY_AGE = 40;

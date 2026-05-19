@@ -15,6 +15,7 @@ import type {
 } from '../types';
 
 import {
+  DEAD_DECAY_AGE,
   DEAD_FOSSILIZE_AGE,
   OIL_SPREAD_RATE,
   OIL_SPREAD_MAX_AGE,
@@ -359,11 +360,20 @@ export function step(ctx: StepContext): StepResult {
 
     // Current overlay is handled separately (no species ID 2 in grid)
 
-    // ----- Dead cell: fossilise into rock if uneaten -----
+    // ----- Dead cell: decay to empty, rare fossilisation near rock -----
     if (sid === 3) {
       age[idx]++;
       if (age[idx] >= DEAD_FOSSILIZE_AGE) {
-        species[idx] = 1;
+        let adjRockD = 0;
+        for (let n = 0; n < 4; n++) {
+          const dir = CARDINAL[n];
+          if (species[wrapY(cy + dir[1], ch) * cw + wrapX(cx + dir[0], cw)] === 1) adjRockD++;
+        }
+        species[idx] = adjRockD >= 2 ? 1 : 0;
+        hunger[idx] = 0;
+        age[idx] = 0;
+      } else if (age[idx] >= DEAD_DECAY_AGE) {
+        species[idx] = 0;
         hunger[idx] = 0;
         age[idx] = 0;
       }
@@ -655,6 +665,16 @@ export function step(ctx: StepContext): StepResult {
         if (season.current === 'Summer' || season.current === 'Spring') breedChance *= 1.4;
         else breedChance *= 0.8;
       }
+
+      // Tier-level dominance penalty for producers
+      const _prodTierTotal = tierPops['producer'] || 0;
+      if (_prodTierTotal > totalLiving * TIER_DOMINANCE_THRESHOLD) {
+        breedChance *= TIER_DOMINANCE_BREED_PENALTY;
+      }
+      // Endangered producer boost
+      const _prodFrac = totalLiving > 0 ? _prodTierTotal / totalLiving : 0;
+      if (_prodFrac < 0.05 && _prodFrac > 0) breedChance *= 2.0;
+      else if (_prodFrac < 0.10 && _prodFrac > 0) breedChance *= 1.5;
 
       // Density-dependent growth: count adjacent producers (light competition)
       let adjProducers = 0;
@@ -989,6 +1009,13 @@ export function step(ctx: StepContext): StepResult {
         const ni = ny * cw + nx;
         const foodId = species[ni];
         if (eatsSet.indexOf(foodId) !== -1 && layersCanReach(sid, layerOf(foodId))) {
+          // Density-dependent predation: scarce prey is harder to find
+          const _preyPop = popCounts[foodId] || 0;
+          if (totalLiving > 0 && _preyPop < totalLiving * 0.01 && _preyPop > 0) {
+            if (Math.random() < 0.6) continue;
+          } else if (totalLiving > 0 && _preyPop < totalLiving * 0.03 && _preyPop > 0) {
+            if (Math.random() < 0.3) continue;
+          }
           const preyEs = evo(foodId, evolveEnabled, ctxEvoStats) as any;
           const preyTraits: string[] = preyEs.traits || [];
           const preySynergies = getSpeciesSynergies(preyTraits);
@@ -1151,6 +1178,20 @@ export function step(ctx: StepContext): StepResult {
             continue;
           }
           if (onSpawnDeathParticles) onSpawnDeathParticles(ni, foodId);
+          const _preySpec = SPECIES[foodId];
+          // Producer regrowth: grazed plants have a chance to regrow nearby
+          if (_preySpec && _preySpec.tier === 'producer' && Math.random() < 0.35) {
+            const _rd = CARDINAL[(Math.random() * 4) | 0];
+            const _rx = wrapX(nx + _rd[0], cw);
+            const _ry = wrapY(ny + _rd[1], ch);
+            const _ri = _ry * cw + _rx;
+            if (species[_ri] === 0) {
+              species[_ri] = foodId;
+              hunger[_ri] = 0;
+              age[_ri] = 0;
+              processed[_ri] = 1;
+            }
+          }
           // Novel: Calcification
           if (hasNovelAdapt(foodId, 'calcification', ctxEvoStats) && Math.random() < 0.5) {
             species[ni] = 1;
@@ -1647,6 +1688,9 @@ export function step(ctx: StepContext): StepResult {
     if (_tierTotal > totalLiving * TIER_DOMINANCE_THRESHOLD) {
       breedRate *= TIER_DOMINANCE_BREED_PENALTY;
     }
+    const _tierFrac = totalLiving > 0 ? _tierTotal / totalLiving : 0;
+    if (_tierFrac < 0.02 && _tierFrac > 0) breedRate *= 2.0;
+    else if (_tierFrac < 0.05 && _tierFrac > 0) breedRate *= 1.5;
     if (es.eats && es.eats.length > 0) {
       let hasLivePrey = false;
       for (let ei = 0; ei < es.eats.length; ei++) {

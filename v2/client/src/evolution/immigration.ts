@@ -50,6 +50,7 @@ export interface ImmigrationContext {
 }
 
 const TIER_BASE_SPECIES: Record<string, number[]> = {
+  producer:  [10, 11, 12],
   herbivore: [20, 21, 22, 23],
   consumer:  [30, 31, 32],
   apex:      [40, 41],
@@ -58,15 +59,17 @@ const TIER_BASE_SPECIES: Record<string, number[]> = {
 };
 
 const IMMIGRATION_TIER_INTERVAL: Record<string, number> = {
-  herbivore: 8, consumer: 6, apex: 6, megafauna: 10, decomposer: 15,
+  producer: 5, herbivore: 8, consumer: 6, apex: 6, megafauna: 10, decomposer: 15,
 };
 
 const IMMIGRATION_PREY_SEED: Record<string, number[]> = {
-  consumer: [20, 21, 22],
-  apex:     [30, 31, 32],
+  herbivore: [10, 11],
+  consumer:  [20, 21, 22],
+  apex:      [30, 31, 32],
 };
 
 const IMMIGRATION_NAMES: Record<string, string[]> = {
+  producer:   ['Floating', 'Pelagic', 'Drifting', 'Bloom', 'Spore'],
   herbivore:  ['Migratory', 'Pelagic', 'Drifting', 'Oceanic', 'Wayward'],
   consumer:   ['Roaming', 'Vagrant', 'Nomadic', 'Invasive', 'Colonist'],
   apex:       ['Ranging', 'Territorial', 'Dominant', 'Marauding', 'Alpha'],
@@ -80,7 +83,7 @@ const IMMIGRATION_CLUSTER_SIZE = 20;
 const CARDINAL: readonly [number, number][] = [[0, -1], [1, 0], [0, 1], [-1, 0]];
 
 const _tierEmptyGens: Record<string, number> = {
-  herbivore: 0, consumer: 0, apex: 0, megafauna: 0, decomposer: 0,
+  producer: 0, herbivore: 0, consumer: 0, apex: 0, megafauna: 0, decomposer: 0,
 };
 
 export function getTierEmptyGens(): Record<string, number> {
@@ -393,7 +396,7 @@ export function tierImmigration(ctx: ImmigrationContext): void {
     const preyList = IMMIGRATION_PREY_SEED[tier];
     if (preyList && preyList.length) {
       const preyTier: LivingTier | null =
-        tier === 'consumer' ? 'herbivore' : tier === 'apex' ? 'consumer' : null;
+        tier === 'herbivore' ? 'producer' : tier === 'consumer' ? 'herbivore' : tier === 'apex' ? 'consumer' : null;
       let preyId: number | null = null;
       if (preyTier) {
         preyId = createImmigrantSpecies(preyTier, ctx);
