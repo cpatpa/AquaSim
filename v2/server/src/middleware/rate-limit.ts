@@ -70,6 +70,32 @@ export const sensitiveRateLimit = createMiddleware(async (c, next) => {
   await next();
 });
 
+const accountBuckets = new Map<string, RateLimitEntry>();
+
+setInterval(() => cleanup(accountBuckets), 60_000);
+
+export function checkAccountLockout(username: string): string | null {
+  const key = `acct:${username.toLowerCase()}`;
+  const now = Date.now();
+  const entry = accountBuckets.get(key);
+  if (entry && entry.resetAt > now && entry.count > 10) {
+    return 'Account temporarily locked due to too many failed attempts. Try again later.';
+  }
+  return null;
+}
+
+export function recordFailedLogin(username: string): void {
+  const key = `acct:${username.toLowerCase()}`;
+  const now = Date.now();
+  const windowMs = 60 * 60_000;
+  let entry = accountBuckets.get(key);
+  if (!entry || entry.resetAt <= now) {
+    entry = { count: 0, resetAt: now + windowMs };
+    accountBuckets.set(key, entry);
+  }
+  entry.count++;
+}
+
 export const loginRateLimit = createMiddleware(async (c, next) => {
   const ip = getClientIp(c);
   const now = Date.now();

@@ -48,7 +48,7 @@ import {
   removeDynamicSpeciesId,
 } from '../species/registry';
 
-import { getSpeciesSynergies, hasSynergy } from '../evolution/traits';
+import { getSpeciesSynergies, hasSynergy, TRAIT_BITS } from '../evolution/traits';
 
 import type { SeasonState } from '../environment/seasons';
 import { advanceSeason, getSeasonModifiers } from '../environment/seasons';
@@ -671,7 +671,11 @@ export function step(ctx: StepContext): StepResult {
 
     const es = evo(sid, evolveEnabled, ctxEvoStats) as any;
     const traits: string[] = es.traits || [];
-    const hasTrait = (t: string): boolean => traits.indexOf(t) !== -1;
+    const traitBM = es._traitBitmask || 0;
+    const hasTrait = (t: string): boolean => {
+      const bit = TRAIT_BITS[t];
+      return bit ? (traitBM & bit) !== 0 : traits.indexOf(t) !== -1;
+    };
     const restoreFrac = (HUNGER_RESTORE_BY_TIER as any)[sp.tier] || HUNGER_RESTORE_FRACTION;
 
     // Compute synergies once per entity

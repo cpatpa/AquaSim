@@ -8,7 +8,7 @@ import { hashPassword, verifyPassword } from '../lib/passwords.js';
 import { signAccessToken, getRefreshTokenExpiryDate } from '../lib/tokens.js';
 import { sendPasswordResetEmail, sendWelcomeEmail, isEmailConfigured } from '../lib/email.js';
 import { authRequired } from '../middleware/auth.js';
-import { loginRateLimit, sensitiveRateLimit } from '../middleware/rate-limit.js';
+import { loginRateLimit, sensitiveRateLimit, checkAccountLockout, recordFailedLogin } from '../middleware/rate-limit.js';
 import { validateBody } from '../middleware/validate.js';
 import { nanoid } from 'nanoid';
 import { TOTP, Secret } from 'otpauth';
@@ -128,6 +128,11 @@ authRoutes.post('/register', sensitiveRateLimit, validateBody(registerSchema), a
 authRoutes.post('/login', loginRateLimit, validateBody(loginSchema), async (c) => {
   const body = loginSchema.parse(await c.req.json());
 
+  const lockoutMsg = checkAccountLockout(body.username);
+  if (lockoutMsg) {
+    return c.json({ error: lockoutMsg }, 429);
+  }
+
   const [user] = await db
     .select()
     .from(users)
@@ -135,6 +140,7 @@ authRoutes.post('/login', loginRateLimit, validateBody(loginSchema), async (c) =
     .limit(1);
 
   if (!user) {
+    recordFailedLogin(body.username);
     return c.json({ error: 'Invalid credentials' }, 401);
   }
 
@@ -144,6 +150,7 @@ authRoutes.post('/login', loginRateLimit, validateBody(loginSchema), async (c) =
 
   const valid = await verifyPassword(user.passwordHash, body.password);
   if (!valid) {
+    recordFailedLogin(body.username);
     return c.json({ error: 'Invalid credentials' }, 401);
   }
 

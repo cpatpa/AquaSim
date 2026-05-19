@@ -195,13 +195,19 @@ buildPalette(paletteListEl, palette, (id) => {
   selectType(palette, id, speciesInfoEl);
 });
 
+let _cachedCounts: Record<number, number> = {};
+let _cachedCountsGen = -1;
+
 function getCellCounts(): Record<number, number> {
+  if (_cachedCountsGen === sim.generation) return _cachedCounts;
   const total = sim.grid.width * sim.grid.height;
   const counts: Record<number, number> = {};
   for (let i = 0; i < total; i++) {
     const s = sim.grid.species[i];
     if (s !== 0) counts[s] = (counts[s] || 0) + 1;
   }
+  _cachedCounts = counts;
+  _cachedCountsGen = sim.generation;
   return counts;
 }
 
@@ -308,6 +314,7 @@ function doStep(): void {
   sim.prevLivingCount = result.prevLivingCount;
   sim.evoCooldown = result.evoCooldown;
   sim.lastEvoGen = result.lastEvoGen;
+  trySubmitScores();
 }
 
 function renderFrame(): void {
@@ -338,7 +345,6 @@ function updateUI(): void {
 
   updateEvoLog(evoEntriesEl, sim.history.evoLog, sim.evolveEnabled);
   updateMobileBar(sim.generation, sim.season.current, sim.running);
-  trySubmitScores();
 }
 
 function tick(): void {
