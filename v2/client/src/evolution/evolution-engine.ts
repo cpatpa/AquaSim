@@ -628,6 +628,27 @@ export function speciate(ctx: EvoContext): SpeciateResult {
   const total = gridW * gridH;
   const livingIds = getLivingIds();
 
+  const _spTierPop: Record<string, number> = {};
+  let _spTotalLiving = 0;
+  for (const tid of livingIds) {
+    const tsp = SPECIES[tid];
+    if (!tsp) continue;
+    const cnt = now[tid] || 0;
+    _spTierPop[tsp.tier] = (_spTierPop[tsp.tier] || 0) + cnt;
+    _spTotalLiving += cnt;
+  }
+  const _adjacentTierEmpty = (tier: string): boolean => {
+    const adj: Record<string, string[]> = {
+      producer: ['herbivore'],
+      herbivore: ['consumer'],
+      consumer: ['apex'],
+      apex: ['megafauna'],
+      decomposer: ['herbivore', 'consumer'],
+    };
+    const neighbours = adj[tier] || [];
+    return _spTotalLiving > 50 && neighbours.some(t => (_spTierPop[t] || 0) < _spTotalLiving * EMPTY_NICHE_THRESHOLD);
+  };
+
   for (const id of livingIds) {
     if (getDynamicSpeciesIds().length >= MAX_DYNAMIC_SPECIES) break;
 
@@ -645,10 +666,12 @@ export function speciate(ctx: EvoContext): SpeciateResult {
     const es = evoStats[id];
     if (!es || !es.genes || !es.baseGenes) continue;
 
+    const emptyAdjacentTier = _adjacentTierEmpty(sp.tier);
     const divergence = geneDivergence(es.genes, es.baseGenes);
     const radDiv = radiationBoost > 0 ? 0.5 : 1.0;
     let driftThreshold =
       SPECIATION_DRIFT * Math.max(0.3, 1 - depth * 0.2) * radDiv;
+    if (emptyAdjacentTier) driftThreshold *= 0.5;
 
     // Allopatric speciation: detect spatial separation
     if (popNow > 25 && divergence > driftThreshold * 0.5) {
@@ -689,11 +712,11 @@ export function speciate(ctx: EvoContext): SpeciateResult {
 
     let speciationChance = Math.min(0.7, SPECIATION_CHANCE + depth * 0.06);
     speciationChance *= speciationRateMult;
-    // Adaptive radiation: high-diversity species speciate faster post-extinction
     if (radiationBoost > 0) {
       const divScore = speciesGeneticDiversity(es.genes);
       speciationChance *= 1 + divScore * 8;
     }
+    if (emptyAdjacentTier) speciationChance = Math.min(0.9, speciationChance * 2.0);
     if (Math.random() > speciationChance) continue;
 
     // All gates passed: allocate a new species ID
@@ -721,7 +744,7 @@ export function speciate(ctx: EvoContext): SpeciateResult {
           dom: clamp(parentGene.dom + gaussRandom() * 0.03, 0.1, 0.9),
         };
       }
-      newGeneVar[g] = Math.max(0.04, (es.geneVar[g] || 0.14) * 0.85);
+      newGeneVar[g] = Math.max(0.06, (es.geneVar[g] || 0.14) * 0.85);
     }
     // Sexual selection: pigment diverges further
     const pigGene = newGenes.pigment;
@@ -1019,7 +1042,7 @@ export function nicheShift(ctx: EvoContext): NicheShiftResult {
     const newGenes = cloneGenes(es.genes);
     const newGeneVar: Record<GeneKey, number> = {} as Record<GeneKey, number>;
     for (const g of GENE_KEYS) {
-      newGeneVar[g] = Math.max(0.04, (es.geneVar[g] || 0.14) * 0.85);
+      newGeneVar[g] = Math.max(0.06, (es.geneVar[g] || 0.14) * 0.85);
     }
 
     // Tier-specific gene nudges and diet construction

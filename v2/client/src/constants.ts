@@ -51,8 +51,26 @@ export const HUNGER_RESTORE_BY_TIER: Record<LivingTier, number> = {
 // Population control
 export const DOMINANCE_THRESHOLD = 0.20;
 export const DOMINANCE_DEATH_BASE = 0.02;
+export const DOMINANCE_HARD_CAP = 0.35;
+export const DECOMPOSER_BREED_CAP = 0.14;
+export const SCAVENGE_RESTORE_BY_TIER: Partial<Record<LivingTier, number>> = {
+  herbivore: 0.55,
+  consumer: 0.50,
+  apex: 0.30,
+  megafauna: 0.25,
+  decomposer: 0.55,
+};
+export const LITHIVORE_RESTORE_BY_TIER: Partial<Record<LivingTier, number>> = {
+  herbivore: 0.45,
+  decomposer: 0.20,
+};
+export const DIETARY_POVERTY_PENALTY = 0.50;
 export const IMMIGRATION_CHECK_INTERVAL = 150;
 export const IMMIGRATION_CLUSTER_SIZE = 20;
+export const IMMIGRATION_SCALE_GENS = 50;
+export const IMMIGRATION_MAX_CLUSTER = 80;
+export const IMMIGRATION_ESTABLISHMENT_TICKS = 12;
+export const ROCK_EROSION_CHANCE = 0.002;
 
 // Evolution
 export const EVO_CHANCE_PER_GEN = 0.18;

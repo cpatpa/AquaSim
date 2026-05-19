@@ -10,6 +10,9 @@ import {
   GENE_KEYS,
   TIER_DEFAULT_GENES,
   MAX_DYNAMIC_SPECIES,
+  IMMIGRATION_ESTABLISHMENT_TICKS,
+  IMMIGRATION_SCALE_GENS,
+  IMMIGRATION_MAX_CLUSTER,
 } from '../constants';
 import {
   SPECIES,
@@ -308,6 +311,7 @@ export function tierImmigration(ctx: ImmigrationContext): void {
     _tierEmptyGens[tier]++;
     const interval = IMMIGRATION_TIER_INTERVAL[tier] || IMMIGRATION_CHECK_INTERVAL;
     if (_tierEmptyGens[tier] < interval) continue;
+    const _emptyDuration = _tierEmptyGens[tier];
     _tierEmptyGens[tier] = 0;
 
     const newId = createImmigrantSpecies(tier as LivingTier, ctx);
@@ -336,15 +340,19 @@ export function tierImmigration(ctx: ImmigrationContext): void {
     }
     if (bestIdx === -1) continue;
 
+    const scaleFactor = Math.min(IMMIGRATION_MAX_CLUSTER, IMMIGRATION_CLUSTER_SIZE + Math.floor(_emptyDuration / IMMIGRATION_SCALE_GENS) * IMMIGRATION_CLUSTER_SIZE);
+    const spreadRadius = scaleFactor <= 20 ? 2 : scaleFactor <= 40 ? 3 : 4;
+    const hungerBuffer = -IMMIGRATION_ESTABLISHMENT_TICKS;
+
     const ox = bestIdx % gridW;
     const oy = (bestIdx / gridW) | 0;
     let placed = 0;
-    for (let dy = -2; dy <= 2 && placed < IMMIGRATION_CLUSTER_SIZE; dy++) {
-      for (let dx = -2; dx <= 2 && placed < IMMIGRATION_CLUSTER_SIZE; dx++) {
+    for (let dy = -spreadRadius; dy <= spreadRadius && placed < scaleFactor; dy++) {
+      for (let dx = -spreadRadius; dx <= spreadRadius && placed < scaleFactor; dx++) {
         const pi = wrapY(oy + dy, gridH) * gridW + wrapX(ox + dx, gridW);
         if (species[pi] === 0) {
           species[pi] = newId;
-          hunger[pi] = 0;
+          hunger[pi] = hungerBuffer;
           age[pi] = 0;
           placed++;
         }
@@ -380,12 +388,12 @@ export function tierImmigration(ctx: ImmigrationContext): void {
       const psp = SPECIES[preyId];
       if (psp) {
         let preyPlaced = 0;
-        for (let dy = -3; dy <= 3 && preyPlaced < IMMIGRATION_CLUSTER_SIZE; dy++) {
-          for (let dx = -3; dx <= 3 && preyPlaced < IMMIGRATION_CLUSTER_SIZE; dx++) {
+        for (let dy = -3; dy <= 3 && preyPlaced < scaleFactor; dy++) {
+          for (let dx = -3; dx <= 3 && preyPlaced < scaleFactor; dx++) {
             const pi = wrapY(oy + dy, gridH) * gridW + wrapX(ox + dx, gridW);
             if (species[pi] === 0) {
               species[pi] = preyId;
-              hunger[pi] = 0;
+              hunger[pi] = hungerBuffer;
               age[pi] = 0;
               preyPlaced++;
             }

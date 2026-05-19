@@ -30,6 +30,12 @@ import {
   HUNGER_RESTORE_BY_TIER,
   DOMINANCE_THRESHOLD,
   DOMINANCE_DEATH_BASE,
+  DOMINANCE_HARD_CAP,
+  DECOMPOSER_BREED_CAP,
+  SCAVENGE_RESTORE_BY_TIER,
+  LITHIVORE_RESTORE_BY_TIER,
+  DIETARY_POVERTY_PENALTY,
+  ROCK_EROSION_CHANCE,
   CARDINAL,
   NEIGHBOURS_8,
   POP_SNAPSHOT_INTERVAL,
@@ -319,14 +325,16 @@ export function step(ctx: StepContext): StepResult {
     const cy = (idx / cw) | 0;
     const sp = SPECIES[sid];
 
-    // ----- Rock: erode if isolated (coastal erosion) -----
     if (sid === 1) {
       let adjRock = 0;
+      let adjEmpty = 0;
       for (let n = 0; n < 4; n++) {
         const dir = CARDINAL[n];
-        if (species[wrapY(cy + dir[1], ch) * cw + wrapX(cx + dir[0], cw)] === 1) adjRock++;
+        const ns = species[wrapY(cy + dir[1], ch) * cw + wrapX(cx + dir[0], cw)];
+        if (ns === 1) adjRock++;
+        else if (ns === 0) adjEmpty++;
       }
-      if (adjRock <= 1 && Math.random() < 0.008) {
+      if ((adjRock <= 1 && Math.random() < 0.008) || (adjEmpty >= 3 && Math.random() < ROCK_EROSION_CHANCE)) {
         species[idx] = 0;
         hunger[idx] = 0;
         age[idx] = 0;
@@ -551,11 +559,14 @@ export function step(ctx: StepContext): StepResult {
     // Producer behaviour
     // =======================================================================
     if (sp.tier === 'producer') {
-      // Density-dependent mortality for dominant producers
       const _pPop = popCounts[sid] || 0;
       if (_pPop > dominantThreshold) {
         const _domRatio = _pPop / Math.max(1, totalLiving);
-        const _domChance = DOMINANCE_DEATH_BASE * (1 + (_domRatio - DOMINANCE_THRESHOLD) * 8);
+        const _excess = _domRatio - DOMINANCE_THRESHOLD;
+        let _domChance = DOMINANCE_DEATH_BASE * (1 + _excess * 8);
+        if (_domRatio > DOMINANCE_HARD_CAP) {
+          _domChance += _excess * _excess * 20;
+        }
         if (Math.random() < _domChance) {
           species[idx] = 0;
           hunger[idx] = 0;
@@ -912,11 +923,14 @@ export function step(ctx: StepContext): StepResult {
       continue;
     }
 
-    // Density-dependent mortality
     const _aPop = popCounts[sid] || 0;
     if (_aPop > dominantThreshold) {
       const _aRatio = _aPop / Math.max(1, totalLiving);
-      const _aChance = DOMINANCE_DEATH_BASE * (1 + (_aRatio - DOMINANCE_THRESHOLD) * 8);
+      const _aExcess = _aRatio - DOMINANCE_THRESHOLD;
+      let _aChance = DOMINANCE_DEATH_BASE * (1 + _aExcess * 8);
+      if (_aRatio > DOMINANCE_HARD_CAP) {
+        _aChance += _aExcess * _aExcess * 20;
+      }
       if (Math.random() < _aChance) {
         species[idx] = 3;
         hunger[idx] = 0;
@@ -1192,8 +1206,8 @@ export function step(ctx: StepContext): StepResult {
       }
     }
 
-    // Lithivore: try eating adjacent rock
     if (!ate && hasTrait('lithivore')) {
+      const _lithRestore = LITHIVORE_RESTORE_BY_TIER[sp.tier as LivingTier] ?? 0.45;
       const rdirs = shuffleDirs4();
       for (let d = 0; d < 4; d++) {
         const dir = CARDINAL[rdirs[d]];
@@ -1204,7 +1218,7 @@ export function step(ctx: StepContext): StepResult {
           species[ni] = 0;
           hunger[ni] = 0;
           age[ni] = 0;
-          hunger[idx] = Math.max(0, hunger[idx] - ((es.hungerMax * 0.5) | 0));
+          hunger[idx] = Math.max(0, hunger[idx] - ((es.hungerMax * _lithRestore) | 0));
           processed[ni] = 1;
           ate = true;
           break;
@@ -1212,8 +1226,8 @@ export function step(ctx: StepContext): StepResult {
       }
     }
 
-    // Scavenger: eat adjacent dead matter
     if (!ate && hasTrait('scavenger')) {
+      const _scavRestore = SCAVENGE_RESTORE_BY_TIER[sp.tier as LivingTier] ?? 0.55;
       const sdirs = shuffleDirs8();
       for (let d = 0; d < 8; d++) {
         const dir = NEIGHBOURS_8[sdirs[d]];
@@ -1224,7 +1238,7 @@ export function step(ctx: StepContext): StepResult {
           species[ni] = 0;
           hunger[ni] = 0;
           age[ni] = 0;
-          hunger[idx] = Math.max(0, hunger[idx] - ((es.hungerMax * 0.6) | 0));
+          hunger[idx] = Math.max(0, hunger[idx] - ((es.hungerMax * _scavRestore) | 0));
           processed[ni] = 1;
           ate = true;
           break;
@@ -1603,6 +1617,20 @@ export function step(ctx: StepContext): StepResult {
 
     // --- 6. Breed (with seasonal modifier) ---
     let breedRate = es.breedRate * seasonBreedMult;
+    if (sp.tier === 'decomposer' && breedRate > DECOMPOSER_BREED_CAP) {
+      breedRate = DECOMPOSER_BREED_CAP;
+    }
+    if (es.eats && es.eats.length > 0) {
+      let hasLivePrey = false;
+      for (let ei = 0; ei < es.eats.length; ei++) {
+        const preyId = es.eats[ei];
+        if (preyId !== 3 && (popCounts[preyId] || 0) > 0) {
+          hasLivePrey = true;
+          break;
+        }
+      }
+      if (!hasLivePrey) breedRate *= DIETARY_POVERTY_PENALTY;
+    }
     let sameAdjacentCount = 0;
     for (let n = 0; n < 8; n++) {
       const dir = NEIGHBOURS_8[n];
