@@ -1,7 +1,9 @@
 import {
   getUser, isAdmin, logout, setupMfa, verifyMfa, disableMfa,
-  promoteGuest, resetPassword,
+  promoteGuest, resetPassword, getPasskeyRegisterOptions, registerPasskey,
 } from '../api/client';
+import { startRegistration } from '@simplewebauthn/browser';
+import type { PublicKeyCredentialCreationOptionsJSON } from '@simplewebauthn/browser';
 
 const ACCT_STYLES = `
   .acct-overlay { position:fixed; inset:0; background:rgba(0,0,0,0.8); z-index:970; display:flex; align-items:center; justify-content:center; }
@@ -112,6 +114,13 @@ export function openAccount(callbacks: AccountCallbacks): void {
             </div>
 
             <div class="acct-section">
+              <div class="acct-section-title">Passkeys</div>
+              <p class="acct-field">Register a passkey for passwordless login using your device's biometrics or security key.</p>
+              <div class="acct-msg" id="acct-passkey-msg"></div>
+              <button class="acct-btn acct-btn-primary" id="acct-passkey-register">Register Passkey</button>
+            </div>
+
+            <div class="acct-section">
               <div class="acct-section-title">Change Password</div>
               <div class="acct-msg" id="acct-pass-msg"></div>
               <input class="acct-input" id="acct-new-pass" type="password" placeholder="New password (min 12 chars)">
@@ -155,6 +164,7 @@ export function openAccount(callbacks: AccountCallbacks): void {
       wirePromoteGuest();
     } else {
       wireMfa();
+      wirePasskey();
       wireChangePassword();
     }
   }
@@ -234,6 +244,31 @@ export function openAccount(callbacks: AccountCallbacks): void {
         }
       });
     }
+  }
+
+  function wirePasskey(): void {
+    const btn = overlay.querySelector('#acct-passkey-register');
+    if (!btn) return;
+    btn.addEventListener('click', async () => {
+      const msg = overlay.querySelector('#acct-passkey-msg')!;
+      msg.className = 'acct-msg';
+      msg.textContent = '';
+      try {
+        const options = await getPasskeyRegisterOptions() as PublicKeyCredentialCreationOptionsJSON;
+        const credential = await startRegistration({ optionsJSON: options });
+        await registerPasskey(credential);
+        msg.className = 'acct-msg acct-msg-ok';
+        msg.textContent = 'Passkey registered!';
+      } catch (err) {
+        msg.className = 'acct-msg acct-msg-err';
+        const e = err as Error;
+        if (e.name === 'NotAllowedError') {
+          msg.textContent = 'Passkey registration was cancelled';
+        } else {
+          msg.textContent = e.message;
+        }
+      }
+    });
   }
 
   function wireChangePassword(): void {

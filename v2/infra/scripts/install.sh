@@ -311,10 +311,10 @@ read -rp "  Username: " ADMIN_USERNAME
 read -rp "  Email: " ADMIN_EMAIL
 
 while true; do
-    read -rsp "  Password (min 8 chars): " ADMIN_PASSWORD
+    read -rsp "  Password (min 12 chars): " ADMIN_PASSWORD
     echo ""
-    if [ ${#ADMIN_PASSWORD} -lt 8 ]; then
-        warn "  Password must be at least 8 characters."
+    if [ ${#ADMIN_PASSWORD} -lt 12 ]; then
+        warn "  Password must be at least 12 characters."
         continue
     fi
     read -rsp "  Confirm password: " ADMIN_CONFIRM
@@ -344,13 +344,17 @@ else
 fi
 
 # -----------------------------------------------------------------------
-# Set up daily backup cron
+# Set up daily backup timer
 # -----------------------------------------------------------------------
-if ! crontab -l 2>/dev/null | grep -q "aquasim.*backup"; then
-    (crontab -l 2>/dev/null; echo "0 3 * * * cd $PROJECT_DIR && $COMPOSE_CMD exec -T db pg_dump -U aquasim aquasim | gzip > /var/backups/aquasim/aquasim_\$(date +\\%Y\\%m\\%d).sql.gz 2>/dev/null") | crontab -
-    sudo mkdir -p /var/backups/aquasim
-    echo "  Daily backup cron installed (03:00 daily)."
-fi
+sudo mkdir -p /var/backups/aquasim
+sudo chown "$USER" /var/backups/aquasim
+chmod +x "$SCRIPT_DIR/backup.sh"
+
+sudo cp "$SCRIPT_DIR/aquasim-backup.service" /etc/systemd/system/
+sudo cp "$SCRIPT_DIR/aquasim-backup.timer" /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now aquasim-backup.timer
+printf "  Daily backup timer:"; ok
 
 # -----------------------------------------------------------------------
 # Final output

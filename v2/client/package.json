@@ -9,7 +9,8 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@aquasim/shared": "*"
+    "@aquasim/shared": "*",
+    "@simplewebauthn/browser": "^13.3.0"
   },
   "devDependencies": {
     "typescript": "^6.0.3",

@@ -285,6 +285,47 @@ export async function verifySaveData(data: unknown, signature: string): Promise<
   return json.valid === true;
 }
 
+export async function getPasskeyRegisterOptions(): Promise<unknown> {
+  const res = await apiFetch('/api/auth/passkey/register-options', { method: 'POST' });
+  if (!res.ok) throw new Error('Failed to get passkey options');
+  return res.json();
+}
+
+export async function registerPasskey(credential: unknown): Promise<void> {
+  const res = await apiFetch('/api/auth/passkey/register', {
+    method: 'POST',
+    body: JSON.stringify(credential),
+  });
+  if (!res.ok) {
+    const err = await res.json();
+    throw new Error(err.error || 'Passkey registration failed');
+  }
+}
+
+export async function getPasskeyAuthOptions(username?: string): Promise<unknown> {
+  const res = await apiFetch('/api/auth/passkey/auth-options', {
+    method: 'POST',
+    body: JSON.stringify(username ? { username } : {}),
+  });
+  if (!res.ok) throw new Error('Failed to get auth options');
+  return res.json();
+}
+
+export async function authenticateWithPasskey(credential: unknown): Promise<LoginResponse> {
+  const res = await apiFetch('/api/auth/passkey/auth', {
+    method: 'POST',
+    body: JSON.stringify(credential),
+  });
+  if (!res.ok) {
+    const err = await res.json();
+    throw new Error(err.error || 'Passkey authentication failed');
+  }
+  const data: LoginResponse = await res.json();
+  accessToken = data.token;
+  currentUser = data.user;
+  return data;
+}
+
 export async function getLeaderboard(type: string, limit: number = 50): Promise<LeaderboardEntry[]> {
   const res = await apiFetch(`/api/leaderboard/${type}?limit=${limit}`);
   if (!res.ok) throw new Error('Failed to load leaderboard');

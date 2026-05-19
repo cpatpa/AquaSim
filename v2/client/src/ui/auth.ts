@@ -1,4 +1,6 @@
-import { register, login, loginAsGuest, forgotPassword, type LoginResponse } from '../api/client';
+import { register, login, loginAsGuest, forgotPassword, getPasskeyAuthOptions, authenticateWithPasskey, type LoginResponse } from '../api/client';
+import { startAuthentication, browserSupportsWebAuthn } from '@simplewebauthn/browser';
+import type { PublicKeyCredentialRequestOptionsJSON } from '@simplewebauthn/browser';
 
 const OVERLAY_STYLES = `
   .auth-overlay { position:fixed; inset:0; background:rgba(0,0,0,0.8); z-index:1000; display:flex; align-items:center; justify-content:center; }
@@ -124,7 +126,10 @@ export function showAuthModal(): Promise<AuthResult> {
           </div>
           <button class="auth-btn auth-btn-primary" id="auth-submit">${mode === 'register' ? 'Create Account' : 'Login'}</button>
           ${mode === 'login' ? '<div style="text-align:right;margin-bottom:8px;"><span class="auth-link" id="auth-forgot">Forgot password?</span></div>' : ''}
+          ${mode === 'login' && browserSupportsWebAuthn() ? `
           <div class="auth-divider">or</div>
+          <button class="auth-btn auth-btn-secondary" id="auth-passkey">Login with Passkey</button>
+          ` : '<div class="auth-divider">or</div>'}
           <button class="auth-btn auth-btn-secondary" id="auth-guest">Play as Guest</button>
           <div class="auth-skip"><span class="auth-link" id="auth-skip">Skip for now</span></div>
         </div>`;
@@ -137,6 +142,27 @@ export function showAuthModal(): Promise<AuthResult> {
 
       const skipEl = overlay.querySelector('#auth-skip');
       if (skipEl) skipEl.addEventListener('click', () => { close({ action: 'skip' }); });
+
+      const passkeyBtn = overlay.querySelector('#auth-passkey');
+      if (passkeyBtn) {
+        passkeyBtn.addEventListener('click', async () => {
+          const errEl = overlay.querySelector('#auth-err') as HTMLElement;
+          errEl.textContent = '';
+          try {
+            const options = await getPasskeyAuthOptions() as PublicKeyCredentialRequestOptionsJSON;
+            const credential = await startAuthentication({ optionsJSON: options });
+            const resp = await authenticateWithPasskey(credential);
+            close({ action: 'login', response: resp });
+          } catch (e) {
+            const err = e as Error;
+            if (err.name === 'NotAllowedError') {
+              errEl.textContent = 'Passkey authentication was cancelled';
+            } else {
+              errEl.textContent = err.message;
+            }
+          }
+        });
+      }
 
       overlay.querySelector('#auth-guest')!.addEventListener('click', async () => {
         try {

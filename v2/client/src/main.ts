@@ -20,7 +20,7 @@ import { serialise, deserialise, downloadSave, uploadSave } from './data/seriali
 import { createCamera, setupCameraHandlers, updateCamera, screenToWorld, drawMinimap, fitToView } from './ui/camera';
 import type { CameraState } from './ui/camera';
 import { createUndoState, beginStroke, commitStroke, undo, redo } from './ui/undo';
-import { COLOR_RGB, SPECIES } from './species/registry';
+import { COLOR_RGB, SPECIES, getDynamicSpeciesIds } from './species/registry';
 import { createSpeciesInfoState, openSpeciesInfo, injectSpeciesInfoStyles } from './ui/species-info';
 import { buildPhyloTree, layoutPhyloTree, createPhyloView, setupPhyloInteraction, renderPhyloView } from './ui/phylo-tree';
 import type { PhyloViewState } from './ui/phylo-tree';
@@ -40,7 +40,7 @@ import { openAccount } from './ui/account';
 import { initMobile, initMobileUI, isMobile, setMobileCallbacks, updateMobileBar } from './ui/mobile';
 import {
   isLoggedIn, getUser, tryRestoreSession,
-  saveSimulation, loadSimulation, updateSimulation,
+  saveSimulation, loadSimulation, updateSimulation, submitScore,
 } from './api/client';
 
 noiseSeed(Date.now());
@@ -338,6 +338,7 @@ function updateUI(): void {
 
   updateEvoLog(evoEntriesEl, sim.history.evoLog, sim.evolveEnabled);
   updateMobileBar(sim.generation, sim.season.current, sim.running);
+  trySubmitScores();
 }
 
 function tick(): void {
@@ -414,6 +415,39 @@ btnClear.addEventListener('click', () => {
 });
 
 let currentSimId: string | null = null;
+let _lastScoreGen = 0;
+
+function trySubmitScores(): void {
+  if (!currentSimId || !isLoggedIn()) return;
+  const user = getUser();
+  if (!user || user.role === 'guest') return;
+  if (sim.generation - _lastScoreGen < 50) return;
+  _lastScoreGen = sim.generation;
+
+  const counts = getCellCounts();
+  const bio = calcBiodiversity(counts, sim.evoStats);
+  const gen = sim.generation;
+
+  let maxPop = 0;
+  for (const k in counts) {
+    if (counts[k] > maxPop) maxPop = counts[k];
+  }
+
+  const speciations = getDynamicSpeciesIds().length;
+
+  let maxDepth = 0;
+  for (const id of getDynamicSpeciesIds()) {
+    const d = (SPECIES[id] as unknown as Record<string, unknown>)?.lineageDepth;
+    if (typeof d === 'number' && d > maxDepth) maxDepth = d;
+  }
+
+  const sid = currentSimId;
+  submitScore(sid, 'biodiversity', bio, gen).catch(() => {});
+  submitScore(sid, 'speciations', speciations, gen).catch(() => {});
+  submitScore(sid, 'max_population', maxPop, gen).catch(() => {});
+  submitScore(sid, 'generations', gen, gen).catch(() => {});
+  if (maxDepth > 0) submitScore(sid, 'longest_species', maxDepth, gen).catch(() => {});
+}
 
 btnSave.addEventListener('click', async () => {
   const data = serialise(sim);

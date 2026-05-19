@@ -1,0 +1,11 @@
+[Unit]
+Description=AquaSim database backup
+Requires=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/chrispaterson/AquaSim/v2
+ExecStart=/home/chrispaterson/AquaSim/v2/infra/scripts/backup.sh
+User=chrispaterson
+Environment=BACKUP_DIR=/var/backups/aquasim
