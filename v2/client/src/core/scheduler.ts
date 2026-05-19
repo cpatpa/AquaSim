@@ -1759,10 +1759,11 @@ export function step(ctx: StepContext): StepResult {
     }
 
     // --- 5b. Predation pressure vertical flight ---
-    // Animals with a predator in their layer can flee to an adjacent z-layer.
-    // Higher flightResponse gene increases the chance. This drives vertical
-    // dispersal and layer diversity.
+    // Animals with a predator in their layer can flee to an adjacent z-layer,
+    // but only within their species' natural layer reach.
     if (species[idx] === sid && sp.hungerMax) {
+      const homeZ = sp.layer >= 0 ? sp.layer : cz;
+      const flightReach = sp.layerReach ?? 1;
       let predatorNearby = false;
       for (let n = 0; n < 8; n++) {
         const dir = NEIGHBOURS_8[n];
@@ -1778,10 +1779,10 @@ export function step(ctx: StepContext): StepResult {
         const flightGene = expressed.flightResponse ?? 0;
         const fleeChance = 0.04 + flightGene * 0.12;
         if (Math.random() < fleeChance) {
-          // Try fleeing up or down (prefer direction away from more predators)
           const tryDirs = Math.random() < 0.5 ? [cz - 1, cz + 1] : [cz + 1, cz - 1];
           for (const targetZ of tryDirs) {
             if (targetZ < 0 || targetZ >= layers) continue;
+            if (Math.abs(targetZ - homeZ) > flightReach) continue;
             const destIdx = targetZ * planeSize + xyIdx;
             if (species[destIdx] === 0) {
               species[destIdx] = sid;
@@ -1910,10 +1911,14 @@ export function step(ctx: StepContext): StepResult {
           }
         }
         // Overflow breeding: if same-layer is full, try placing offspring
-        // into an adjacent z-layer at the same xy position
+        // into an adjacent z-layer, but only within the species' layer reach
         if (!bred && species[idx] === sid) {
-          const tryUp = cz + 1 < layers ? (cz + 1) * planeSize + xyIdx : -1;
-          const tryDown = cz - 1 >= 0 ? (cz - 1) * planeSize + xyIdx : -1;
+          const breedHomeZ = sp.layer >= 0 ? sp.layer : cz;
+          const breedReach = sp.layerReach ?? 1;
+          const tryUp = cz + 1 < layers && Math.abs((cz + 1) - breedHomeZ) <= breedReach
+            ? (cz + 1) * planeSize + xyIdx : -1;
+          const tryDown = cz - 1 >= 0 && Math.abs((cz - 1) - breedHomeZ) <= breedReach
+            ? (cz - 1) * planeSize + xyIdx : -1;
           const first = Math.random() < 0.5 ? tryUp : tryDown;
           const second = first === tryUp ? tryDown : tryUp;
           for (const dest of [first, second]) {

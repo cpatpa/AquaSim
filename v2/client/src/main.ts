@@ -283,7 +283,7 @@ canvasWrap.addEventListener('wheel', (e) => {
   } else if (e.altKey) {
     e.preventDefault();
     const delta = e.deltaY > 0 ? -2 : 2;
-    depthView.tiltAngle = Math.max(0, Math.min(55, depthView.tiltAngle + delta));
+    depthView.tiltAngle = Math.max(0, Math.min(70, depthView.tiltAngle + delta));
     renderFrame();
   }
 }, { passive: false });

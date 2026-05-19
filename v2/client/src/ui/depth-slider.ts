@@ -11,8 +11,8 @@ export function createDepthViewState(): DepthViewState {
   return {
     focusLayer: -1,
     tiltEnabled: false,
-    tiltAngle: 30,
-    layerSpacing: 60,
+    tiltAngle: 45,
+    layerSpacing: 80,
   };
 }
 
