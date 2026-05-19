@@ -379,7 +379,7 @@ export function drawMinimap(
   gridW: number,
   gridH: number,
   colorRGB: Record<number, [number, number, number]>,
-  bottomOffset = 0,
+  anchorTop = false,
 ): void {
   const size = MINIMAP_SIZE;
   const pad = MINIMAP_PADDING;
@@ -387,7 +387,7 @@ export function drawMinimap(
   const canvasW = ctx.canvas.width;
   const canvasH = ctx.canvas.height;
   const ox = canvasW - size - pad;
-  const oy = canvasH - size - pad - bottomOffset;
+  const oy = anchorTop ? pad : canvasH - size - pad;
 
   // Semi-transparent dark background.
   ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';

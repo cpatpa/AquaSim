@@ -37,7 +37,7 @@ import { showAuthModal } from './ui/auth';
 import { openDashboard } from './ui/dashboard';
 import { openLeaderboard } from './ui/leaderboard';
 import { openAccount } from './ui/account';
-import { initMobile, initMobileUI, isMobile, setMobileCallbacks, updateMobileBar } from './ui/mobile';
+import { initMobile, initMobileUI, isMobile, getAppHeight, setMobileCallbacks, updateMobileBar } from './ui/mobile';
 import {
   isLoggedIn, getUser, tryRestoreSession,
   saveSimulation, loadSimulation, updateSimulation, submitScore,
@@ -47,8 +47,9 @@ noiseSeed(Date.now());
 initMobile();
 
 const mobileView = isMobile();
+const mobileVisualH = getAppHeight();
 const viewW = Math.min(mobileView ? window.innerWidth : window.innerWidth - 400, MAX_GRID_PX);
-const viewH = Math.min(mobileView ? window.innerHeight - 76 : window.innerHeight - 60, MAX_GRID_PX);
+const viewH = Math.min(mobileView ? mobileVisualH - 80 : window.innerHeight - 60, MAX_GRID_PX);
 const mobileGridMult = mobileView ? 2 : 1;
 const gridW = Math.max(Math.floor(Math.max(viewW, MIN_GRID_PX) / CELL_SIZE), 60) * mobileGridMult;
 const gridH = Math.max(Math.floor(Math.max(viewH, MIN_GRID_PX) / CELL_SIZE), 60) * mobileGridMult;
@@ -163,7 +164,7 @@ canvasEl.style.height = canvasWrap.clientHeight + 'px';
 
 setupCameraHandlers(canvasEl, cam, () => renderFrame());
 
-window.addEventListener('resize', () => {
+function handleViewportResize(): void {
   const w = canvasWrap.clientWidth;
   const h = canvasWrap.clientHeight;
   if (w > 0 && h > 0) {
@@ -173,7 +174,12 @@ window.addEventListener('resize', () => {
     cam.viewH = h;
     renderFrame();
   }
-});
+}
+
+window.addEventListener('resize', handleViewportResize);
+if (window.visualViewport) {
+  window.visualViewport.addEventListener('resize', handleViewportResize);
+}
 
 const paint = createPaintState();
 const palette = createPaletteState();
@@ -324,7 +330,7 @@ function renderFrame(): void {
   if (currentHeatmap !== 'none') {
     drawHeatmapOverlay(rs.ctx, sim.grid, sim.evoStats, currentHeatmap);
   }
-  drawMinimap(rs.ctx, cam, sim.grid.species, sim.grid.width, sim.grid.height, COLOR_RGB, mobileView ? 100 : 0);
+  drawMinimap(rs.ctx, cam, sim.grid.species, sim.grid.width, sim.grid.height, COLOR_RGB, mobileView);
   tickParticles(rs);
   drawParticles(rs);
 }

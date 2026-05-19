@@ -3,8 +3,32 @@ import { isAdmin } from '../api/client';
 
 let _paintMode = false;
 let _isMobile = false;
+let _appHeight = window.innerHeight;
 
-const MQ = window.matchMedia('(max-width: 768px)');
+function detectMobile(): boolean {
+  const hasTouch = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+  const isNarrow = window.innerWidth <= 768;
+  const mobileUA = /Android|iPhone|iPad|iPod|webOS|BlackBerry|IEMobile|Opera Mini/i.test(
+    navigator.userAgent,
+  );
+  return (hasTouch && isNarrow) || (mobileUA && isNarrow);
+}
+
+function getVisualHeight(): number {
+  if (window.visualViewport) {
+    return window.visualViewport.height;
+  }
+  return window.innerHeight;
+}
+
+function updateAppHeight(): void {
+  _appHeight = getVisualHeight();
+  document.documentElement.style.setProperty('--app-height', `${_appHeight}px`);
+}
+
+export function getAppHeight(): number {
+  return _appHeight;
+}
 
 export function isMobile(): boolean {
   return _isMobile;
@@ -29,7 +53,11 @@ const MOBILE_STYLES = `
     #left-panel, #right-panel { display: none !important; }
     #bottom-bar { display: none !important; }
 
-    #layout { height: calc(100vh - 36px - 44px - env(safe-area-inset-bottom, 0px)); margin-top: 36px; }
+    #layout {
+      height: calc(var(--app-height, 100vh) - 36px - 44px);
+      margin-top: 36px;
+      overflow: hidden;
+    }
     #centre { width: 100%; height: 100%; }
 
     #mobile-tabs {
@@ -45,8 +73,8 @@ const MOBILE_STYLES = `
 
     #mobile-bar {
       position: fixed; bottom: 0; left: 0; right: 0; z-index: 900;
-      display: flex; height: calc(44px + env(safe-area-inset-bottom, 0px));
-      align-items: center; padding: 0 8px env(safe-area-inset-bottom, 0px) 8px; gap: 4px;
+      display: flex; height: 44px;
+      align-items: center; padding: 0 8px; gap: 4px;
       background: #0a1628; border-top: 1px solid #1a3a5c;
     }
     #mobile-bar button {
@@ -59,7 +87,7 @@ const MOBILE_STYLES = `
     #mobile-bar .mob-gen { color: #4da6ff; font-size: 0.7rem; }
 
     #mobile-drawer {
-      position: fixed; bottom: calc(44px + env(safe-area-inset-bottom, 0px)); left: 0; right: 0;
+      position: fixed; bottom: 44px; left: 0; right: 0;
       max-height: 55vh; background: #0a1628; border-top: 1px solid #1a3a5c;
       z-index: 850; overflow-y: auto; padding: 8px;
       display: none;
@@ -69,7 +97,7 @@ const MOBILE_STYLES = `
     #mobile-drawer::-webkit-scrollbar-thumb { background: #1a3a5c; border-radius: 2px; }
 
     #paint-fab {
-      position: fixed; bottom: calc(56px + env(safe-area-inset-bottom, 0px)); left: 12px; z-index: 810;
+      position: fixed; bottom: 56px; left: 12px; z-index: 810;
       width: 52px; height: 52px; border-radius: 50%;
       background: #0d1f3c; border: 2px solid #1a3a5c; color: #e0e8f0;
       font-family: 'Share Tech Mono', monospace; font-size: 0.6rem;
@@ -91,27 +119,52 @@ export function initMobile(): void {
   style.textContent = MOBILE_STYLES;
   document.head.appendChild(style);
 
-  _isMobile = MQ.matches;
+  _isMobile = detectMobile();
+  updateAppHeight();
   setSingleFingerPan(_isMobile && !_paintMode);
-  MQ.addEventListener('change', (e) => {
-    _isMobile = e.matches;
+
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener('resize', () => {
+      updateAppHeight();
+      updateLayoutHeight();
+    });
+  }
+  window.addEventListener('resize', () => {
+    const wasMobile = _isMobile;
+    _isMobile = detectMobile();
+    updateAppHeight();
+    updateLayoutHeight();
     setSingleFingerPan(_isMobile && !_paintMode);
-    if (!_isMobile) {
+    if (!_isMobile && wasMobile) {
       closeDrawer();
       restorePanels();
     }
-  });
-
-  MQ.addEventListener('change', (e) => {
-    if (e.matches && !document.getElementById('mobile-tabs')) {
+    if (_isMobile && !wasMobile && !document.getElementById('mobile-tabs')) {
       buildMobileUI();
     }
   });
+
+  window.addEventListener('orientationchange', () => {
+    setTimeout(() => {
+      updateAppHeight();
+      updateLayoutHeight();
+    }, 100);
+  });
+}
+
+function updateLayoutHeight(): void {
+  const layout = document.getElementById('layout');
+  if (layout && _isMobile) {
+    layout.style.height = `${_appHeight - 36 - 44}px`;
+  } else if (layout) {
+    layout.style.height = '';
+  }
 }
 
 export function initMobileUI(): void {
   if (_isMobile) {
     buildMobileUI();
+    updateLayoutHeight();
   }
 }
 
