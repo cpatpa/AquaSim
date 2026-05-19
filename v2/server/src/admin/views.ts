@@ -142,6 +142,7 @@ export function usersView(data: {
   page: number;
   total: number;
   search: string;
+  csrf: string;
 }): Html {
   const totalPages = Math.ceil(data.total / 20);
   return layout('Users', html`
@@ -178,21 +179,25 @@ export function usersView(data: {
             <td>
               <div class="actions">
                 <form method="post" action="/admin/users/${u.id}/ban">
+                  <input type="hidden" name="_csrf" value="${data.csrf}">
                   <button class="btn ${u.isBanned ? 'btn-primary' : 'btn-warn'}" type="submit">
                     ${u.isBanned ? 'Unban' : 'Ban'}
                   </button>
                 </form>
                 ${u.role !== 'admin' ? html`
                   <form method="post" action="/admin/users/${u.id}/promote">
+                    <input type="hidden" name="_csrf" value="${data.csrf}">
                     <button class="btn btn-primary" type="submit">Promote</button>
                   </form>
                 ` : html`
                   <form method="post" action="/admin/users/${u.id}/promote">
+                    <input type="hidden" name="_csrf" value="${data.csrf}">
                     <button class="btn btn-warn" type="submit">Demote</button>
                   </form>
                 `}
                 <form method="post" action="/admin/users/${u.id}/delete"
                       onsubmit="return confirm('Delete this user? This cannot be undone.')">
+                  <input type="hidden" name="_csrf" value="${data.csrf}">
                   <button class="btn btn-danger" type="submit">Delete</button>
                 </form>
               </div>
@@ -331,6 +336,7 @@ export function analyticsView(data: {
 export function deployView(data: {
   log: string;
   lastDeploy: string;
+  csrf: string;
 }): Html {
   return layout('Deploy', html`
     <h2 style="margin-bottom: 1.5rem;">Deploy</h2>
@@ -352,6 +358,7 @@ export function deployView(data: {
 
     <div style="display:flex; gap:1rem; align-items:center; margin-bottom:2rem; flex-wrap:wrap;">
       <form method="post" action="/admin/deploy" onsubmit="return confirm('Pull latest changes from GitHub and rebuild? The app will restart.')">
+        <input type="hidden" name="_csrf" value="${data.csrf}">
         <button class="btn btn-primary" type="submit" style="padding:0.6rem 1.5rem; font-size:0.9rem;">
           Pull & Deploy
         </button>

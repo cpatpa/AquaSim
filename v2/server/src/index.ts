@@ -20,8 +20,22 @@ import { getHealthMetrics } from './lib/health.js';
 import { getLiveUserCount } from './lib/analytics.js';
 import { getRoomCount } from './ws/rooms.js';
 import { handleWsConnection } from './ws/handler.js';
+import { users } from './db/schema.js';
+import { eq, lt, and } from 'drizzle-orm';
 
 const app = new Hono();
+
+import { createMiddleware } from 'hono/factory';
+
+const securityHeaders = createMiddleware(async (c, next) => {
+  await next();
+  c.header('X-Content-Type-Options', 'nosniff');
+  c.header('X-Frame-Options', 'DENY');
+  c.header('Referrer-Policy', 'strict-origin-when-cross-origin');
+  c.header('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+});
+
+app.use('*', securityHeaders);
 
 const corsOrigin = process.env.CORS_ORIGIN || 'http://localhost:3000';
 app.use('/api/*', cors({ origin: corsOrigin, credentials: true }));
@@ -83,5 +97,16 @@ async function start(): Promise<void> {
     handleWsConnection(ws);
   });
 }
+
+async function cleanupStaleGuests(): Promise<void> {
+  const cutoff = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+  try {
+    await db.delete(users).where(
+      and(eq(users.role, 'guest'), lt(users.createdAt, cutoff))
+    );
+  } catch {}
+}
+
+setInterval(cleanupStaleGuests, 6 * 60 * 60 * 1000);
 
 start();

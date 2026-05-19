@@ -45,6 +45,31 @@ export const apiRateLimit = createMiddleware(async (c, next) => {
   await next();
 });
 
+const sensitiveBuckets = new Map<string, RateLimitEntry>();
+
+setInterval(() => cleanup(sensitiveBuckets), 60_000);
+
+export const sensitiveRateLimit = createMiddleware(async (c, next) => {
+  const ip = getClientIp(c);
+  const now = Date.now();
+  const windowMs = 60 * 60_000;
+  const maxAttempts = 10;
+
+  let entry = sensitiveBuckets.get(ip);
+  if (!entry || entry.resetAt <= now) {
+    entry = { count: 0, resetAt: now + windowMs };
+    sensitiveBuckets.set(ip, entry);
+  }
+
+  entry.count++;
+  if (entry.count > maxAttempts) {
+    c.header('Retry-After', String(Math.ceil((entry.resetAt - now) / 1000)));
+    return c.json({ error: 'Too many requests. Try again later.' }, 429);
+  }
+
+  await next();
+});
+
 export const loginRateLimit = createMiddleware(async (c, next) => {
   const ip = getClientIp(c);
   const now = Date.now();

@@ -1,5 +1,9 @@
 import nodemailer from 'nodemailer';
 
+function esc(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
 let transporter: nodemailer.Transporter | null = null;
 
 export function isEmailConfigured(): boolean {
@@ -36,7 +40,7 @@ export async function sendPasswordResetEmail(
     html: `
       <h2>Password Reset</h2>
       <p>You requested a password reset for your AquaSim account.</p>
-      <p><a href="${resetUrl}">Click here to reset your password</a></p>
+      <p><a href="${esc(resetUrl)}">Click here to reset your password</a></p>
       <p>This link expires in 1 hour. If you did not request this, you can safely ignore this email.</p>
     `,
   });
@@ -53,7 +57,7 @@ export async function sendWelcomeEmail(
     to,
     subject: 'Welcome to AquaSim',
     html: `
-      <h2>Welcome to AquaSim, ${username}!</h2>
+      <h2>Welcome to AquaSim, ${esc(username)}!</h2>
       <p>Your account has been created. Dive in and start building your marine ecosystem.</p>
     `,
   });

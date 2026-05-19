@@ -8,6 +8,8 @@ import { validateBody } from '../middleware/validate.js';
 import { nanoid } from 'nanoid';
 import { signSaveData, verifySaveSignature } from '../lib/save-signing.js';
 
+const MAX_STATE_BYTES = 5 * 1024 * 1024;
+
 const createSimSchema = z.object({
   name: z.string().min(1).max(100),
   description: z.string().max(500).optional(),
@@ -52,6 +54,10 @@ simulationRoutes.get('/', authRequired, async (c) => {
 simulationRoutes.post('/', authRequired, validateBody(createSimSchema), async (c) => {
   const user = c.get('user');
   const body = createSimSchema.parse(await c.req.json());
+
+  if (JSON.stringify(body.state).length > MAX_STATE_BYTES) {
+    return c.json({ error: 'Simulation state too large (max 5 MB)' }, 413);
+  }
 
   const [{ count }] = await db
     .select({ count: sql<number>`count(*)` })
@@ -170,6 +176,10 @@ simulationRoutes.put('/:id', authRequired, async (c) => {
   const id = c.req.param('id');
   const user = c.get('user');
   const body = updateSimSchema.parse(await c.req.json());
+
+  if (body.state && JSON.stringify(body.state).length > MAX_STATE_BYTES) {
+    return c.json({ error: 'Simulation state too large (max 5 MB)' }, 413);
+  }
 
   const [sim] = await db
     .select({ ownerId: simulations.ownerId })

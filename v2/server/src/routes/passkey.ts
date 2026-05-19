@@ -145,13 +145,10 @@ passkeyRoutes.post('/auth', async (c) => {
     return c.json({ error: 'Unknown credential' }, 401);
   }
 
-  let challenge: string | undefined;
-  for (const [key, val] of challengeStore) {
-    if (key.startsWith('auth:')) {
-      challenge = val;
-      challengeStore.delete(key);
-      break;
-    }
+  const clientData = JSON.parse(Buffer.from(body.response.clientDataJSON, 'base64url').toString());
+  const challenge = challengeStore.get(`auth:${clientData.challenge}`);
+  if (challenge) {
+    challengeStore.delete(`auth:${clientData.challenge}`);
   }
 
   if (!challenge) {

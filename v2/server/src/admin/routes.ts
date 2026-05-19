@@ -2,7 +2,7 @@ import { Hono } from 'hono';
 import { db } from '../db/index.js';
 import { users, simulations, leaderboardEntries } from '../db/schema.js';
 import { eq, sql, like, desc, ne, and } from 'drizzle-orm';
-import { adminOnly } from '../middleware/admin.js';
+import { adminOnly, getCsrfToken } from '../middleware/admin.js';
 import { getHealthMetrics } from '../lib/health.js';
 import { getDailyActiveUsers, getMonthlyActiveUsers, getDauHistory, getLiveUserCount } from '../lib/analytics.js';
 import { dashboardView, usersView, healthView, statsView, analyticsView, deployView } from './views.js';
@@ -36,8 +36,9 @@ adminRoutes.get('/users', async (c) => {
   const offset = (page - 1) * limit;
 
   const notGuest = ne(users.role, 'guest');
+  const escapedSearch = search.replace(/[%_\\]/g, '\\$&');
   const whereClause = search
-    ? and(notGuest, like(users.username, `%${search}%`))
+    ? and(notGuest, like(users.username, `%${escapedSearch}%`))
     : notGuest;
 
   const [{ count: total }] = await db
@@ -67,6 +68,7 @@ adminRoutes.get('/users', async (c) => {
     page,
     total,
     search,
+    csrf: getCsrfToken(c),
   }));
 });
 
@@ -173,7 +175,7 @@ function getDeployStatus(): { lastDeploy: string; watcherLog: string } {
 
 adminRoutes.get('/deploy', async (c) => {
   const status = getDeployStatus();
-  return c.html(deployView({ log: status.watcherLog, lastDeploy: status.lastDeploy }));
+  return c.html(deployView({ log: status.watcherLog, lastDeploy: status.lastDeploy, csrf: getCsrfToken(c) }));
 });
 
 adminRoutes.post('/deploy', async (c) => {

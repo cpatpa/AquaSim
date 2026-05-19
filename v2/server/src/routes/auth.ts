@@ -8,7 +8,7 @@ import { hashPassword, verifyPassword } from '../lib/passwords.js';
 import { signAccessToken, getRefreshTokenExpiryDate } from '../lib/tokens.js';
 import { sendPasswordResetEmail, sendWelcomeEmail, isEmailConfigured } from '../lib/email.js';
 import { authRequired } from '../middleware/auth.js';
-import { loginRateLimit } from '../middleware/rate-limit.js';
+import { loginRateLimit, sensitiveRateLimit } from '../middleware/rate-limit.js';
 import { validateBody } from '../middleware/validate.js';
 import { nanoid } from 'nanoid';
 import { TOTP, Secret } from 'otpauth';
@@ -64,18 +64,18 @@ async function generateRefreshToken(userId: string): Promise<string> {
 
 export const authRoutes = new Hono();
 
-authRoutes.post('/register', validateBody(registerSchema), async (c) => {
+authRoutes.post('/register', sensitiveRateLimit, validateBody(registerSchema), async (c) => {
   const body = registerSchema.parse(await c.req.json());
 
   const existing = await db.select({ id: users.id }).from(users).where(eq(users.username, body.username)).limit(1);
   if (existing.length > 0) {
-    return c.json({ error: 'Username already taken' }, 409);
+    return c.json({ error: 'Username or email already registered' }, 409);
   }
 
   if (body.email) {
     const emailExists = await db.select({ id: users.id }).from(users).where(eq(users.email, body.email)).limit(1);
     if (emailExists.length > 0) {
-      return c.json({ error: 'Email already registered' }, 409);
+      return c.json({ error: 'Username or email already registered' }, 409);
     }
   }
 
@@ -83,8 +83,10 @@ authRoutes.post('/register', validateBody(registerSchema), async (c) => {
 
   let role = 'user';
   if (body._bootstrapAdmin) {
+    const ip = c.req.header('X-Real-IP') || c.req.header('X-Forwarded-For')?.split(',')[0]?.trim() || '';
+    const isLocal = ip === '127.0.0.1' || ip === '::1' || ip === '' || ip === 'nginx';
     const userCount = await db.select({ count: sql<number>`count(*)` }).from(users);
-    if (userCount[0].count === 0) {
+    if (isLocal && userCount[0].count === 0) {
       role = 'admin';
     }
   }
@@ -151,6 +153,7 @@ authRoutes.post('/login', loginRateLimit, validateBody(loginSchema), async (c) =
         sub: user.id,
         username: user.username,
         role: user.role as 'user' | 'admin' | 'guest',
+        purpose: 'mfa',
       });
       return c.json({ mfaRequired: true, mfaToken }, 200);
     }
@@ -330,7 +333,7 @@ authRoutes.post('/promote', authRequired, validateBody(promoteSchema), async (c)
   return c.json({ token: accessToken });
 });
 
-authRoutes.post('/forgot-password', validateBody(forgotPasswordSchema), async (c) => {
+authRoutes.post('/forgot-password', sensitiveRateLimit, validateBody(forgotPasswordSchema), async (c) => {
   if (!isEmailConfigured()) {
     return c.json({ error: 'Email is not configured on this server' }, 503);
   }
@@ -375,6 +378,7 @@ authRoutes.post('/reset-password', validateBody(resetPasswordSchema), async (c) 
   const passwordHash = await hashPassword(password);
   await db.update(users).set({ passwordHash }).where(eq(users.id, stored.userId));
   await db.update(passwordResetTokens).set({ used: true }).where(eq(passwordResetTokens.id, stored.id));
+  await db.delete(refreshTokens).where(eq(refreshTokens.userId, stored.userId));
 
   return c.json({ message: 'Password reset successfully' });
 });

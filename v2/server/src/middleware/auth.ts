@@ -20,6 +20,10 @@ export const authRequired = createMiddleware(async (c, next) => {
     return c.json({ error: 'Invalid or expired token' }, 401);
   }
 
+  if (payload.purpose === 'mfa') {
+    return c.json({ error: 'MFA verification required' }, 401);
+  }
+
   c.set('user', payload);
 
   trackActivity(payload.sub).catch(() => {});
