@@ -11,6 +11,8 @@ import { expressAllGenes, geneVal, speciesGeneticDiversity } from '../evolution/
 import { TRAITS } from '../evolution/traits';
 import { NOVEL_ADAPTATIONS } from '../evolution/novel-adaptations';
 import { getSpeciesSynergies } from '../evolution/traits';
+import { getScientificName } from '../evolution/taxonomy';
+import { dnaFromGenes, dnaToHtml } from '../evolution/dna';
 
 export interface SpeciesInfoState {
   visible: boolean;
@@ -171,6 +173,47 @@ function buildGeneBarHtml(es: EvoStats): string {
   return parts.join('');
 }
 
+const SIZE_WORDS: string[] = ['tiny', 'small', 'medium', 'large', 'massive'];
+const SPEED_WORDS: string[] = ['sluggish', 'slow', 'moderate', 'swift', 'lightning-fast'];
+
+function buildDynamicDescription(es: EvoStats, tier: string, layerIdx: number): string {
+  const expressed = es._expressed || expressAllGenes(es.genes);
+  const sizeIdx = Math.min(4, (expressed.bodySize * 5) | 0);
+  const speedIdx = Math.min(4, (expressed.bodyShape * 5) | 0);
+  const sizeWord = SIZE_WORDS[sizeIdx];
+  const speedWord = SPEED_WORDS[speedIdx];
+  const layerName = layerIdx >= 0 && layerIdx < LAYER_NAMES.length
+    ? LAYER_NAMES[layerIdx as 0|1|2|3|4|5].toLowerCase() : 'open water';
+
+  const parts: string[] = [];
+  if (tier === 'producer') {
+    parts.push(`A ${sizeWord} producer in the ${layerName} zone.`);
+  } else if (tier === 'decomposer') {
+    parts.push(`A ${sizeWord}, ${speedWord} decomposer dwelling in the ${layerName} zone.`);
+  } else {
+    parts.push(`A ${sizeWord}, ${speedWord} ${tier} inhabiting the ${layerName} zone.`);
+  }
+
+  if (es.eats?.length) {
+    const preyNames = es.eats.slice(0, 4).map(eid => SPECIES[eid]?.name || `#${eid}`);
+    parts.push(`Feeds on ${preyNames.join(', ')}.`);
+  }
+
+  if (expressed.aggression > 0.7) parts.push('Highly aggressive.');
+  else if (expressed.aggression < 0.2) parts.push('Docile temperament.');
+  if (expressed.sociality > 0.7) parts.push('Forms large social groups.');
+  if (expressed.bodyArmour > 0.7) parts.push('Heavily armoured.');
+  if (expressed.flightResponse > 0.7) parts.push('Extremely cautious and elusive.');
+
+  return parts.join(' ');
+}
+
+function buildDnaSection(es: EvoStats): string {
+  if (!es?.genes) return '';
+  const dna = dnaFromGenes(es.genes);
+  return `<div class="species-dna"><span class="meta-label">DNA</span><div class="dna-strip">${dnaToHtml(dna)}</div></div>`;
+}
+
 export function openSpeciesInfo(
   state: SpeciesInfoState,
   speciesId: number,
@@ -189,10 +232,16 @@ export function openSpeciesInfo(
 
   const modal = document.createElement('div');
   modal.className = 'species-modal-overlay';
+  const sciName = es ? getScientificName(speciesId, es.genes, es.traits) : null;
+  const dynDesc = es?.genes ? buildDynamicDescription(es, sp.tier, sp.layer as number) : null;
+
   modal.innerHTML = `
     <div class="species-modal">
       <div class="species-modal-header">
-        <div class="species-modal-title" style="color:${sp.color}">${sp.name}</div>
+        <div>
+          <div class="species-modal-title" style="color:${sp.color}">${sp.name}</div>
+          ${sciName ? `<div class="species-modal-sci"><i>${sciName}</i></div>` : ''}
+        </div>
         <button class="species-modal-close">&times;</button>
       </div>
       <div class="species-modal-body">
@@ -207,11 +256,12 @@ export function openSpeciesInfo(
             ${es?.hungerMax ? `<div><span class="meta-label">Hunger Max</span> ${es.hungerMax}</div>` : ''}
             ${es?.genes ? `<div><span class="meta-label">Diversity</span> ${(speciesGeneticDiversity(es.genes) * 100).toFixed(0)}%</div>` : ''}
           </div>
-          ${sp.desc ? `<div class="species-desc">${sp.desc}</div>` : ''}
+          ${dynDesc ? `<div class="species-desc">${dynDesc}</div>` : (sp.desc ? `<div class="species-desc">${sp.desc}</div>` : '')}
           ${es?.eats?.length ? `<div class="species-diet"><span class="meta-label">Diet</span> ${es.eats.map(eid => SPECIES[eid]?.name || `#${eid}`).join(', ')}</div>` : ''}
           ${buildTraitsSection(es)}
           ${buildNovelSection(es)}
           ${buildSynergySection(es)}
+          ${es ? buildDnaSection(es) : ''}
           ${buildLineageSection(speciesId)}
         </div>
         <div class="species-modal-right">
@@ -320,6 +370,7 @@ export function injectSpeciesInfoStyles(): void {
       padding: 12px 16px; border-bottom: 1px solid #1a3a5c;
     }
     .species-modal-title { font-family: 'Orbitron', monospace; font-size: 1.1rem; letter-spacing: 1px; }
+    .species-modal-sci { color: #8ab0c8; font-size: 0.8rem; margin-top: 2px; }
     .species-modal-close {
       background: none; border: none; color: #5a7a9a; font-size: 1.5rem; cursor: pointer;
       padding: 0 4px; line-height: 1;
@@ -342,6 +393,12 @@ export function injectSpeciesInfoStyles(): void {
     }
     .trait-badge.novel { border-color: #FFD700; color: #FFD700; }
     .trait-badge.synergy { border-color: #FF8844; color: #FF8844; }
+    .species-dna { margin-bottom: 8px; }
+    .dna-strip {
+      font-size: 7px; line-height: 10px; word-break: break-all;
+      margin-top: 4px; padding: 4px 6px; background: rgba(0,0,0,0.3);
+      border-radius: 4px; max-width: 300px;
+    }
     .species-lineage { font-size: 0.8rem; margin-bottom: 8px; }
     .lineage-chain { color: #5a7a9a; margin-top: 2px; font-size: 0.75rem; }
     .gene-cluster { margin-bottom: 8px; }

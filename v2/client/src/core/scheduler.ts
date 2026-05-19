@@ -541,7 +541,9 @@ export function step(ctx: StepContext): StepResult {
     // ----- Lava: kill adjacent, flow, radiant heat, cool into rock -----
     if (sid === 7) {
       age[idx]++;
-      if (age[idx] >= LAVA_COOL_AGE) {
+      // Surface and canopy lava cools faster (shallower water)
+      const lavaCoolThreshold = cz >= 4 ? (LAVA_COOL_AGE * 0.4) | 0 : cz >= 2 ? (LAVA_COOL_AGE * 0.65) | 0 : LAVA_COOL_AGE;
+      if (age[idx] >= lavaCoolThreshold) {
         let adjLava = 0;
         for (let d = 0; d < 4; d++) {
           const dir = CARDINAL[d];
@@ -573,8 +575,10 @@ export function step(ctx: StepContext): StepResult {
         age[ni] = 0;
       }
       // Lava flow: young lava spreads aggressively, older lava creeps
+      // Surface lava stops spreading sooner (cools and solidifies faster)
       const lavaAge = age[idx];
-      const spreadChance = lavaAge < 8 ? 0.22 : lavaAge < 18 ? 0.12 : lavaAge < LAVA_SPREAD_MAX_AGE ? 0.05 : 0;
+      const lavaSpreadMax = cz >= 4 ? (LAVA_SPREAD_MAX_AGE * 0.4) | 0 : cz >= 2 ? (LAVA_SPREAD_MAX_AGE * 0.65) | 0 : LAVA_SPREAD_MAX_AGE;
+      const spreadChance = lavaAge < 8 ? 0.22 : lavaAge < 18 ? 0.12 : lavaAge < lavaSpreadMax ? 0.05 : 0;
       if (spreadChance > 0 && Math.random() < spreadChance) {
         let adjLava = 0;
         for (let d = 0; d < 4; d++) {
