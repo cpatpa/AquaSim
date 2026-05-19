@@ -487,7 +487,8 @@ btnLeaderboard.addEventListener('click', () => {
 });
 
 btnAccount.addEventListener('click', async () => {
-  if (isLoggedIn()) {
+  const user = getUser();
+  if (isLoggedIn() && user && user.role !== 'guest') {
     openAccount({
       onLogout: () => {
         currentSimId = null;
@@ -672,6 +673,7 @@ setMobileCallbacks({
       case 'settings': btnSettings.click(); break;
       case 'help': btnHelp.click(); break;
       case 'account': btnAccount.click(); break;
+      case 'admin': window.open('/admin', '_blank'); break;
     }
   },
   onEvoToggle: (v) => {
