@@ -30,6 +30,11 @@ import { setupCellTooltip, injectTooltipStyles } from './ui/cell-tooltip';
 import { SCENARIOS, getScenario } from './environment/scenarios';
 import { drawHeatmapOverlay, HEATMAP_MODES } from './renderer/heatmap';
 import type { HeatmapMode } from './renderer/heatmap';
+import {
+  createDepthViewState, buildDepthSliderHtml, injectDepthSliderStyles,
+  attachDepthSliderHandlers, updateDepthCounts,
+} from './ui/depth-slider';
+import type { DepthViewState } from './ui/depth-slider';
 import { tierImmigration } from './evolution/immigration';
 import type { ImmigrationContext } from './evolution/immigration';
 import { reassignPrey, enforceGeneVarianceFloor } from './evolution/evolution-engine';
@@ -71,6 +76,9 @@ injectSpeciesInfoStyles();
 injectSettingsStyles();
 injectHelpStyles();
 injectTooltipStyles();
+injectDepthSliderStyles();
+
+const depthView: DepthViewState = createDepthViewState();
 
 seedGrid(sim.grid);
 seedBalancedRockReefs(sim.grid);
@@ -103,6 +111,7 @@ app.innerHTML = `
     <div id="canvas-wrap">
       <canvas id="grid-canvas"></canvas>
       <canvas id="minimap-canvas" width="136" height="136"></canvas>
+      ${buildDepthSliderHtml()}
     </div>
     <div id="bottom-bar">
       <button id="btn-play" title="Start or pause the simulation (Space)">Play</button>
@@ -197,6 +206,12 @@ function applyCamera(): void {
 syncCanvasSize();
 applyCamera();
 setupCameraHandlers(canvasEl, canvasWrap, cam, () => renderFrame());
+
+attachDepthSliderHandlers(
+  depthView,
+  () => renderFrame(),
+  () => renderFrame(),
+);
 
 window.addEventListener('resize', () => {
   syncCanvasSize();
@@ -358,7 +373,7 @@ function doStep(): void {
 
 function renderFrame(): void {
   updateCamera(cam);
-  render(rs, sim.grid, sim.evoStats, sim.season.current, sim.generation);
+  render(rs, sim.grid, sim.evoStats, sim.season.current, sim.generation, depthView.focusLayer);
   if (currentHeatmap !== 'none') {
     drawHeatmapOverlay(rs.ctx, sim.grid, sim.evoStats, currentHeatmap);
   }
@@ -386,6 +401,7 @@ function updateUI(): void {
 
   updateEvoLog(evoEntriesEl, sim.history.evoLog, sim.evolveEnabled);
   updateMobileBar(sim.generation, sim.season.current, sim.running);
+  updateDepthCounts(sim.grid.species);
 }
 
 function tick(): void {

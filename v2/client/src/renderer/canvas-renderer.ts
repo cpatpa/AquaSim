@@ -1,7 +1,13 @@
 import type { GridState, Particle, EvoStats } from '../types';
-import { CELL_SIZE, GRID_GAP, MAX_PARTICLES, LAVA_COOL_AGE } from '../constants';
-import { COLOR_RGB, getSpecies } from '../species/registry';
+import { CELL_SIZE, GRID_GAP, MAX_PARTICLES, LAVA_COOL_AGE, LAYER_COLORS } from '../constants';
+import { COLOR_RGB, getSpecies, layerOf } from '../species/registry';
 import { TRAIT_BITS } from '../evolution/traits';
+
+// Pre-parse LAYER_COLORS to RGB tuples for fast Pass 5 access
+const LAYER_RGB: [number, number, number][] = LAYER_COLORS.map((hex) => {
+  const n = parseInt(hex.slice(1), 16);
+  return [(n >> 16) & 0xff, (n >> 8) & 0xff, n & 0xff];
+});
 
 // ---------------------------------------------------------------------------
 // Renderer state
@@ -142,6 +148,7 @@ export function render(
   evoStats: Record<number, EvoStats>,
   _season: string,
   generation: number,
+  focusLayer: number = -1,
 ): void {
   const cw = grid.width;
   const ch = grid.height;
@@ -517,6 +524,41 @@ export function render(
           data[off] = arwR;
           data[off + 1] = arwG;
           data[off + 2] = arwB;
+        }
+      }
+    }
+  }
+
+  // --- Pass 5: layer filter dimming ------------------------------------
+  if (focusLayer >= 0 && focusLayer < LAYER_RGB.length) {
+    const dim = 0.18;
+    const tintR = LAYER_RGB[focusLayer][0];
+    const tintG = LAYER_RGB[focusLayer][1];
+    const tintB = LAYER_RGB[focusLayer][2];
+    const tintAlpha = 0.08;
+    const tintInv = 1 - tintAlpha;
+    for (let cy = 0; cy < ch; cy++) {
+      for (let cx = 0; cx < cw; cx++) {
+        const idx = cy * cw + cx;
+        const sid = species[idx];
+        const sLayer = sid === 0 ? -1 : layerOf(sid);
+        const matches = sLayer === focusLayer || sLayer === -1;
+        const px0 = cx * cs;
+        const py0 = cy * cs;
+        for (let py = py0; py < py0 + cs; py++) {
+          const rowOff = py * pw * 4;
+          for (let px = px0; px < px0 + cs; px++) {
+            const off = rowOff + px * 4;
+            if (!matches) {
+              data[off] = (data[off] * dim) | 0;
+              data[off + 1] = (data[off + 1] * dim) | 0;
+              data[off + 2] = (data[off + 2] * dim) | 0;
+            } else if (sid === 0) {
+              data[off] = (data[off] * tintInv + tintR * tintAlpha) | 0;
+              data[off + 1] = (data[off + 1] * tintInv + tintG * tintAlpha) | 0;
+              data[off + 2] = (data[off + 2] * tintInv + tintB * tintAlpha) | 0;
+            }
+          }
         }
       }
     }
