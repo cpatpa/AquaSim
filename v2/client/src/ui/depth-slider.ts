@@ -2,17 +2,11 @@ import { LAYER_NAMES, LAYER_COLORS, LAYER_COUNT } from '../constants';
 
 export interface DepthViewState {
   focusLayer: number;
-  tiltEnabled: boolean;
-  tiltAngle: number;
-  layerSpacing: number;
 }
 
 export function createDepthViewState(): DepthViewState {
   return {
     focusLayer: -1,
-    tiltEnabled: false,
-    tiltAngle: 45,
-    layerSpacing: 10,
   };
 }
 
@@ -33,7 +27,6 @@ export function buildDepthSliderHtml(): string {
     <div id="depth-slider">
       <div class="depth-header">DEPTH</div>
       ${zones.join('')}
-      <button id="btn-tilt" title="Toggle 3D depth view (D)">3D</button>
       <button id="btn-depth-all" title="Show all layers (0)">All</button>
     </div>
   `;
@@ -139,12 +132,6 @@ export function setActiveLayer(state: DepthViewState, layer: number): void {
   });
 }
 
-export function setTiltActive(state: DepthViewState, enabled: boolean): void {
-  state.tiltEnabled = enabled;
-  const btn = document.getElementById('btn-tilt');
-  if (btn) btn.classList.toggle('active', enabled);
-}
-
 /**
  * Count living species per actual z-layer in the 3D grid.
  * `planeSize` is gridW * gridH; the species array contains LAYER_COUNT planes.
@@ -175,7 +162,6 @@ export function updateDepthCounts(species: Uint8Array, planeSize: number): void 
 export function attachDepthSliderHandlers(
   state: DepthViewState,
   onLayerChange: (layer: number) => void,
-  onTiltToggle: (enabled: boolean) => void,
 ): void {
   const zones = document.querySelectorAll('#depth-slider .depth-zone');
   zones.forEach((z) => {
@@ -193,20 +179,9 @@ export function attachDepthSliderHandlers(
       onLayerChange(-1);
     });
   }
-  const btnTilt = document.getElementById('btn-tilt');
-  if (btnTilt) {
-    btnTilt.addEventListener('click', () => {
-      setTiltActive(state, !state.tiltEnabled);
-      onTiltToggle(state.tiltEnabled);
-    });
-  }
   window.addEventListener('keydown', (e) => {
     if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLSelectElement) return;
-    if (e.key === 'd' || e.key === 'D') {
-      setTiltActive(state, !state.tiltEnabled);
-      onTiltToggle(state.tiltEnabled);
-      e.preventDefault();
-    } else if (e.key >= '1' && e.key <= '6') {
+    if (e.key >= '1' && e.key <= '6') {
       const layer = parseInt(e.key, 10) - 1;
       const newFocus = state.focusLayer === layer ? -1 : layer;
       setActiveLayer(state, newFocus);
