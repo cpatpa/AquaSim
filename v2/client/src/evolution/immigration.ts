@@ -80,7 +80,6 @@ const IMMIGRATION_NAMES: Record<string, string[]> = {
 const IMMIGRATION_CHECK_INTERVAL = 150;
 const IMMIGRATION_CLUSTER_SIZE = 20;
 
-const CARDINAL: readonly [number, number][] = [[0, -1], [1, 0], [0, 1], [-1, 0]];
 
 const _tierEmptyGens: Record<string, number> = {
   producer: 0, herbivore: 0, consumer: 0, apex: 0, megafauna: 0, decomposer: 0,
@@ -311,7 +310,7 @@ export function tierImmigration(ctx: ImmigrationContext): void {
 
   if (popHistory.length < 2) return;
   const now = popHistory[popHistory.length - 1];
-  const total = gridW * gridH;
+  const plane = gridW * gridH;
   const livingIds = getLivingIds();
 
   const tierPop: Record<string, number> = {};
@@ -336,21 +335,28 @@ export function tierImmigration(ctx: ImmigrationContext): void {
     const newId = createImmigrantSpecies(tier as LivingTier, ctx);
     if (!newId) continue;
     const bsp = SPECIES[newId];
+    const newZ = Math.max(0, Math.min(5, bsp?.layer ?? 0));
+    const newZOff = newZ * plane;
 
+    // Find an empty cell in the new species' home layer near any living food source
     let bestIdx = -1;
     let attempts = 0;
     while (bestIdx === -1 && attempts < 200) {
-      const ri = (Math.random() * total) | 0;
+      const rxy = (Math.random() * plane) | 0;
+      const ri = newZOff + rxy;
       if (species[ri] === 0) {
-        const rx = ri % gridW;
-        const ry = (ri / gridW) | 0;
+        const rx = rxy % gridW;
+        const ry = (rxy / gridW) | 0;
         let nearFood = false;
-        for (let n = 0; n < 4; n++) {
-          const dir = CARDINAL[n];
-          const nsi = species[wrapY(ry + dir[1], gridH) * gridW + wrapX(rx + dir[0], gridW)];
-          if (nsi >= 10 && SPECIES[nsi]) {
-            nearFood = true;
-            break;
+        // Scan 8 xy neighbours across ALL layers for any living species
+        for (let dy = -1; dy <= 1 && !nearFood; dy++) {
+          for (let dx = -1; dx <= 1 && !nearFood; dx++) {
+            if (dx === 0 && dy === 0) continue;
+            const nxy = wrapY(ry + dy, gridH) * gridW + wrapX(rx + dx, gridW);
+            for (let z = 0; z < 6; z++) {
+              const nsi = species[z * plane + nxy];
+              if (nsi >= 10 && SPECIES[nsi]) { nearFood = true; break; }
+            }
           }
         }
         if (nearFood) bestIdx = ri;
@@ -363,12 +369,13 @@ export function tierImmigration(ctx: ImmigrationContext): void {
     const spreadRadius = scaleFactor <= 20 ? 2 : scaleFactor <= 40 ? 3 : 4;
     const hungerBuffer = -IMMIGRATION_ESTABLISHMENT_TICKS;
 
-    const ox = bestIdx % gridW;
-    const oy = (bestIdx / gridW) | 0;
+    const bestXy = bestIdx - newZOff;
+    const ox = bestXy % gridW;
+    const oy = (bestXy / gridW) | 0;
     let placed = 0;
     for (let dy = -spreadRadius; dy <= spreadRadius && placed < scaleFactor; dy++) {
       for (let dx = -spreadRadius; dx <= spreadRadius && placed < scaleFactor; dx++) {
-        const pi = wrapY(oy + dy, gridH) * gridW + wrapX(ox + dx, gridW);
+        const pi = newZOff + wrapY(oy + dy, gridH) * gridW + wrapX(ox + dx, gridW);
         if (species[pi] === 0) {
           species[pi] = newId;
           hunger[pi] = hungerBuffer;
@@ -406,10 +413,12 @@ export function tierImmigration(ctx: ImmigrationContext): void {
       }
       const psp = SPECIES[preyId];
       if (psp) {
+        const preyZ = Math.max(0, Math.min(5, psp.layer ?? 0));
+        const preyZOff = preyZ * plane;
         let preyPlaced = 0;
         for (let dy = -3; dy <= 3 && preyPlaced < scaleFactor; dy++) {
           for (let dx = -3; dx <= 3 && preyPlaced < scaleFactor; dx++) {
-            const pi = wrapY(oy + dy, gridH) * gridW + wrapX(ox + dx, gridW);
+            const pi = preyZOff + wrapY(oy + dy, gridH) * gridW + wrapX(ox + dx, gridW);
             if (species[pi] === 0) {
               species[pi] = preyId;
               hunger[pi] = hungerBuffer;

@@ -381,6 +381,7 @@ export function drawMinimap(
   gridH: number,
   colorRGB: Record<number, [number, number, number]>,
   anchorTop = false,
+  gridLayers: number = 1,
 ): void {
   const size = MINIMAP_SIZE;
   const pad = MINIMAP_PADDING;
@@ -401,11 +402,17 @@ export function drawMinimap(
   // Sampling step: skip cells when the grid is much larger than the minimap.
   const stepX = Math.max(1, Math.floor(gridW / size));
   const stepY = Math.max(1, Math.floor(gridH / size));
+  const plane = gridW * gridH;
 
-  // Draw species dots.
+  // Draw species dots (top-down: pick topmost non-empty species per xy).
   for (let gy = 0; gy < gridH; gy += stepY) {
     for (let gx = 0; gx < gridW; gx += stepX) {
-      const sid = speciesArray[gy * gridW + gx];
+      const xyIdx = gy * gridW + gx;
+      let sid = 0;
+      for (let z = gridLayers - 1; z >= 0; z--) {
+        const s = speciesArray[z * plane + xyIdx];
+        if (s !== 0) { sid = s; break; }
+      }
       if (sid === 0) continue;
       const rgb = colorRGB[sid];
       if (!rgb) continue;

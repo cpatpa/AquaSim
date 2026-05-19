@@ -1,6 +1,6 @@
 import type { GridState, Particle, EvoStats } from '../types';
 import { CELL_SIZE, GRID_GAP, MAX_PARTICLES, LAVA_COOL_AGE, LAYER_COLORS } from '../constants';
-import { COLOR_RGB, getSpecies, layerOf } from '../species/registry';
+import { COLOR_RGB, getSpecies } from '../species/registry';
 import { TRAIT_BITS } from '../evolution/traits';
 
 // Pre-parse LAYER_COLORS to RGB tuples for fast Pass 5 access
@@ -181,11 +181,17 @@ export function render(
     }
   }
 
-  // --- Pass 2: water caustics on empty cells ----------------------------
+  // --- Pass 2: water caustics on empty xy columns -----------------------
+  const plane2 = cw * ch;
   for (let cy = 0; cy < ch; cy++) {
     for (let cx = 0; cx < cw; cx++) {
       const idx = cy * cw + cx;
-      if (species[idx] !== 0) continue;
+      // Only draw caustics if the entire xy column is empty (no species at any z)
+      let colEmpty = true;
+      for (let zl = 0; zl < grid.layers; zl++) {
+        if (species[zl * plane2 + idx] !== 0) { colEmpty = false; break; }
+      }
+      if (!colEmpty) continue;
 
       const nv = cellNoise[idx];
       if (nv < 0.15) continue;
@@ -222,12 +228,32 @@ export function render(
   }
 
   // --- Pass 3: cell rendering with noise, bevel, effects ----------------
+  const planeSize3D = cw * ch;
+  const layers3D = grid.layers;
   for (let cy = 0; cy < ch; cy++) {
     const depthDim = 1.0 - (cy / ch) * 0.12;
 
     for (let cx = 0; cx < cw; cx++) {
-      const idx = cy * cw + cx;
-      const sid = species[idx];
+      const xyIdx = cy * cw + cx;
+      // Select visible species at this xy:
+      //   focusLayer mode: show only that layer
+      //   all-layer mode: show topmost non-empty species
+      let sid = 0;
+      let idx = xyIdx;
+      if (focusLayer >= 0 && focusLayer < layers3D) {
+        idx = focusLayer * planeSize3D + xyIdx;
+        sid = species[idx];
+      } else {
+        for (let zl = layers3D - 1; zl >= 0; zl--) {
+          const tryIdx = zl * planeSize3D + xyIdx;
+          const trySid = species[tryIdx];
+          if (trySid !== 0) {
+            sid = trySid;
+            idx = tryIdx;
+            break;
+          }
+        }
+      }
       if (sid === 0) continue;
 
       const rgb = COLOR_RGB[sid];
@@ -236,8 +262,8 @@ export function render(
       let baseG = rgb[1];
       let baseB = rgb[2];
 
-      const nv = cellNoise[idx];
-      const nv2 = cellNoise2[idx];
+      const nv = cellNoise[xyIdx];
+      const nv2 = cellNoise2[xyIdx];
       const sp = getSpecies(sid);
 
       // Hunger dimming for animals
@@ -529,35 +555,31 @@ export function render(
     }
   }
 
-  // --- Pass 5: layer filter dimming ------------------------------------
+  // --- Pass 5: focus-layer background tint -----------------------------
+  // In 3D, Pass 3 only renders cells from the focus layer. This pass tints
+  // background (empty-layer) cells with the layer colour so the focused
+  // depth zone reads visually.
   if (focusLayer >= 0 && focusLayer < LAYER_RGB.length) {
-    const dim = 0.18;
     const tintR = LAYER_RGB[focusLayer][0];
     const tintG = LAYER_RGB[focusLayer][1];
     const tintB = LAYER_RGB[focusLayer][2];
-    const tintAlpha = 0.08;
+    const tintAlpha = 0.12;
     const tintInv = 1 - tintAlpha;
+    const planeSize5 = cw * ch;
     for (let cy = 0; cy < ch; cy++) {
       for (let cx = 0; cx < cw; cx++) {
-        const idx = cy * cw + cx;
-        const sid = species[idx];
-        const sLayer = sid === 0 ? -1 : layerOf(sid);
-        const matches = sLayer === focusLayer || sLayer === -1;
+        const xyIdx = cy * cw + cx;
+        const sid = species[focusLayer * planeSize5 + xyIdx];
+        if (sid !== 0) continue;
         const px0 = cx * cs;
         const py0 = cy * cs;
         for (let py = py0; py < py0 + cs; py++) {
           const rowOff = py * pw * 4;
           for (let px = px0; px < px0 + cs; px++) {
             const off = rowOff + px * 4;
-            if (!matches) {
-              data[off] = (data[off] * dim) | 0;
-              data[off + 1] = (data[off + 1] * dim) | 0;
-              data[off + 2] = (data[off + 2] * dim) | 0;
-            } else if (sid === 0) {
-              data[off] = (data[off] * tintInv + tintR * tintAlpha) | 0;
-              data[off + 1] = (data[off + 1] * tintInv + tintG * tintAlpha) | 0;
-              data[off + 2] = (data[off + 2] * tintInv + tintB * tintAlpha) | 0;
-            }
+            data[off] = (data[off] * tintInv + tintR * tintAlpha) | 0;
+            data[off + 1] = (data[off + 1] * tintInv + tintG * tintAlpha) | 0;
+            data[off + 2] = (data[off + 2] * tintInv + tintB * tintAlpha) | 0;
           }
         }
       }
@@ -627,15 +649,15 @@ export function renderLayer(
     }
   }
 
-  // Render only cells matching this layer
+  // Render cells at this layer's z-slice of the 3D grid
   const cellAlpha = (255 * opacity) | 0;
+  const planeSizeL = cw * ch;
+  const zOffL = targetLayer * planeSizeL;
   for (let cy = 0; cy < ch; cy++) {
     for (let cx = 0; cx < cw; cx++) {
-      const idx = cy * cw + cx;
+      const idx = zOffL + cy * cw + cx;
       const sid = species[idx];
       if (sid === 0) continue;
-      const sLayer = layerOf(sid);
-      if (sLayer !== targetLayer && sLayer !== -1) continue;
 
       const rgb = COLOR_RGB[sid];
       if (!rgb) continue;

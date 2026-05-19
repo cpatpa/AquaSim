@@ -275,7 +275,9 @@ export function step(ctx: StepContext): StepResult {
   const { species, hunger, age, currents } = grid;
   const cw = grid.width;
   const ch = grid.height;
-  const total = cw * ch;
+  const layers = grid.layers;
+  const planeSize = cw * ch;
+  const total = planeSize * layers;
 
   // Lazily allocate / resize step buffers
   if (!_stepProcessed || _stepProcessed.length !== total) {
@@ -337,8 +339,11 @@ export function step(ctx: StepContext): StepResult {
     if (sid === 0) continue;
     processed[idx] = 1;
 
-    const cx = idx % cw;
-    const cy = (idx / cw) | 0;
+    const cz = (idx / planeSize) | 0;
+    const xyIdx = idx - cz * planeSize;
+    const cx = xyIdx % cw;
+    const cy = (xyIdx / cw) | 0;
+    const zOff = cz * planeSize;
     const sp = SPECIES[sid];
 
     if (sid === 1) {
@@ -346,7 +351,7 @@ export function step(ctx: StepContext): StepResult {
       let adjEmpty = 0;
       for (let n = 0; n < 4; n++) {
         const dir = CARDINAL[n];
-        const ns = species[wrapY(cy + dir[1], ch) * cw + wrapX(cx + dir[0], cw)];
+        const ns = species[zOff + wrapY(cy + dir[1], ch) * cw + wrapX(cx + dir[0], cw)];
         if (ns === 1) adjRock++;
         else if (ns === 0) adjEmpty++;
       }
@@ -367,7 +372,7 @@ export function step(ctx: StepContext): StepResult {
         let adjRockD = 0;
         for (let n = 0; n < 4; n++) {
           const dir = CARDINAL[n];
-          if (species[wrapY(cy + dir[1], ch) * cw + wrapX(cx + dir[0], cw)] === 1) adjRockD++;
+          if (species[zOff + wrapY(cy + dir[1], ch) * cw + wrapX(cx + dir[0], cw)] === 1) adjRockD++;
         }
         species[idx] = adjRockD >= 2 ? 1 : 0;
         hunger[idx] = 0;
@@ -395,7 +400,7 @@ export function step(ctx: StepContext): StepResult {
           const dir = CARDINAL[dirs[d]];
           const nx = wrapX(cx + dir[0], cw);
           const ny = wrapY(cy + dir[1], ch);
-          const ni = ny * cw + nx;
+          const ni = zOff + ny * cw + nx;
           const nSid = species[ni];
           if (nSid === 0 || nSid === 1 || nSid === 4) continue;
           if (Math.random() < OIL_SPREAD_RATE) {
@@ -435,7 +440,7 @@ export function step(ctx: StepContext): StepResult {
         const dir = CARDINAL[tdirs[d]];
         const nx = wrapX(cx + dir[0], cw);
         const ny = wrapY(cy + dir[1], ch);
-        const ni = ny * cw + nx;
+        const ni = zOff + ny * cw + nx;
         const nSid = species[ni];
         if (nSid === 0 || nSid === 1 || nSid === 5 || nSid === 6) continue;
         const nSp = SPECIES[nSid];
@@ -472,7 +477,7 @@ export function step(ctx: StepContext): StepResult {
         let adjLava = 0;
         for (let d = 0; d < 4; d++) {
           const dir = CARDINAL[d];
-          const ni = wrapY(cy + dir[1], ch) * cw + wrapX(cx + dir[0], cw);
+          const ni = zOff + wrapY(cy + dir[1], ch) * cw + wrapX(cx + dir[0], cw);
           if (species[ni] === 7 || species[ni] === 1) adjLava++;
         }
         species[idx] = adjLava >= 2 ? 1 : 0;
@@ -486,7 +491,7 @@ export function step(ctx: StepContext): StepResult {
         const dir = CARDINAL[ldirs[d]];
         const nx = wrapX(cx + dir[0], cw);
         const ny = wrapY(cy + dir[1], ch);
-        const ni = ny * cw + nx;
+        const ni = zOff + ny * cw + nx;
         const nSid = species[ni];
         if (nSid <= 1 || nSid === 5 || nSid === 7 || nSid === 0) continue;
         const nSp = SPECIES[nSid];
@@ -505,7 +510,7 @@ export function step(ctx: StepContext): StepResult {
         let adjLava = 0;
         for (let d = 0; d < 4; d++) {
           const dir = CARDINAL[ldirs[d]];
-          const ni = wrapY(cy + dir[1], ch) * cw + wrapX(cx + dir[0], cw);
+          const ni = zOff + wrapY(cy + dir[1], ch) * cw + wrapX(cx + dir[0], cw);
           if (species[ni] === 7 || species[ni] === 1) adjLava++;
         }
         if (adjLava < 3) {
@@ -515,7 +520,7 @@ export function step(ctx: StepContext): StepResult {
             const dir = CARDINAL[ldirs[d]];
             const nx = wrapX(cx + dir[0], cw);
             const ny = wrapY(cy + dir[1], ch);
-            const ni = ny * cw + nx;
+            const ni = zOff + ny * cw + nx;
             const nSid = species[ni];
             if (nSid === 1 || nSid === 7) continue;
             let score = Math.random();
@@ -534,7 +539,7 @@ export function step(ctx: StepContext): StepResult {
             const dir = CARDINAL[ldirs[bestD]];
             const nx = wrapX(cx + dir[0], cw);
             const ny = wrapY(cy + dir[1], ch);
-            const ni = ny * cw + nx;
+            const ni = zOff + ny * cw + nx;
             species[ni] = 7;
             hunger[ni] = 0;
             age[ni] = 0;
@@ -550,7 +555,7 @@ export function step(ctx: StepContext): StepResult {
             if (Math.abs(dx) + Math.abs(dy) > LAVA_HEAT_RADIUS) continue;
             const hx = wrapX(cx + dx, cw);
             const hy = wrapY(cy + dy, ch);
-            const hi = hy * cw + hx;
+            const hi = zOff + hy * cw + hx;
             const hSid = species[hi];
             if (hSid < 10) continue;
             const hSp = SPECIES[hSid];
@@ -570,7 +575,7 @@ export function step(ctx: StepContext): StepResult {
       // Lava melts ice on contact
       for (let d = 0; d < 4; d++) {
         const dir = CARDINAL[ldirs[d]];
-        const ni = wrapY(cy + dir[1], ch) * cw + wrapX(cx + dir[0], cw);
+        const ni = zOff + wrapY(cy + dir[1], ch) * cw + wrapX(cx + dir[0], cw);
         if (species[ni] === 5) {
           species[ni] = 0;
           hunger[ni] = 0;
@@ -616,7 +621,7 @@ export function step(ctx: StepContext): StepResult {
       if (sid === 12) {
         for (let n = 0; n < 4; n++) {
           const dir = CARDINAL[n];
-          const ni = wrapY(cy + dir[1], ch) * cw + wrapX(cx + dir[0], cw);
+          const ni = zOff + wrapY(cy + dir[1], ch) * cw + wrapX(cx + dir[0], cw);
           if (species[ni] === 1) {
             nearRock = true;
             break;
@@ -629,7 +634,7 @@ export function step(ctx: StepContext): StepResult {
       if (pTraits.indexOf('nitrofix') !== -1) {
         for (let n = 0; n < 4; n++) {
           const dir = CARDINAL[n];
-          const ni = wrapY(cy + dir[1], ch) * cw + wrapX(cx + dir[0], cw);
+          const ni = zOff + wrapY(cy + dir[1], ch) * cw + wrapX(cx + dir[0], cw);
           if (species[ni] === 3) {
             breedChance *= 2;
             break;
@@ -642,7 +647,7 @@ export function step(ctx: StepContext): StepResult {
         for (let ady = -2; ady <= 2; ady++) {
           for (let adx = -2; adx <= 2; adx++) {
             if (adx === 0 && ady === 0) continue;
-            const ani = wrapY(cy + ady, ch) * cw + wrapX(cx + adx, cw);
+            const ani = zOff + wrapY(cy + ady, ch) * cw + wrapX(cx + adx, cw);
             const aSid = species[ani];
             if (aSid !== sid && aSid !== 0 && SPECIES[aSid] && SPECIES[aSid].tier === 'producer') {
               if (Math.random() < 0.15) {
@@ -680,7 +685,7 @@ export function step(ctx: StepContext): StepResult {
       let adjProducers = 0;
       for (let n = 0; n < 8; n++) {
         const dir = NEIGHBOURS_8[n];
-        const nsi = species[wrapY(cy + dir[1], ch) * cw + wrapX(cx + dir[0], cw)];
+        const nsi = species[zOff + wrapY(cy + dir[1], ch) * cw + wrapX(cx + dir[0], cw)];
         if (nsi > 0 && SPECIES[nsi] && SPECIES[nsi].tier === 'producer') adjProducers++;
       }
       if (adjProducers >= 7) breedChance *= 0.05;
@@ -697,7 +702,7 @@ export function step(ctx: StepContext): StepResult {
             const dir = CARDINAL[dirs[d]];
             const nx = wrapX(cx + dir[0] * dist, cw);
             const ny = wrapY(cy + dir[1] * dist, ch);
-            const ni = ny * cw + nx;
+            const ni = zOff + ny * cw + nx;
             // Coral can grow on rock
             if (species[ni] === 0 || (sid === 12 && species[ni] === 1)) {
               species[ni] = sid;
@@ -788,7 +793,7 @@ export function step(ctx: StepContext): StepResult {
         const dir = CARDINAL[n];
         const nx = wrapX(cx + dir[0], cw);
         const ny = wrapY(cy + dir[1], ch);
-        const ns = species[ny * cw + nx];
+        const ns = species[zOff + ny * cw + nx];
         const nsp = SPECIES[ns];
         if (nsp && nsp.tier === 'producer') {
           hunger[idx] = Math.max(0, hunger[idx] - 2);
@@ -807,7 +812,7 @@ export function step(ctx: StepContext): StepResult {
       let hasRock = false;
       for (let n = 0; n < 4; n++) {
         const dir = CARDINAL[n];
-        if (species[wrapY(cy + dir[1], ch) * cw + wrapX(cx + dir[0], cw)] === 1) {
+        if (species[zOff + wrapY(cy + dir[1], ch) * cw + wrapX(cx + dir[0], cw)] === 1) {
           hasRock = true;
           break;
         }
@@ -821,7 +826,7 @@ export function step(ctx: StepContext): StepResult {
         const dir = CARDINAL[n];
         const pnx = wrapX(cx + dir[0], cw);
         const pny = wrapY(cy + dir[1], ch);
-        const pni = pny * cw + pnx;
+        const pni = zOff + pny * cw + pnx;
         const pSid = species[pni];
         if (pSid > 0 && pSid !== sid && SPECIES[pSid] && SPECIES[pSid].hungerMax) {
           hunger[idx] = Math.max(0, hunger[idx] - 2);
@@ -837,7 +842,7 @@ export function step(ctx: StepContext): StepResult {
         let fed = false;
         for (let fdx = -2; fdx <= 2; fdx++) {
           if (fdx === 0 && fdy === 0) continue;
-          const fni = wrapY(cy + fdy, ch) * cw + wrapX(cx + fdx, cw);
+          const fni = zOff + wrapY(cy + fdy, ch) * cw + wrapX(cx + fdx, cw);
           const fsp = SPECIES[species[fni]];
           if (fsp && fsp.tier === 'producer') {
             hunger[idx] = Math.max(0, hunger[idx] - 2);
@@ -855,7 +860,7 @@ export function step(ctx: StepContext): StepResult {
       let cnt = 1;
       for (let n = 0; n < 8; n++) {
         const dir = NEIGHBOURS_8[n];
-        const cni = wrapY(cy + dir[1], ch) * cw + wrapX(cx + dir[0], cw);
+        const cni = zOff + wrapY(cy + dir[1], ch) * cw + wrapX(cx + dir[0], cw);
         if (species[cni] === sid) {
           totalH += hunger[cni];
           cnt++;
@@ -866,7 +871,7 @@ export function step(ctx: StepContext): StepResult {
         hunger[idx] = avg;
         for (let n = 0; n < 8; n++) {
           const dir = NEIGHBOURS_8[n];
-          const cni = wrapY(cy + dir[1], ch) * cw + wrapX(cx + dir[0], cw);
+          const cni = zOff + wrapY(cy + dir[1], ch) * cw + wrapX(cx + dir[0], cw);
           if (species[cni] === sid) hunger[cni] = avg;
         }
       }
@@ -880,7 +885,7 @@ export function step(ctx: StepContext): StepResult {
     if (hasNovelAdapt(sid, 'chemosynthesis', ctxEvoStats) && hunger[idx] > 0) {
       for (let n = 0; n < 4; n++) {
         const dir = CARDINAL[n];
-        const cni = wrapY(cy + dir[1], ch) * cw + wrapX(cx + dir[0], cw);
+        const cni = zOff + wrapY(cy + dir[1], ch) * cw + wrapX(cx + dir[0], cw);
         const ns = species[cni];
         if (ns === 2 || ns === 7) {
           hunger[idx] = Math.max(0, hunger[idx] - 2);
@@ -895,7 +900,7 @@ export function step(ctx: StepContext): StepResult {
       let cnt = 1;
       for (let n = 0; n < 8; n++) {
         const dir = NEIGHBOURS_8[n];
-        const cni = wrapY(cy + dir[1], ch) * cw + wrapX(cx + dir[0], cw);
+        const cni = zOff + wrapY(cy + dir[1], ch) * cw + wrapX(cx + dir[0], cw);
         if (species[cni] === sid) {
           hiveCount++;
           totalH += hunger[cni];
@@ -907,7 +912,7 @@ export function step(ctx: StepContext): StepResult {
         hunger[idx] = avg;
         for (let n = 0; n < 8; n++) {
           const dir = NEIGHBOURS_8[n];
-          const cni = wrapY(cy + dir[1], ch) * cw + wrapX(cx + dir[0], cw);
+          const cni = zOff + wrapY(cy + dir[1], ch) * cw + wrapX(cx + dir[0], cw);
           if (species[cni] === sid) hunger[cni] = avg;
         }
       }
@@ -930,7 +935,7 @@ export function step(ctx: StepContext): StepResult {
       if (aeEats && aeEats.length) {
         for (let n = 0; n < 4; n++) {
           const dir = CARDINAL[n];
-          const cni = wrapY(cy + dir[1], ch) * cw + wrapX(cx + dir[0], cw);
+          const cni = zOff + wrapY(cy + dir[1], ch) * cw + wrapX(cx + dir[0], cw);
           if (aeEats.indexOf(species[cni]) !== -1) {
             foodAdj = true;
             break;
@@ -990,25 +995,50 @@ export function step(ctx: StepContext): StepResult {
       const scanCells = huntRange >= 2 ? _scanRange2 : _scanRange1;
       shuffleSmall(scanCells);
 
-      // Pack hunter: count allies near self
+      // Pack hunter: count allies near self (same layer)
       let packAllyCount = 0;
       if (isPackHunter) {
         for (let pn = 0; pn < 8; pn++) {
           const pdir = NEIGHBOURS_8[pn];
-          const pni = wrapY(cy + pdir[1], ch) * cw + wrapX(cx + pdir[0], cw);
+          const pni = zOff + wrapY(cy + pdir[1], ch) * cw + wrapX(cx + pdir[0], cw);
           if (species[pni] === sid) packAllyCount++;
         }
       }
       const packActive = isPackHunter && packAllyCount >= 2;
       const huntSynMul = hasSynergy(synergies, 'hunt');
+      const layerReachVal = sp.layerReach ?? 1;
 
-      for (let n = 0; n < scanCells.length; n++) {
-        const [dx, dy] = scanCells[n];
-        const nx = wrapX(cx + dx, cw);
-        const ny = wrapY(cy + dy, ch);
-        const ni = ny * cw + nx;
-        const foodId = species[ni];
-        if (eatsSet.indexOf(foodId) !== -1 && layersCanReach(sid, layerOf(foodId))) {
+      zHunt: for (let dz = -layerReachVal; dz <= layerReachVal && !ate; dz++) {
+        const nz = cz + dz;
+        if (nz < 0 || nz >= layers) continue;
+        const nzOff = nz * planeSize;
+        // First check own xy column at different z (vertical strike)
+        if (dz !== 0) {
+          const ni = nzOff + cy * cw + cx;
+          const foodId = species[ni];
+          if (eatsSet.indexOf(foodId) !== -1) {
+            // simple vertical kill: no defence checks for column strike
+            const _preyPop = popCounts[foodId] || 0;
+            if (totalLiving === 0 || _preyPop / totalLiving >= 0.01 || Math.random() >= 0.6) {
+              if (onSpawnDeathParticles) onSpawnDeathParticles(ni, foodId);
+              species[ni] = 0;
+              hunger[ni] = 0;
+              age[ni] = 0;
+              hunger[idx] = Math.max(0, hunger[idx] - ((es.hungerMax * restoreFrac) | 0));
+              processed[ni] = 1;
+              ate = true;
+              break zHunt;
+            }
+          }
+        }
+        // Then xy neighbours at this z
+        for (let n = 0; n < scanCells.length; n++) {
+          const [dx, dy] = scanCells[n];
+          const nx = wrapX(cx + dx, cw);
+          const ny = wrapY(cy + dy, ch);
+          const ni = nzOff + ny * cw + nx;
+          const foodId = species[ni];
+          if (eatsSet.indexOf(foodId) !== -1) {
           // Density-dependent predation: scarce prey is harder to find
           const _preyPop = popCounts[foodId] || 0;
           if (totalLiving > 0 && _preyPop < totalLiving * 0.01 && _preyPop > 0) {
@@ -1042,7 +1072,7 @@ export function step(ctx: StepContext): StepResult {
               let podCount = 0;
               for (let pn = 0; pn < 8; pn++) {
                 const pdir = NEIGHBOURS_8[pn];
-                const pni = wrapY(ny + pdir[1], ch) * cw + wrapX(nx + pdir[0], cw);
+                const pni = zOff + wrapY(ny + pdir[1], ch) * cw + wrapX(nx + pdir[0], cw);
                 if (species[pni] === foodId) podCount++;
               }
               if (podCount >= 2 && Math.random() < 0.5 * tStr(foodId, 'poddefense')) continue;
@@ -1054,14 +1084,14 @@ export function step(ctx: StepContext): StepResult {
             // Novel: Mucus Coating
             if (hasNovelAdapt(foodId, 'mucuscoat', ctxEvoStats) && Math.random() < 0.35) {
               ate = true;
-              break;
+              break zHunt;
             }
             // Ink Cloud
             if (preyTraits.indexOf('inkcloud') !== -1 && Math.random() < 0.5 * tStr(foodId, 'inkcloud')) {
               const tDir = CARDINAL[(Math.random() * 4) | 0];
               const tnx = wrapX(nx + tDir[0] * 2, cw);
               const tny = wrapY(ny + tDir[1] * 2, ch);
-              const tni = tny * cw + tnx;
+              const tni = zOff + tny * cw + tnx;
               if (species[tni] === 0) {
                 species[tni] = foodId;
                 hunger[tni] = hunger[ni];
@@ -1078,7 +1108,7 @@ export function step(ctx: StepContext): StepResult {
               let bfCount = 0;
               for (let bn = 0; bn < 8; bn++) {
                 const bdir = NEIGHBOURS_8[bn];
-                if (species[wrapY(ny + bdir[1], ch) * cw + wrapX(nx + bdir[0], cw)] === foodId) bfCount++;
+                if (species[zOff + wrapY(ny + bdir[1], ch) * cw + wrapX(nx + bdir[0], cw)] === foodId) bfCount++;
               }
               if (bfCount >= 3 && Math.random() < 0.35 * tStr(foodId, 'biofilm')) continue;
             }
@@ -1098,7 +1128,7 @@ export function step(ctx: StepContext): StepResult {
           if (isVenomous) {
             for (let vn = 0; vn < 4; vn++) {
               const vdir = CARDINAL[vn];
-              const vni = wrapY(ny + vdir[1], ch) * cw + wrapX(nx + vdir[0], cw);
+              const vni = zOff + wrapY(ny + vdir[1], ch) * cw + wrapX(nx + vdir[0], cw);
               const vSid = species[vni];
               if (vSid === foodId && SPECIES[vSid] && SPECIES[vSid].hungerMax) {
                 hunger[vni] = Math.min(hunger[vni] + 3, (ctxEvoStats[vSid] || {} as any).hungerMax || 30);
@@ -1110,19 +1140,19 @@ export function step(ctx: StepContext): StepResult {
           if (preyTraits.indexOf('deeproot') !== -1 && Math.random() < _drChance * tStr(foodId, 'deeproot')) {
             hunger[idx] = Math.max(0, hunger[idx] - ((es.hungerMax * restoreFrac * 0.4) | 0));
             ate = true;
-            break;
+            break zHunt;
           }
           // Fortress Mode synergy
           if (hasSynergy(preySynergies, 'defence') && Math.random() < 0.6) {
             hunger[idx] = Math.max(0, hunger[idx] - ((es.hungerMax * restoreFrac * 0.3) | 0));
             ate = true;
-            break;
+            break zHunt;
           }
           // Armored
           if (preyTraits.indexOf('armored') !== -1 && Math.random() < 0.3 * tStr(foodId, 'armored')) {
             hunger[idx] = Math.max(0, hunger[idx] - ((es.hungerMax * restoreFrac * 0.4) | 0));
             ate = true;
-            break;
+            break zHunt;
           }
           // Rapid Regrowth
           if (preyTraits.indexOf('regrowth') !== -1) {
@@ -1131,7 +1161,7 @@ export function step(ctx: StepContext): StepResult {
               const rdir = CARDINAL[rd];
               const rx = wrapX(nx + rdir[0], cw);
               const ry = wrapY(ny + rdir[1], ch);
-              const ri = ry * cw + rx;
+              const ri = zOff + ry * cw + rx;
               if (species[ri] === 0) {
                 species[ri] = foodId;
                 hunger[ri] = 0;
@@ -1146,7 +1176,7 @@ export function step(ctx: StepContext): StepResult {
             hunger[idx] = Math.max(0, hunger[idx] - ((es.hungerMax * restoreFrac * 0.5) | 0));
             for (let ad = 0; ad < 4; ad++) {
               const adir = CARDINAL[ad];
-              const ari = wrapY(ny + adir[1], ch) * cw + wrapX(nx + adir[0], cw);
+              const ari = zOff + wrapY(ny + adir[1], ch) * cw + wrapX(nx + adir[0], cw);
               if (species[ari] === 0) {
                 species[ari] = 3;
                 age[ari] = 0;
@@ -1154,7 +1184,7 @@ export function step(ctx: StepContext): StepResult {
               }
             }
             ate = true;
-            break;
+            break zHunt;
           }
           // Novel: Electric Organ on prey
           if (hasNovelAdapt(foodId, 'electricorgan', ctxEvoStats)) {
@@ -1165,7 +1195,7 @@ export function step(ctx: StepContext): StepResult {
             const jDir = CARDINAL[(Math.random() * 4) | 0];
             const jx = wrapX(nx + jDir[0] * 3, cw);
             const jy = wrapY(ny + jDir[1] * 3, ch);
-            const ji = jy * cw + jx;
+            const ji = zOff + jy * cw + jx;
             if (species[ji] === 0) {
               species[ji] = foodId;
               hunger[ji] = hunger[ni];
@@ -1210,15 +1240,16 @@ export function step(ctx: StepContext): StepResult {
             const coopRestore = ((es.hungerMax * restoreFrac * 0.5 * tStr(sid, 'cooperativehunt')) | 0);
             for (let cn = 0; cn < 8; cn++) {
               const cdir = NEIGHBOURS_8[cn];
-              const cni = wrapY(cy + cdir[1], ch) * cw + wrapX(cx + cdir[0], cw);
+              const cni = zOff + wrapY(cy + cdir[1], ch) * cw + wrapX(cx + cdir[0], cw);
               if (species[cni] === sid) hunger[cni] = Math.max(0, hunger[cni] - coopRestore);
             }
           }
           processed[ni] = 1;
           ate = true;
-          break;
+          break zHunt;
         }
       }
+    }
     }
 
     // Softshell / Dwarfism: same-tier species can eat vulnerable neighbours
@@ -1228,7 +1259,7 @@ export function step(ctx: StepContext): StepResult {
         const dir = NEIGHBOURS_8[nbrs2[n]];
         const nx = wrapX(cx + dir[0], cw);
         const ny = wrapY(cy + dir[1], ch);
-        const ni = ny * cw + nx;
+        const ni = zOff + ny * cw + nx;
         const nSid = species[ni];
         if (nSid === 0 || nSid === sid) continue;
         const nSp = SPECIES[nSid];
@@ -1255,7 +1286,7 @@ export function step(ctx: StepContext): StepResult {
         const dir = NEIGHBOURS_8[nbrs3[n]];
         const nx = wrapX(cx + dir[0], cw);
         const ny = wrapY(cy + dir[1], ch);
-        const ni = ny * cw + nx;
+        const ni = zOff + ny * cw + nx;
         if (eatsSet.indexOf(species[ni]) !== -1 && layersCanReach(sid, layerOf(species[ni]))) {
           species[ni] = 0;
           hunger[ni] = 0;
@@ -1274,7 +1305,7 @@ export function step(ctx: StepContext): StepResult {
         const dir = CARDINAL[rdirs[d]];
         const nx = wrapX(cx + dir[0], cw);
         const ny = wrapY(cy + dir[1], ch);
-        const ni = ny * cw + nx;
+        const ni = zOff + ny * cw + nx;
         if (species[ni] === 1) {
           species[ni] = 0;
           hunger[ni] = 0;
@@ -1296,7 +1327,7 @@ export function step(ctx: StepContext): StepResult {
         const dir = NEIGHBOURS_8[sdirs[d]];
         const nx = wrapX(cx + dir[0], cw);
         const ny = wrapY(cy + dir[1], ch);
-        const ni = ny * cw + nx;
+        const ni = zOff + ny * cw + nx;
         if (species[ni] === 3) {
           species[ni] = 0;
           hunger[ni] = 0;
@@ -1316,7 +1347,7 @@ export function step(ctx: StepContext): StepResult {
         const dir = CARDINAL[d];
         const nx = wrapX(cx + dir[0] * 2, cw);
         const ny = wrapY(cy + dir[1] * 2, ch);
-        const ni = ny * cw + nx;
+        const ni = zOff + ny * cw + nx;
         const foodId = species[ni];
         if (eatsSet.indexOf(foodId) !== -1 && layersCanReach(sid, layerOf(foodId))) {
           const preyEs = evo(foodId, evolveEnabled, ctxEvoStats) as any;
@@ -1358,7 +1389,7 @@ export function step(ctx: StepContext): StepResult {
               const rdir = CARDINAL[rd];
               const rx = wrapX(nx + rdir[0], cw);
               const ry = wrapY(ny + rdir[1], ch);
-              const ri = ry * cw + rx;
+              const ri = zOff + ry * cw + rx;
               if (species[ri] === 0) {
                 species[ri] = foodId;
                 hunger[ri] = 0;
@@ -1388,13 +1419,13 @@ export function step(ctx: StepContext): StepResult {
           if (dx * dx + dy * dy > 9) continue;
           const px = wrapX(cx + dx, cw);
           const py = wrapY(cy + dy, ch);
-          const pi = py * cw + px;
+          const pi = zOff + py * cw + px;
           if (eatsSet.indexOf(species[pi]) !== -1 && !processed[pi] && layersCanReach(sid, layerOf(species[pi]))) {
             const stepX = dx > 0 ? -1 : dx < 0 ? 1 : 0;
             const stepY = dy > 0 ? -1 : dy < 0 ? 1 : 0;
             const tnx = wrapX(px + stepX, cw);
             const tny = wrapY(py + stepY, ch);
-            const tni = tny * cw + tnx;
+            const tni = zOff + tny * cw + tnx;
             if (species[tni] === 0) {
               species[tni] = species[pi];
               hunger[tni] = hunger[pi];
@@ -1411,12 +1442,12 @@ export function step(ctx: StepContext): StepResult {
     }
 
     // --- 4. Current sweep ---
-    const curDir = currents[idx];
+    const curDir = currents[xyIdx];
     if (curDir) {
       const cd = CARDINAL[curDir - 1];
       const sx = wrapX(cx + cd[0], cw);
       const sy = wrapY(cy + cd[1], ch);
-      const si = sy * cw + sx;
+      const si = zOff + sy * cw + sx;
       if (species[si] === 0) {
         species[si] = sid;
         hunger[si] = hunger[idx];
@@ -1450,7 +1481,7 @@ export function step(ctx: StepContext): StepResult {
             if (dist > 16 || dist >= bestDist) continue;
             const px = wrapX(cx + dx, cw);
             const py = wrapY(cy + dy, ch);
-            const echoSid = species[py * cw + px];
+            const echoSid = species[zOff + py * cw + px];
             if (eatsSet.indexOf(echoSid) !== -1 && layersCanReach(sid, layerOf(echoSid))) {
               bestDist = dist;
               bestDx = dx;
@@ -1463,7 +1494,7 @@ export function step(ctx: StepContext): StepResult {
           const stepYE = bestDy > 0 ? 1 : bestDy < 0 ? -1 : 0;
           const tnx = wrapX(cx + stepXE, cw);
           const tny = wrapY(cy + stepYE, ch);
-          const tni = tny * cw + tnx;
+          const tni = zOff + tny * cw + tnx;
           if (species[tni] === 0) {
             species[tni] = sid;
             hunger[tni] = hunger[idx];
@@ -1489,7 +1520,7 @@ export function step(ctx: StepContext): StepResult {
             if (dist > 16 || dist >= bestDist) continue;
             const px = wrapX(cx + dx, cw);
             const py = wrapY(cy + dy, ch);
-            const tsSid = species[py * cw + px];
+            const tsSid = species[zOff + py * cw + px];
             if (eatsSet.indexOf(tsSid) !== -1 && layersCanReach(sid, layerOf(tsSid))) {
               const tsTier = SPECIES[tsSid] && SPECIES[tsSid].tier;
               if (tsTier === 'consumer' || tsTier === 'apex' || tsTier === 'herbivore') {
@@ -1505,7 +1536,7 @@ export function step(ctx: StepContext): StepResult {
           const stepYT = bestDy > 0 ? 1 : bestDy < 0 ? -1 : 0;
           const tnx = wrapX(cx + stepXT, cw);
           const tny = wrapY(cy + stepYT, ch);
-          const tni = tny * cw + tnx;
+          const tni = zOff + tny * cw + tnx;
           if (species[tni] === 0) {
             species[tni] = sid;
             hunger[tni] = hunger[idx];
@@ -1531,7 +1562,7 @@ export function step(ctx: StepContext): StepResult {
             if (dist > 9 || dist >= bestDist) continue;
             const px = wrapX(cx + dx, cw);
             const py = wrapY(cy + dy, ch);
-            const llSid = species[py * cw + px];
+            const llSid = species[zOff + py * cw + px];
             if (eatsSet.indexOf(llSid) !== -1 && layersCanReach(sid, layerOf(llSid))) {
               bestDist = dist;
               bestDx = dx;
@@ -1544,7 +1575,7 @@ export function step(ctx: StepContext): StepResult {
           const stepYL = bestDy > 0 ? 1 : bestDy < 0 ? -1 : 0;
           const tnx = wrapX(cx + stepXL, cw);
           const tny = wrapY(cy + stepYL, ch);
-          const tni = tny * cw + tnx;
+          const tni = zOff + tny * cw + tnx;
           if (species[tni] === 0) {
             species[tni] = sid;
             hunger[tni] = hunger[idx];
@@ -1570,7 +1601,7 @@ export function step(ctx: StepContext): StepResult {
             if (dist > 25 || dist >= bestDist) continue;
             const px = wrapX(cx + dx, cw);
             const py = wrapY(cy + dy, ch);
-            const erSid = species[py * cw + px];
+            const erSid = species[zOff + py * cw + px];
             if (eatsSet.indexOf(erSid) !== -1 && layersCanReach(sid, layerOf(erSid))) {
               bestDist = dist;
               bestDx = dx;
@@ -1583,7 +1614,7 @@ export function step(ctx: StepContext): StepResult {
           const stepYR = bestDy > 0 ? 1 : bestDy < 0 ? -1 : 0;
           const tnx = wrapX(cx + stepXR, cw);
           const tny = wrapY(cy + stepYR, ch);
-          const tni = tny * cw + tnx;
+          const tni = zOff + tny * cw + tnx;
           if (species[tni] === 0) {
             species[tni] = sid;
             hunger[tni] = hunger[idx];
@@ -1609,7 +1640,7 @@ export function step(ctx: StepContext): StepResult {
             if (dist > 9 || dist >= bestDist) continue;
             const px = wrapX(cx + dx, cw);
             const py = wrapY(cy + dy, ch);
-            const stSid = species[py * cw + px];
+            const stSid = species[zOff + py * cw + px];
             if (eatsSet.indexOf(stSid) !== -1 && layersCanReach(sid, layerOf(stSid))) {
               bestDist = dist;
               bestDx = dx;
@@ -1622,11 +1653,11 @@ export function step(ctx: StepContext): StepResult {
           const s1y = bestDy > 0 ? 1 : bestDy < 0 ? -1 : 0;
           const m1x = wrapX(cx + s1x, cw);
           const m1y = wrapY(cy + s1y, ch);
-          const m1i = m1y * cw + m1x;
+          const m1i = zOff + m1y * cw + m1x;
           if (species[m1i] === 0) {
             const m2x = wrapX(m1x + s1x, cw);
             const m2y = wrapY(m1y + s1y, ch);
-            const m2i = m2y * cw + m2x;
+            const m2i = zOff + m2y * cw + m2x;
             const dest = species[m2i] === 0 ? m2i : m1i;
             species[dest] = sid;
             hunger[dest] = hunger[idx];
@@ -1647,7 +1678,7 @@ export function step(ctx: StepContext): StepResult {
           const dir = CARDINAL[dirs[d]];
           const nx = wrapX(cx + dir[0], cw);
           const ny = wrapY(cy + dir[1], ch);
-          const ni = ny * cw + nx;
+          const ni = zOff + ny * cw + nx;
           const targetSid = species[ni];
 
           if (targetSid === 0) {
@@ -1663,7 +1694,7 @@ export function step(ctx: StepContext): StepResult {
             // Flying Fish: leap over 1 occupied tile
             const fx = wrapX(nx + dir[0], cw);
             const fy = wrapY(ny + dir[1], ch);
-            const fi = fy * cw + fx;
+            const fi = zOff + fy * cw + fx;
             if (species[fi] === 0) {
               species[fi] = sid;
               hunger[fi] = hunger[idx];
@@ -1705,7 +1736,7 @@ export function step(ctx: StepContext): StepResult {
     let sameAdjacentCount = 0;
     for (let n = 0; n < 8; n++) {
       const dir = NEIGHBOURS_8[n];
-      const ni = wrapY(cy + dir[1], ch) * cw + wrapX(cx + dir[0], cw);
+      const ni = zOff + wrapY(cy + dir[1], ch) * cw + wrapX(cx + dir[0], cw);
       if (species[ni] === sid) sameAdjacentCount++;
     }
     if (hasTrait('schooling') && sameAdjacentCount >= 3) breedRate *= 1 + 0.5 * tStr(sid, 'schooling');
@@ -1722,7 +1753,7 @@ export function step(ctx: StepContext): StepResult {
         const tNbrs = shuffleDirs8();
         for (let tn = 0; tn < 8; tn++) {
           const tdir = NEIGHBOURS_8[tNbrs[tn]];
-          const tni = wrapY(cy + tdir[1], ch) * cw + wrapX(cx + tdir[0], cw);
+          const tni = zOff + wrapY(cy + tdir[1], ch) * cw + wrapX(cx + tdir[0], cw);
           if (species[tni] === sid) {
             species[tni] = 3;
             hunger[tni] = 0;
@@ -1743,7 +1774,7 @@ export function step(ctx: StepContext): StepResult {
         const bNbrs = shuffleDirs8();
         for (let n = 0; n < 8; n++) {
           const dir = NEIGHBOURS_8[bNbrs[n]];
-          const bni = wrapY(cy + dir[1], ch) * cw + wrapX(cx + dir[0], cw);
+          const bni = zOff + wrapY(cy + dir[1], ch) * cw + wrapX(cx + dir[0], cw);
           const bsid = species[bni];
           if (bsid >= 10 && bsid !== sid && SPECIES[bsid] && SPECIES[bsid].tier === sp.tier) {
             species[bni] = sid;
@@ -1761,7 +1792,7 @@ export function step(ctx: StepContext): StepResult {
           const dir = NEIGHBOURS_8[nbrs[n]];
           const nx = wrapX(cx + dir[0], cw);
           const ny = wrapY(cy + dir[1], ch);
-          const ni = ny * cw + nx;
+          const ni = zOff + ny * cw + nx;
           if (species[ni] === 0) {
             species[ni] = sid;
             hunger[ni] = (hasTrait('maternal') || hasTrait('parentalinvest'))
@@ -1775,7 +1806,7 @@ export function step(ctx: StepContext): StepResult {
                 const bdir = NEIGHBOURS_8[nbrs[b]];
                 const bnx = wrapX(cx + bdir[0], cw);
                 const bny = wrapY(cy + bdir[1], ch);
-                const bni = bny * cw + bnx;
+                const bni = zOff + bny * cw + bnx;
                 if (species[bni] === 0) {
                   species[bni] = sid;
                   hunger[bni] = 0;
@@ -1800,7 +1831,7 @@ export function step(ctx: StepContext): StepResult {
         const dir = NEIGHBOURS_8[nbrs4[n]];
         const nx = wrapX(cx + dir[0], cw);
         const ny = wrapY(cy + dir[1], ch);
-        const ni = ny * cw + nx;
+        const ni = zOff + ny * cw + nx;
         const nSid = species[ni];
         if (nSid === parentId || nSid === rootId) {
           if (hunger[idx] < hunger[ni] || hunger[ni] > es.hungerMax * 0.5) {
@@ -1818,7 +1849,8 @@ export function step(ctx: StepContext): StepResult {
   // End of main entity loop
   // =========================================================================
 
-  // Active volcanic vents: emit lava each tick
+  // Active volcanic vents: emit lava each tick (lava lives at z=0 / Abyssal)
+  const lavaZOff = 0; // SPECIES[7].layer = 0
   for (let vi = activeVents.length - 1; vi >= 0; vi--) {
     const v = activeVents[vi];
     v.ticksLeft--;
@@ -1832,7 +1864,7 @@ export function step(ctx: StepContext): StepResult {
       const dist = v.coreR + 1 + ((Math.random() * 3) | 0);
       const lx = wrapX(v.x + Math.round(Math.cos(a) * dist), cw);
       const ly = wrapY(v.y + Math.round(Math.sin(a) * dist), ch);
-      const li = ly * cw + lx;
+      const li = lavaZOff + ly * cw + lx;
       if (species[li] !== 1 && species[li] !== 7) {
         if (species[li] >= 10 && onSpawnDeathParticles) onSpawnDeathParticles(li, species[li]);
         species[li] = 7;

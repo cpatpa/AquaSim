@@ -299,7 +299,7 @@ setResizeCallback(() => {
 const paint = createPaintState();
 const palette = createPaletteState();
 
-setupCellTooltip(canvasEl, canvasWrap, cam, sim.grid, sim.evoStats, () => paint.painting || cam.isDragging);
+setupCellTooltip(canvasEl, canvasWrap, cam, sim.grid, sim.evoStats, () => paint.painting || cam.isDragging, () => depthView.focusLayer);
 
 const genEl = document.getElementById('gen-counter')!;
 const seasonEl = document.getElementById('season-display')!;
@@ -322,7 +322,7 @@ let _cachedCountsGen = -1;
 
 function getCellCounts(): Record<number, number> {
   if (_cachedCountsGen === sim.generation) return _cachedCounts;
-  const total = sim.grid.width * sim.grid.height;
+  const total = sim.grid.width * sim.grid.height * sim.grid.layers;
   const counts: Record<number, number> = {};
   for (let i = 0; i < total; i++) {
     const s = sim.grid.species[i];
@@ -348,7 +348,7 @@ function handleDisaster(worldX: number, worldY: number): void {
   renderFrame();
 }
 
-setupPaintHandlers(canvasEl, canvasWrap, cam, paint, sim.grid, renderFrame, handleDisaster);
+setupPaintHandlers(canvasEl, canvasWrap, cam, paint, sim.grid, renderFrame, handleDisaster, () => depthView.focusLayer);
 
 canvasEl.addEventListener('mousedown', () => {
   if (paint.selectedType >= 0) {
@@ -464,7 +464,7 @@ function renderFrame(): void {
     applyCamera();
   }
   minimapCtx.clearRect(0, 0, minimapCanvas.width, minimapCanvas.height);
-  drawMinimap(minimapCtx, cam, sim.grid.species, sim.grid.width, sim.grid.height, COLOR_RGB);
+  drawMinimap(minimapCtx, cam, sim.grid.species, sim.grid.width, sim.grid.height, COLOR_RGB, false, sim.grid.layers);
 }
 
 function updateUI(): void {
@@ -484,7 +484,7 @@ function updateUI(): void {
 
   updateEvoLog(evoEntriesEl, sim.history.evoLog, sim.evolveEnabled);
   updateMobileBar(sim.generation, sim.season.current, sim.running);
-  updateDepthCounts(sim.grid.species);
+  updateDepthCounts(sim.grid.species, sim.grid.width * sim.grid.height);
 }
 
 function tick(): void {

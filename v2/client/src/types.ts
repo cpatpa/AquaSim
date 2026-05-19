@@ -137,10 +137,14 @@ export interface EvoLogEntry {
 export interface GridState {
   width: number;
   height: number;
+  layers: number;
+  /** Linear index: z * width * height + y * width + x */
   species: Uint8Array;
   hunger: Int16Array;
   age: Uint16Array;
+  /** Currents are 2D (per xy column); index: y * width + x */
   currents: Uint8Array;
+  /** Visual noise is 2D (per xy); index: y * width + x */
   cellNoise: Float32Array;
   cellNoise2: Float32Array;
 }

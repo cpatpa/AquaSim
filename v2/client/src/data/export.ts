@@ -57,7 +57,7 @@ export function buildExportData(
 ): ExportData {
   const livingIds = getLivingIds();
   const dynamicIds = getDynamicSpeciesIds();
-  const total = grid.width * grid.height;
+  const total = grid.width * grid.height * grid.layers;
 
   const counts: Record<number, number> = {};
   for (let i = 0; i < total; i++) {

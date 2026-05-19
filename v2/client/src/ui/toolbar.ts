@@ -1,6 +1,7 @@
 import type { GridState } from '../types';
-import { CELL_SIZE } from '../constants';
-import { wrapX, wrapY } from '../core/grid';
+import { CELL_SIZE, LAYER_COUNT } from '../constants';
+import { wrapX, wrapY, planeSize } from '../core/grid';
+import { SPECIES } from '../species/registry';
 import { isMobile, isPaintMode } from './mobile';
 import type { CameraState } from './camera';
 import { screenToWorld } from './camera';
@@ -38,6 +39,7 @@ export function paintAt(
   grid: GridState,
   canvasX: number,
   canvasY: number,
+  focusLayer: number = -1,
 ): void {
   const cellX = (canvasX / CELL_SIZE) | 0;
   const cellY = (canvasY / CELL_SIZE) | 0;
@@ -49,6 +51,21 @@ export function paintAt(
   state.lastPaintX = canvasX;
   state.lastPaintY = canvasY;
 
+  // Determine target z layer:
+  //   - Currents are 2D (no z)
+  //   - Erase (sid 0): erase focused layer only if set, else whole xy column
+  //   - Other species: paint at species' home layer
+  const sid = state.selectedType;
+  const sp = SPECIES[sid];
+  let paintZ = -1;
+  if (sid !== 2 && sid !== 0) {
+    if (sp && sp.layer >= 0) paintZ = sp.layer;
+    else if (focusLayer >= 0) paintZ = focusLayer;
+    else paintZ = 0;
+  }
+  const plane = planeSize(grid);
+  const zOff = paintZ >= 0 ? paintZ * plane : 0;
+
   const r = state.brushSize - 1;
   const r2 = r * r + r;
   for (let dy = -r; dy <= r; dy++) {
@@ -56,14 +73,30 @@ export function paintAt(
       if (dx * dx + dy * dy > r2) continue;
       const x = wrapX(grid, cellX + dx);
       const y = wrapY(grid, cellY + dy);
-      const idx = y * grid.width + x;
-      if (state.selectedType === 2) {
-        grid.currents[idx] = state.currentDir;
+      const xyIdx = y * grid.width + x;
+      if (sid === 2) {
+        grid.currents[xyIdx] = state.currentDir;
+      } else if (sid === 0) {
+        // Erase: focused layer only, or whole column
+        if (focusLayer >= 0) {
+          const idx = focusLayer * plane + xyIdx;
+          grid.species[idx] = 0;
+          grid.hunger[idx] = 0;
+          grid.age[idx] = 0;
+        } else {
+          for (let z = 0; z < LAYER_COUNT; z++) {
+            const idx = z * plane + xyIdx;
+            grid.species[idx] = 0;
+            grid.hunger[idx] = 0;
+            grid.age[idx] = 0;
+          }
+          grid.currents[xyIdx] = 0;
+        }
       } else {
-        grid.species[idx] = state.selectedType;
+        const idx = zOff + xyIdx;
+        grid.species[idx] = sid;
         grid.hunger[idx] = 0;
         grid.age[idx] = 0;
-        if (state.selectedType === 0) grid.currents[idx] = 0;
       }
     }
   }
@@ -86,6 +119,7 @@ export function setupPaintHandlers(
   grid: GridState,
   onPaint: () => void,
   onDisaster: (worldX: number, worldY: number) => void,
+  getFocusLayer: () => number = () => -1,
 ): void {
   canvas.addEventListener('mousedown', (e) => {
     state.painting = true;
@@ -95,7 +129,7 @@ export function setupPaintHandlers(
     if (state.selectedType < 0) {
       onDisaster(x, y);
     } else {
-      paintAt(state, grid, x, y);
+      paintAt(state, grid, x, y, getFocusLayer());
       onPaint();
     }
   });
@@ -103,7 +137,7 @@ export function setupPaintHandlers(
   canvas.addEventListener('mousemove', (e) => {
     if (!state.painting || state.selectedType < 0) return;
     const [x, y] = getWorldCoords(container, cam, e);
-    paintAt(state, grid, x, y);
+    paintAt(state, grid, x, y, getFocusLayer());
     onPaint();
   });
 
@@ -120,7 +154,7 @@ export function setupPaintHandlers(
     if (state.selectedType < 0) {
       onDisaster(x, y);
     } else {
-      paintAt(state, grid, x, y);
+      paintAt(state, grid, x, y, getFocusLayer());
       onPaint();
     }
   }, { passive: false });
@@ -131,7 +165,7 @@ export function setupPaintHandlers(
     if (!state.painting || state.selectedType < 0) return;
     const touch = e.touches[0];
     const [x, y] = getWorldCoords(container, cam, touch);
-    paintAt(state, grid, x, y);
+    paintAt(state, grid, x, y, getFocusLayer());
     onPaint();
   }, { passive: false });
 

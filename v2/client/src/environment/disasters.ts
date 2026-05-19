@@ -1,5 +1,6 @@
 import type { GridState } from '../types';
-import { wrapX, wrapY } from '../core/grid';
+import { wrapX, wrapY, planeSize } from '../core/grid';
+import { SPECIES } from '../species/registry';
 
 export interface Shockwave {
   cx: number;
@@ -70,11 +71,22 @@ export function createDisasterState(): DisasterState {
   };
 }
 
-export function triggerBomb(
+/** Resolve the home z of a transient/environment species id, clamped. */
+function homeZ(sid: number, layers: number): number {
+  const sp = SPECIES[sid];
+  const z = sp?.layer ?? 0;
+  if (z < 0) return 0;
+  if (z >= layers) return layers - 1;
+  return z;
+}
+
+/** Iterate all xy cells within a radius and call fn(xyIdx). */
+function forEachInRadius(
   grid: GridState,
   cellX: number,
   cellY: number,
   radius: number,
+  fn: (xyIdx: number, x: number, y: number) => void,
 ): void {
   const r2 = radius * radius;
   for (let dy = -radius; dy <= radius; dy++) {
@@ -82,12 +94,32 @@ export function triggerBomb(
       if (dx * dx + dy * dy > r2) continue;
       const x = wrapX(grid, cellX + dx);
       const y = wrapY(grid, cellY + dy);
-      const idx = y * grid.width + x;
-      grid.species[idx] = 1;
+      fn(y * grid.width + x, x, y);
+    }
+  }
+}
+
+export function triggerBomb(
+  grid: GridState,
+  cellX: number,
+  cellY: number,
+  radius: number,
+): void {
+  const plane = planeSize(grid);
+  const rockZ = homeZ(1, grid.layers);
+  forEachInRadius(grid, cellX, cellY, radius, (xy) => {
+    // Wipe all layers in the xy column
+    for (let z = 0; z < grid.layers; z++) {
+      const idx = z * plane + xy;
+      grid.species[idx] = 0;
       grid.hunger[idx] = 0;
       grid.age[idx] = 0;
     }
-  }
+    // Place rock at benthic
+    const rockIdx = rockZ * plane + xy;
+    grid.species[rockIdx] = 1;
+    grid.currents[xy] = 0;
+  });
 }
 
 export function triggerOilSpill(
@@ -96,18 +128,15 @@ export function triggerOilSpill(
   cellY: number,
   radius: number,
 ): void {
-  const r2 = radius * radius;
-  for (let dy = -radius; dy <= radius; dy++) {
-    for (let dx = -radius; dx <= radius; dx++) {
-      if (dx * dx + dy * dy > r2) continue;
-      const x = wrapX(grid, cellX + dx);
-      const y = wrapY(grid, cellY + dy);
-      const idx = y * grid.width + x;
-      grid.species[idx] = 4;
-      grid.hunger[idx] = 0;
-      grid.age[idx] = 0;
-    }
-  }
+  const plane = planeSize(grid);
+  const oilZ = homeZ(4, grid.layers);
+  const zOff = oilZ * plane;
+  forEachInRadius(grid, cellX, cellY, radius, (xy) => {
+    const idx = zOff + xy;
+    grid.species[idx] = 4;
+    grid.hunger[idx] = 0;
+    grid.age[idx] = 0;
+  });
 }
 
 export function triggerHeatwave(
@@ -117,13 +146,11 @@ export function triggerHeatwave(
   cellY: number,
   radius: number,
 ): void {
-  const r2 = radius * radius;
-  for (let dy = -radius; dy <= radius; dy++) {
-    for (let dx = -radius; dx <= radius; dx++) {
-      if (dx * dx + dy * dy > r2) continue;
-      const x = wrapX(grid, cellX + dx);
-      const y = wrapY(grid, cellY + dy);
-      const idx = y * grid.width + x;
+  const plane = planeSize(grid);
+  forEachInRadius(grid, cellX, cellY, radius, (xy) => {
+    // Kill animals across all layers
+    for (let z = 0; z < grid.layers; z++) {
+      const idx = z * plane + xy;
       const sid = grid.species[idx];
       if (sid >= 20) {
         const es = evoStats[sid];
@@ -136,7 +163,7 @@ export function triggerHeatwave(
         grid.age[idx] = 0;
       }
     }
-  }
+  });
 }
 
 export function triggerIceAge(
@@ -146,23 +173,30 @@ export function triggerIceAge(
   cellY: number,
   radius: number,
 ): void {
-  const r2 = radius * radius;
-  for (let dy = -radius; dy <= radius; dy++) {
-    for (let dx = -radius; dx <= radius; dx++) {
-      if (dx * dx + dy * dy > r2) continue;
-      const x = wrapX(grid, cellX + dx);
-      const y = wrapY(grid, cellY + dy);
-      const idx = y * grid.width + x;
+  const plane = planeSize(grid);
+  const iceZ = grid.layers - 1; // freeze at top layer (Canopy)
+  const zOff = iceZ * plane;
+  forEachInRadius(grid, cellX, cellY, radius, (xy) => {
+    // Kill animals across all layers (cold spreads down)
+    for (let z = 0; z < grid.layers; z++) {
+      const idx = z * plane + xy;
       const sid = grid.species[idx];
       if (sid === 0 || sid === 1) continue;
       const es = evoStats[sid];
       const hasCold = es?.traits?.indexOf('coldadapt') !== -1;
       if (hasCold) continue;
-      grid.species[idx] = 5;
+      grid.species[idx] = 3;
       grid.hunger[idx] = 0;
       grid.age[idx] = 0;
     }
-  }
+    // Place ice at top layer
+    const iceIdx = zOff + xy;
+    if (grid.species[iceIdx] !== 1) {
+      grid.species[iceIdx] = 5;
+      grid.hunger[iceIdx] = 0;
+      grid.age[iceIdx] = 0;
+    }
+  });
 }
 
 export function triggerToxicBloom(
@@ -171,19 +205,16 @@ export function triggerToxicBloom(
   cellY: number,
   radius: number,
 ): void {
-  const r2 = radius * radius;
-  for (let dy = -radius; dy <= radius; dy++) {
-    for (let dx = -radius; dx <= radius; dx++) {
-      if (dx * dx + dy * dy > r2) continue;
-      const x = wrapX(grid, cellX + dx);
-      const y = wrapY(grid, cellY + dy);
-      const idx = y * grid.width + x;
-      if (grid.species[idx] !== 1) {
-        grid.species[idx] = 6;
-        grid.age[idx] = 0;
-      }
+  const plane = planeSize(grid);
+  const bloomZ = homeZ(6, grid.layers);
+  const zOff = bloomZ * plane;
+  forEachInRadius(grid, cellX, cellY, radius, (xy) => {
+    const idx = zOff + xy;
+    if (grid.species[idx] !== 1) {
+      grid.species[idx] = 6;
+      grid.age[idx] = 0;
     }
-  }
+  });
 }
 
 export function triggerVolcano(
@@ -193,17 +224,14 @@ export function triggerVolcano(
   cellY: number,
   radius: number,
 ): void {
-  const r2 = radius * radius;
-  for (let dy = -radius; dy <= radius; dy++) {
-    for (let dx = -radius; dx <= radius; dx++) {
-      if (dx * dx + dy * dy > r2) continue;
-      const x = wrapX(grid, cellX + dx);
-      const y = wrapY(grid, cellY + dy);
-      const idx = y * grid.width + x;
-      grid.species[idx] = 7;
-      grid.age[idx] = 0;
-    }
-  }
+  const plane = planeSize(grid);
+  const lavaZ = homeZ(7, grid.layers);
+  const zOff = lavaZ * plane;
+  forEachInRadius(grid, cellX, cellY, radius, (xy) => {
+    const idx = zOff + xy;
+    grid.species[idx] = 7;
+    grid.age[idx] = 0;
+  });
 
   const ventCount = 1 + ((Math.random() * 3) | 0);
   for (let v = 0; v < ventCount; v++) {

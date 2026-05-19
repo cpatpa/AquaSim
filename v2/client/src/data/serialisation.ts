@@ -16,6 +16,7 @@ import type { SimHistory } from './history';
 import { GENE_KEYS } from '../constants';
 import { noise2D } from '../environment/terrain';
 import { getTierEmptyGens, setTierEmptyGens } from '../evolution/immigration';
+import { SPECIES } from '../species/registry';
 
 // ---------------------------------------------------------------------------
 // RLE encoding for typed arrays
@@ -60,6 +61,8 @@ function rleDecode<A extends Uint8Array | Int16Array | Uint16Array>(
 interface SerialisedGrid {
   width: number;
   height: number;
+  /** Number of depth layers in the 3D grid. Older v1 saves have no layers field; assumed 1. */
+  layers?: number;
   species: RLEPair<number>[];
   hunger: RLEPair<number>[];
   age: RLEPair<number>[];
@@ -120,7 +123,7 @@ export interface SaveData {
   tierEmptyGens?: Record<string, number>;
 }
 
-const CURRENT_VERSION = 1;
+const CURRENT_VERSION = 2;
 
 const SAVE_MAGIC = new Uint8Array([0x41, 0x51, 0x53, 0x4D]); // "AQSM"
 const ENCRYPTION_PASSPHRASE = 'aq-s1m-2026-v2-enc-k3y';
@@ -192,6 +195,7 @@ function serialiseGrid(grid: GridState): SerialisedGrid {
   return {
     width: grid.width,
     height: grid.height,
+    layers: grid.layers,
     species: rleEncode(grid.species),
     hunger: rleEncode(grid.hunger),
     age: rleEncode(grid.age),
@@ -276,12 +280,52 @@ function regenerateCellNoise(grid: GridState): void {
 }
 
 function deserialiseGrid(sg: SerialisedGrid, grid: GridState): void {
-  // Restore dimensions -- the caller must ensure the grid is already the
-  // correct size (allocated via allocGrid). We overwrite the typed arrays.
-  rleDecode(sg.species, grid.species);
-  rleDecode(sg.hunger, grid.hunger);
-  rleDecode(sg.age, grid.age);
-  rleDecode(sg.currents, grid.currents);
+  const savedLayers = sg.layers ?? 1;
+  const plane = grid.width * grid.height;
+
+  // Reset all arrays first
+  grid.species.fill(0);
+  grid.hunger.fill(0);
+  grid.age.fill(0);
+  grid.currents.fill(0);
+
+  if (savedLayers === grid.layers) {
+    // Direct decode
+    rleDecode(sg.species, grid.species);
+    rleDecode(sg.hunger, grid.hunger);
+    rleDecode(sg.age, grid.age);
+    rleDecode(sg.currents, grid.currents);
+  } else if (savedLayers === 1) {
+    // Migrate old 2D save into 3D grid:
+    // each saved cell carries a species with a known home layer.
+    const tmpSpecies = new Uint8Array(plane);
+    const tmpHunger = new Int16Array(plane);
+    const tmpAge = new Uint16Array(plane);
+    rleDecode(sg.species, tmpSpecies);
+    rleDecode(sg.hunger, tmpHunger);
+    rleDecode(sg.age, tmpAge);
+    rleDecode(sg.currents, grid.currents);
+
+    for (let xy = 0; xy < plane; xy++) {
+      const sid = tmpSpecies[xy];
+      if (sid === 0) continue;
+      // Use species' home layer if defined, otherwise z=0
+      const sp = SPECIES[sid];
+      let z = sp?.layer ?? 0;
+      if (z < 0) z = 0;
+      if (z >= grid.layers) z = grid.layers - 1;
+      const idx = z * plane + xy;
+      grid.species[idx] = sid;
+      grid.hunger[idx] = tmpHunger[xy];
+      grid.age[idx] = tmpAge[xy];
+    }
+  } else {
+    // Differing layer counts: best-effort direct decode (truncated/extended).
+    rleDecode(sg.species, grid.species);
+    rleDecode(sg.hunger, grid.hunger);
+    rleDecode(sg.age, grid.age);
+    rleDecode(sg.currents, grid.currents);
+  }
 
   // cellNoise / cellNoise2 are deterministic; regenerate them.
   regenerateCellNoise(grid);

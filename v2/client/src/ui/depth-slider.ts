@@ -1,5 +1,4 @@
 import { LAYER_NAMES, LAYER_COLORS, LAYER_COUNT } from '../constants';
-import { SPECIES, layerOf } from '../species/registry';
 
 export interface DepthViewState {
   focusLayer: number;
@@ -146,17 +145,19 @@ export function setTiltActive(state: DepthViewState, enabled: boolean): void {
   if (btn) btn.classList.toggle('active', enabled);
 }
 
-export function updateDepthCounts(species: Uint8Array): void {
+/**
+ * Count living species per actual z-layer in the 3D grid.
+ * `planeSize` is gridW * gridH; the species array contains LAYER_COUNT planes.
+ */
+export function updateDepthCounts(species: Uint8Array, planeSize: number): void {
   const counts = new Array(LAYER_COUNT).fill(0);
   let totalLiving = 0;
-  for (let i = 0; i < species.length; i++) {
-    const sid = species[i];
-    if (sid < 10) continue;
-    const sp = SPECIES[sid];
-    if (!sp) continue;
-    const layer = layerOf(sid);
-    if (layer >= 0 && layer < LAYER_COUNT) {
-      counts[layer]++;
+  for (let z = 0; z < LAYER_COUNT; z++) {
+    const zOff = z * planeSize;
+    for (let xy = 0; xy < planeSize; xy++) {
+      const sid = species[zOff + xy];
+      if (sid < 10) continue;
+      counts[z]++;
       totalLiving++;
     }
   }

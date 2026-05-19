@@ -1,18 +1,21 @@
 import type { GridState } from '../types';
-import { CELL_SIZE } from '../constants';
+import { CELL_SIZE, LAYER_COUNT } from '../constants';
 import { noise2D } from '../environment/terrain';
 
 export function allocGrid(width: number, height: number): GridState {
-  const total = width * height;
+  const layers = LAYER_COUNT;
+  const planeSize = width * height;
+  const totalCells = planeSize * layers;
   const grid: GridState = {
     width,
     height,
-    species: new Uint8Array(total),
-    hunger: new Int16Array(total),
-    age: new Uint16Array(total),
-    currents: new Uint8Array(total),
-    cellNoise: new Float32Array(total),
-    cellNoise2: new Float32Array(total),
+    layers,
+    species: new Uint8Array(totalCells),
+    hunger: new Int16Array(totalCells),
+    age: new Uint16Array(totalCells),
+    currents: new Uint8Array(planeSize),
+    cellNoise: new Float32Array(planeSize),
+    cellNoise2: new Float32Array(planeSize),
   };
 
   for (let cy = 0; cy < height; cy++) {
@@ -33,8 +36,27 @@ export function clearGrid(grid: GridState): void {
   grid.currents.fill(0);
 }
 
+/** 2D index within the xy plane. */
 export function cellIdx(grid: GridState, x: number, y: number): number {
   return y * grid.width + x;
+}
+
+/** 3D index into species/hunger/age arrays. */
+export function cellIdx3D(grid: GridState, x: number, y: number, z: number): number {
+  return z * grid.width * grid.height + y * grid.width + x;
+}
+
+/** Offset for the start of a given z-layer in the 3D arrays. */
+export function layerOffset(grid: GridState, z: number): number {
+  return z * grid.width * grid.height;
+}
+
+export function planeSize(grid: GridState): number {
+  return grid.width * grid.height;
+}
+
+export function totalCells(grid: GridState): number {
+  return grid.width * grid.height * grid.layers;
 }
 
 export function wrapX(grid: GridState, x: number): number {
@@ -53,12 +75,12 @@ export function canvasHeight(grid: GridState): number {
   return grid.height * CELL_SIZE;
 }
 
-export function getSpeciesAt(grid: GridState, x: number, y: number): number {
-  return grid.species[y * grid.width + x];
+export function getSpeciesAt(grid: GridState, x: number, y: number, z: number = 0): number {
+  return grid.species[cellIdx3D(grid, x, y, z)];
 }
 
-export function setSpeciesAt(grid: GridState, x: number, y: number, sid: number): void {
-  grid.species[y * grid.width + x] = sid;
+export function setSpeciesAt(grid: GridState, x: number, y: number, z: number, sid: number): void {
+  grid.species[cellIdx3D(grid, x, y, z)] = sid;
 }
 
 export function getHungerAt(grid: GridState, idx: number): number {

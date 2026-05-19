@@ -1,7 +1,8 @@
 import type { GridState } from '../types';
-import { wrapX, wrapY } from '../core/grid';
+import { wrapX, wrapY, planeSize, layerOffset } from '../core/grid';
 import { noiseSeed, noise2D, fbm } from './terrain';
 import { CARDINAL } from '../constants';
+import { SPECIES } from '../species/registry';
 
 const SEED_TARGETS: Array<[number, number]> = [
   [1,  0.020],
@@ -23,13 +24,26 @@ const SEED_TARGETS: Array<[number, number]> = [
   [51, 0.003],
 ];
 
+/** Resolve the home layer for a species ID, clamped to valid range. */
+function homeLayer(sid: number, layers: number): number {
+  const sp = SPECIES[sid];
+  if (!sp) return 0;
+  const z = sp.layer;
+  if (z < 0) return 0;
+  if (z >= layers) return layers - 1;
+  return z;
+}
+
 export function seedGrid(grid: GridState): void {
-  const total = grid.width * grid.height;
+  const plane = planeSize(grid);
   for (const [sid, frac] of SEED_TARGETS) {
-    let count = Math.max(2, (total * frac) | 0);
+    const z = homeLayer(sid, grid.layers);
+    const zOff = layerOffset(grid, z);
+    let count = Math.max(2, (plane * frac) | 0);
     let attempts = 0;
-    while (count > 0 && attempts < total * 2) {
-      const idx = (Math.random() * total) | 0;
+    while (count > 0 && attempts < plane * 2) {
+      const xy = (Math.random() * plane) | 0;
+      const idx = zOff + xy;
       if (grid.species[idx] === 0) {
         grid.species[idx] = sid;
         grid.hunger[idx] = 0;
@@ -42,9 +56,11 @@ export function seedGrid(grid: GridState): void {
 }
 
 export function seedBalancedRockReefs(grid: GridState): void {
-  const total = grid.width * grid.height;
-  const rockBudget = (total * 0.03) | 0;
+  const plane = planeSize(grid);
+  const rockBudget = (plane * 0.03) | 0;
   const numClusters = 3 + ((Math.random() * 4) | 0);
+  const rockZ = homeLayer(1, grid.layers);
+  const zOff = layerOffset(grid, rockZ);
 
   for (let c = 0; c < numClusters; c++) {
     const cx = (Math.random() * grid.width) | 0;
@@ -60,7 +76,7 @@ export function seedBalancedRockReefs(grid: GridState): void {
         if (Math.random() > 0.6) continue;
         const x = wrapX(grid, cx + dx);
         const y = wrapY(grid, cy + dy);
-        const idx = y * grid.width + x;
+        const idx = zOff + y * grid.width + x;
         if (grid.species[idx] === 0) {
           grid.species[idx] = 1;
           placed++;
@@ -78,6 +94,8 @@ export function seedSpeciesCluster(
   count: number,
   radius: number,
 ): number {
+  const z = homeLayer(sid, grid.layers);
+  const zOff = layerOffset(grid, z);
   let placed = 0;
   let attempts = 0;
   const maxAttempts = count * 10;
@@ -88,7 +106,7 @@ export function seedSpeciesCluster(
     if (dx * dx + dy * dy > radius * radius) { attempts++; continue; }
     const x = wrapX(grid, cx + dx);
     const y = wrapY(grid, cy + dy);
-    const idx = y * grid.width + x;
+    const idx = zOff + y * grid.width + x;
     if (grid.species[idx] === 0) {
       grid.species[idx] = sid;
       grid.hunger[idx] = 0;
@@ -111,9 +129,11 @@ const NEIGHBOURS_8: readonly [number, number][] = [
  * Procedural biome generator: realistic marine environment with noise-driven
  * terrain, currents, coral reefs, kelp forests, plankton blooms and
  * habitat-aware animal placement.
+ *
+ * All species are placed at their home layer (species.layer).
  */
 export function seedBiome(grid: GridState): void {
-  const total = grid.width * grid.height;
+  const plane = planeSize(grid);
   const cw = grid.width;
   const ch = grid.height;
   const seed = (Math.random() * 2147483647) | 0;
@@ -121,13 +141,25 @@ export function seedBiome(grid: GridState): void {
 
   const { species, hunger, age, currents } = grid;
 
-  // Noise helpers
+  // Helper: write a species at its home layer
+  const placeSpecies = (xy: number, sid: number): boolean => {
+    const z = homeLayer(sid, grid.layers);
+    const idx = z * plane + xy;
+    if (species[idx] !== 0) return false;
+    species[idx] = sid;
+    hunger[idx] = 0;
+    age[idx] = 0;
+    return true;
+  };
+
   const F = (x: number, y: number, scale: number, oct?: number): number =>
     fbm(x / scale, y / scale, oct ?? 5, 2.0, 0.5);
 
   // ==================================================================
-  // 1. SEAFLOOR TOPOLOGY -- noise-driven rock formations
+  // 1. SEAFLOOR TOPOLOGY -- rocks at benthic layer
   // ==================================================================
+  const rockZ = homeLayer(1, grid.layers);
+  const rockZOff = rockZ * plane;
   const rockThresh = 0.32;
   const ridgeScale = cw * 0.22;
   const detailScale = cw * 0.06;
@@ -136,18 +168,17 @@ export function seedBiome(grid: GridState): void {
     for (let x = 0; x < cw; x++) {
       const broad = F(x, y, ridgeScale, 4);
       const detail = F(x + 500, y + 500, detailScale, 3) * 0.4;
-      // Edge affinity: rocks favour top/bottom walls
       const edgeDist = Math.min(y, ch - 1 - y) / (ch * 0.12);
       const edgeBias = Math.max(0, 1.0 - edgeDist) * 0.45;
       const h = broad + detail + edgeBias;
       if (h > rockThresh) {
         const p = Math.min(1.0, (h - rockThresh) * 3.0);
-        if (Math.random() < p) species[y * cw + x] = 1;
+        if (Math.random() < p) species[rockZOff + y * cw + x] = 1;
       }
     }
   }
 
-  // Reef ridges: 1-3 meandering formations
+  // Reef ridges
   const numReefs = 1 + ((Math.random() * 2.5) | 0);
   for (let r = 0; r < numReefs; r++) {
     const ry0 = ch * (0.25 + Math.random() * 0.5);
@@ -159,15 +190,15 @@ export function seedBiome(grid: GridState): void {
       const centerY = ry0 + reefAmp * noise2D((x + offsetX) * reefFreq, r * 7.7);
       for (let dy = -reefThick; dy <= reefThick; dy++) {
         const wy = wrapY(grid, Math.round(centerY + dy));
-        const idx = wy * cw + x;
-        if (Math.random() < 0.12) continue; // gaps for passages
+        const idx = rockZOff + wy * cw + x;
+        if (Math.random() < 0.12) continue;
         if (species[idx] === 0) species[idx] = 1;
       }
     }
   }
 
   // ==================================================================
-  // 2. OCEAN CURRENTS -- meandering streams + natural gyres
+  // 2. OCEAN CURRENTS (2D, applies to whole xy column)
   // ==================================================================
   const numStreams = 4 + ((Math.random() * 4) | 0);
   for (let s = 0; s < numStreams; s++) {
@@ -176,11 +207,11 @@ export function seedBiome(grid: GridState): void {
     if (horizontal) {
       cx0 = 0;
       cy0 = (ch * (0.1 + Math.random() * 0.8)) | 0;
-      mainDir = Math.random() < 0.5 ? 2 : 4; // E or W
+      mainDir = Math.random() < 0.5 ? 2 : 4;
     } else {
       cx0 = (cw * (0.1 + Math.random() * 0.8)) | 0;
       cy0 = 0;
-      mainDir = Math.random() < 0.5 ? 3 : 1; // S or N
+      mainDir = Math.random() < 0.5 ? 3 : 1;
     }
     const cd = CARDINAL[mainDir - 1];
     const len = (Math.max(cw, ch) * (0.5 + Math.random() * 0.6)) | 0;
@@ -207,7 +238,7 @@ export function seedBiome(grid: GridState): void {
     }
   }
 
-  // Natural gyres: elliptical with noise-perturbed boundaries
+  // Gyres
   const numGyres = 2 + ((Math.random() * 2) | 0);
   for (let g = 0; g < numGyres; g++) {
     const gx = (cw * (0.2 + Math.random() * 0.6)) | 0;
@@ -215,16 +246,13 @@ export function seedBiome(grid: GridState): void {
     const rx = 18 + ((Math.random() * 30) | 0);
     const ry = 14 + ((Math.random() * 25) | 0);
     const thick = 3 + ((Math.random() * 4) | 0);
-    const cwDir = Math.random() < 0.5 ? 1 : -1; // clockwise or counter
+    const cwDir = Math.random() < 0.5 ? 1 : -1;
     const noiseOff = Math.random() * 1000;
 
     for (let dy = -(ry + thick + 3); dy <= ry + thick + 3; dy++) {
       for (let dx = -(rx + thick + 3); dx <= rx + thick + 3; dx++) {
-        const normDist = Math.sqrt(
-          (dx / rx) * (dx / rx) + (dy / ry) * (dy / ry),
-        );
-        const nPerturb =
-          noise2D((dx + noiseOff) * 0.08, (dy + noiseOff) * 0.08) * 0.15;
+        const normDist = Math.sqrt((dx / rx) * (dx / rx) + (dy / ry) * (dy / ry));
+        const nPerturb = noise2D((dx + noiseOff) * 0.08, (dy + noiseOff) * 0.08) * 0.15;
         const innerEdge = 1.0 - thick / Math.max(rx, ry) + nPerturb;
         const outerEdge = 1.0 + thick / Math.max(rx, ry) + nPerturb;
         if (normDist < innerEdge || normDist > outerEdge) continue;
@@ -244,29 +272,32 @@ export function seedBiome(grid: GridState): void {
   }
 
   // ==================================================================
-  // 3. CORAL -- grows naturally around rock formations
+  // 3. CORAL -- grows at reef layer adjacent to rocks below
   // ==================================================================
+  const coralZ = homeLayer(12, grid.layers);
+  const coralZOff = coralZ * plane;
   const coralNoise = (x: number, y: number): number =>
     F(x + 1234, y + 5678, cw * 0.12, 3);
 
-  for (let i = 0; i < total; i++) {
-    if (species[i] !== 1) continue;
-    const cx3 = i % cw;
-    const cy3 = (i / cw) | 0;
-    for (const [dx, dy] of NEIGHBOURS_8) {
-      const nx = wrapX(grid, cx3 + dx);
-      const ny = wrapY(grid, cy3 + dy);
-      const ni = ny * cw + nx;
-      if (species[ni] !== 0) continue;
-      const cn = (coralNoise(nx, ny) + 1) * 0.5;
-      if (Math.random() < cn * 0.30) species[ni] = 12;
-    }
-  }
-
-  // Extra coral in warm shallow zones
   for (let y = 0; y < ch; y++) {
     for (let x = 0; x < cw; x++) {
-      const idx = y * cw + x;
+      const rockIdx = rockZOff + y * cw + x;
+      if (species[rockIdx] !== 1) continue;
+      // Try placing coral in reef layer above adjacent rocks
+      for (const [dx, dy] of NEIGHBOURS_8) {
+        const nx = wrapX(grid, x + dx);
+        const ny = wrapY(grid, y + dy);
+        const coralIdx = coralZOff + ny * cw + nx;
+        if (species[coralIdx] !== 0) continue;
+        const cn = (coralNoise(nx, ny) + 1) * 0.5;
+        if (Math.random() < cn * 0.30) species[coralIdx] = 12;
+      }
+    }
+  }
+  // Extra coral in warm zones
+  for (let y = 0; y < ch; y++) {
+    for (let x = 0; x < cw; x++) {
+      const idx = coralZOff + y * cw + x;
       if (species[idx] !== 0) continue;
       const warmZone = (F(x + 2000, y + 2000, cw * 0.18, 3) + 1) * 0.5;
       if (warmZone > 0.72 && Math.random() < 0.04) species[idx] = 12;
@@ -274,14 +305,16 @@ export function seedBiome(grid: GridState): void {
   }
 
   // ==================================================================
-  // 4. KELP FORESTS -- noise-field growth with natural clustering
+  // 4. KELP / SEAWEED -- benthic layer
   // ==================================================================
+  const kelpZ = homeLayer(11, grid.layers);
+  const kelpZOff = kelpZ * plane;
   const kelpNoise = (x: number, y: number): number =>
     F(x + 3456, y + 7890, cw * 0.10, 4);
 
   for (let y = 0; y < ch; y++) {
     for (let x = 0; x < cw; x++) {
-      const idx = y * cw + x;
+      const idx = kelpZOff + y * cw + x;
       if (species[idx] !== 0) continue;
       const kn = (kelpNoise(x, y) + 1) * 0.5;
       if (kn > 0.62) {
@@ -292,17 +325,19 @@ export function seedBiome(grid: GridState): void {
   }
 
   // ==================================================================
-  // 5. PHYTOPLANKTON -- gradient bloom zones boosted near currents
+  // 5. PHYTOPLANKTON -- surface layer
   // ==================================================================
+  const plankZ = homeLayer(10, grid.layers);
+  const plankZOff = plankZ * plane;
   const plankNoise = (x: number, y: number): number =>
     F(x + 6789, y + 1234, cw * 0.16, 5);
 
   for (let y = 0; y < ch; y++) {
     for (let x = 0; x < cw; x++) {
-      const idx = y * cw + x;
+      const idx = plankZOff + y * cw + x;
       if (species[idx] !== 0) continue;
       let pn = (plankNoise(x, y) + 1) * 0.5;
-      if (currents[idx] > 0) pn += 0.12;
+      if (currents[y * cw + x] > 0) pn += 0.12;
       if (pn > 0.52) {
         const density = (pn - 0.52) / 0.48;
         if (Math.random() < density * 0.45) species[idx] = 10;
@@ -311,53 +346,51 @@ export function seedBiome(grid: GridState): void {
   }
 
   // ==================================================================
-  // 6. ANIMAL PLACEMENT -- habitat-aware seeding
+  // 6. ANIMAL PLACEMENT -- habitat-aware seeding at home layers
   // ==================================================================
-  function nearbyHas(idx: number, sid: number, radius: number): boolean {
-    const cx4 = idx % cw;
-    const cy4 = (idx / cw) | 0;
+  function nearbyHas(xyIdx: number, targetSid: number, radius: number): boolean {
+    const targetZ = homeLayer(targetSid, grid.layers);
+    const targetZOff = targetZ * plane;
+    const cx4 = xyIdx % cw;
+    const cy4 = (xyIdx / cw) | 0;
     for (let dy = -radius; dy <= radius; dy++) {
       for (let dx = -radius; dx <= radius; dx++) {
         if (dx === 0 && dy === 0) continue;
-        const ni = wrapY(grid, cy4 + dy) * cw + wrapX(grid, cx4 + dx);
-        if (species[ni] === sid) return true;
+        const ni = targetZOff + wrapY(grid, cy4 + dy) * cw + wrapX(grid, cx4 + dx);
+        if (species[ni] === targetSid) return true;
       }
     }
     return false;
   }
 
   const animalSeeds: Array<[number, number, [number, number, number] | null]> = [
-    [20, 0.018, [10, 4, 3.0]],  // Shrimp near phytoplankton
-    [21, 0.008, [11, 4, 3.0]],  // Snail near seaweed
-    [22, 0.006, [1,  5, 2.0]],  // Crab near rocks
-    [23, 0.003, [12, 4, 3.0]],  // Sea Urchin near coral
-    [30, 0.008, [10, 5, 2.0]],  // Small Fish near plankton
-    [31, 0.005, null],           // Squid -- open water
-    [32, 0.004, [12, 5, 2.0]],  // Pufferfish near reef
-    [40, 0.003, null],           // Shark -- open water
-    [41, 0.003, [1,  5, 2.5]],  // Octopus near rocks
-    [42, 0.002, null],           // Whale -- open water
-    [43, 0.003, null],           // Dolphin -- open water
-    [50, 0.010, null],           // Bacteria -- everywhere
-    [51, 0.005, [1,  4, 2.0]],  // Sea Worm near rocks
+    [20, 0.018, [10, 4, 3.0]],
+    [21, 0.008, [11, 4, 3.0]],
+    [22, 0.006, [1,  5, 2.0]],
+    [23, 0.003, [12, 4, 3.0]],
+    [30, 0.008, [10, 5, 2.0]],
+    [31, 0.005, null],
+    [32, 0.004, [12, 5, 2.0]],
+    [40, 0.003, null],
+    [41, 0.003, [1,  5, 2.5]],
+    [42, 0.002, null],
+    [43, 0.003, null],
+    [50, 0.010, null],
+    [51, 0.005, [1,  4, 2.0]],
   ];
 
   for (const [sid, frac, habitat] of animalSeeds) {
-    let count = Math.max(4, (total * frac) | 0);
+    let count = Math.max(4, (plane * frac) | 0);
     let attempts = 0;
-    const maxAttempts = total * 3;
+    const maxAttempts = plane * 3;
     while (count > 0 && attempts < maxAttempts) {
-      const idx = (Math.random() * total) | 0;
-      if (species[idx] !== 0) { attempts++; continue; }
+      const xy = (Math.random() * plane) | 0;
       if (habitat) {
         const [hSid, hRad, hBoost] = habitat;
-        const near = nearbyHas(idx, hSid, hRad);
+        const near = nearbyHas(xy, hSid, hRad);
         if (!near && Math.random() > 1.0 / hBoost) { attempts++; continue; }
       }
-      species[idx] = sid;
-      hunger[idx] = 0;
-      age[idx] = 0;
-      count--;
+      if (placeSpecies(xy, sid)) count--;
       attempts++;
     }
   }

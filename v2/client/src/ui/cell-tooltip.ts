@@ -161,6 +161,7 @@ export function setupCellTooltip(
   grid: GridState,
   evoStats: Record<number, EvoStats>,
   isPainting: () => boolean,
+  getFocusLayer: () => number = () => -1,
 ): void {
   canvas.addEventListener('mousemove', (e: MouseEvent) => {
     if (isMobile()) return;
@@ -181,9 +182,26 @@ export function setupCellTooltip(
       return;
     }
 
-    const idx = cellY * grid.width + cellX;
-    const sid = grid.species[idx];
-    const curDir = grid.currents[idx];
+    const xyIdx = cellY * grid.width + cellX;
+    const plane = grid.width * grid.height;
+    // Resolve visible species at this xy (focus layer or topmost non-empty)
+    const focusLayer = getFocusLayer();
+    let sid = 0;
+    let idx = xyIdx;
+    if (focusLayer >= 0 && focusLayer < grid.layers) {
+      idx = focusLayer * plane + xyIdx;
+      sid = grid.species[idx];
+    } else {
+      for (let zl = grid.layers - 1; zl >= 0; zl--) {
+        const tryIdx = zl * plane + xyIdx;
+        if (grid.species[tryIdx] !== 0) {
+          sid = grid.species[tryIdx];
+          idx = tryIdx;
+          break;
+        }
+      }
+    }
+    const curDir = grid.currents[xyIdx];
 
     if (sid === 0 && curDir === 0) {
       hide();

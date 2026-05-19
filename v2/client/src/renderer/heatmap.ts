@@ -131,10 +131,18 @@ export function drawHeatmapOverlay(
     }
   }
 
+  const plane = width * height;
+  const gridLayers = grid.layers;
   for (let cy = 0; cy < height; cy++) {
     for (let cx = 0; cx < width; cx++) {
-      const idx = cy * width + cx;
-      const sid = species[idx];
+      const xyIdx = cy * width + cx;
+      // Find topmost non-empty species at this xy column
+      let sid = 0;
+      let idx = xyIdx;
+      for (let z = gridLayers - 1; z >= 0; z--) {
+        const tryIdx = z * plane + xyIdx;
+        if (species[tryIdx] !== 0) { sid = species[tryIdx]; idx = tryIdx; break; }
+      }
       if (sid === 0) continue;
 
       const sp = getSpecies(sid);
@@ -158,6 +166,9 @@ export function drawHeatmapOverlay(
 
         case 'density': {
           let count = 0;
+          // Pick the layer where the visible species lives
+          const sidLayer = ((idx - xyIdx) / plane) | 0;
+          const layerOff = sidLayer * plane;
           for (let dy = -1; dy <= 1; dy++) {
             const ny = cy + dy;
             if (ny < 0 || ny >= height) continue;
@@ -165,7 +176,7 @@ export function drawHeatmapOverlay(
               if (dy === 0 && dx === 0) continue;
               const nx = cx + dx;
               if (nx < 0 || nx >= width) continue;
-              if (species[ny * width + nx] === sid) count++;
+              if (species[layerOff + ny * width + nx] === sid) count++;
             }
           }
           fill = densityColour(count);
