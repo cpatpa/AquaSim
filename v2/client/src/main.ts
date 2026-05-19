@@ -14,7 +14,7 @@ import { recordGraphSnapshot, addEvoEvent } from './data/history';
 import { triggerBomb, triggerOilSpill, triggerHeatwave, triggerIceAge, triggerToxicBloom, triggerVolcano, createDisasterState } from './environment/disasters';
 import type { DisasterState } from './environment/disasters';
 import { buildExportData, downloadExport } from './data/export';
-import { evolve, speciate, nicheShift } from './evolution/evolution-engine';
+import { evolve, speciate, nicheShift, sizeDiversify } from './evolution/evolution-engine';
 import type { EvoContext } from './evolution/evolution-engine';
 import { serialise, deserialise, downloadSave, uploadSave } from './data/serialisation';
 import { createCamera, setupCameraHandlers, updateCamera, drawMinimap, fitToView } from './ui/camera';
@@ -426,6 +426,7 @@ function doStep(): void {
     },
     onSpeciate: () => { speciate(buildEvoContext()); },
     onNicheShift: () => { nicheShift(buildEvoContext()); },
+    onSizeDiversify: () => { sizeDiversify(buildEvoContext()); },
     onTierImmigration: () => { tierImmigration(buildImmigrationContext()); },
     onReassignPrey: () => {
       reassignPrey(sim.evoStats, sim.history.popHistory, sim.generation, sim.history);

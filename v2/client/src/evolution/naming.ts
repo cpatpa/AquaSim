@@ -28,6 +28,11 @@ export const NICHE_SHIFT_NAMES: Record<string, string[]> = {
   herbivore: ['Grazer', 'Foraging', 'Browsing', 'Pastoral'],
 };
 
+export const SIZE_VARIANT_NAMES: Record<string, string[]> = {
+  large: ['Greater', 'Grand', 'Large', 'Hefty', 'Broad'],
+  small: ['Lesser', 'Minor', 'Slim', 'Petite', 'Pygmy'],
+};
+
 export const DIVERGENT_NAMES: Record<string, string> = {
   coldadapt: 'Frost', warmadapt: 'Sun', nocturnal: 'Night', diurnal: 'Day',
   camouflage: 'Shadow', bioluminesc: 'Glowing', mimicry: 'Mimic',
@@ -49,7 +54,10 @@ export function generateSpeciesName(
 ): string {
   let adj = '';
 
-  if (context === 'niche' && extraData && NICHE_SHIFT_NAMES[extraData]) {
+  if (context === 'sizeshift' && extraData && SIZE_VARIANT_NAMES[extraData]) {
+    const pool = SIZE_VARIANT_NAMES[extraData];
+    adj = pool[(Math.random() * pool.length) | 0];
+  } else if (context === 'niche' && extraData && NICHE_SHIFT_NAMES[extraData]) {
     const pool = NICHE_SHIFT_NAMES[extraData];
     adj = pool[(Math.random() * pool.length) | 0];
   } else if (context === 'divergent' && extraData && DIVERGENT_NAMES[extraData]) {

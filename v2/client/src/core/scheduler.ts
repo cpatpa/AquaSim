@@ -109,6 +109,7 @@ export interface StepContext {
   onEvolve?: () => void;
   onSpeciate?: () => void;
   onNicheShift?: () => void;
+  onSizeDiversify?: () => void;
   onTierImmigration?: () => void;
   onReassignPrey?: () => void;
   onEnforceGeneVarianceFloor?: () => void;
@@ -364,12 +365,26 @@ export function step(ctx: StepContext): StepResult {
         age[idx] = 0;
       }
       // Rock buildup: dense rock clusters grow upward into the next layer
-      if (cz < layers - 1 && adjRock >= 3 && Math.random() < 0.003) {
-        const aboveIdx = (cz + 1) * planeSize + xyIdx;
-        if (species[aboveIdx] === 0) {
-          species[aboveIdx] = 1;
-          hunger[aboveIdx] = 0;
-          age[aboveIdx] = 0;
+      // Coral-derived reef rock grows faster than natural rock
+      if (cz < layers - 1 && adjRock >= 3) {
+        let buildChance = 0.003;
+        // Check for coral below or adjacent to accelerate reef island formation
+        for (let n = 0; n < 4; n++) {
+          const dir = CARDINAL[n];
+          const ni = zOff + wrapY(cy + dir[1], ch) * cw + wrapX(cx + dir[0], cw);
+          if (species[ni] === 12) { buildChance = 0.012; break; }
+        }
+        if (cz > 0) {
+          const belowIdx = (cz - 1) * planeSize + xyIdx;
+          if (species[belowIdx] === 1) buildChance *= 2;
+        }
+        if (Math.random() < buildChance) {
+          const aboveIdx = (cz + 1) * planeSize + xyIdx;
+          if (species[aboveIdx] === 0) {
+            species[aboveIdx] = 1;
+            hunger[aboveIdx] = 0;
+            age[aboveIdx] = 0;
+          }
         }
       }
       // Rock sinks: rock above z=0 without rock below it erodes downward
@@ -658,15 +673,48 @@ export function step(ctx: StepContext): StepResult {
       // Coral grows faster near rock
       let nearRock = false;
       if (sid === 12) {
+        let adjCoral = 0;
         for (let n = 0; n < 4; n++) {
           const dir = CARDINAL[n];
           const ni = zOff + wrapY(cy + dir[1], ch) * cw + wrapX(cx + dir[0], cw);
-          if (species[ni] === 1) {
-            nearRock = true;
+          const ns = species[ni];
+          if (ns === 1) nearRock = true;
+          if (ns === 12) adjCoral++;
+        }
+        if (nearRock) breedChance *= 3;
+
+        // Coral calcification: dense old coral turns to rock
+        if (adjCoral >= 3 && age[idx] > 40 && Math.random() < 0.02) {
+          species[idx] = 1;
+          hunger[idx] = 0;
+          age[idx] = 0;
+          processed[idx] = 1;
+          continue;
+        }
+
+        // Coral vertical growth: dense colonies push upward into next layer
+        if (adjCoral >= 2 && cz < layers - 1 && Math.random() < 0.008) {
+          const aboveIdx = (cz + 1) * planeSize + xyIdx;
+          if (species[aboveIdx] === 0) {
+            species[aboveIdx] = 12;
+            hunger[aboveIdx] = 0;
+            age[aboveIdx] = 0;
+            processed[aboveIdx] = 1;
+          }
+        }
+      }
+
+      // Reef productivity: non-coral producers near reef structures breed faster
+      if (sid !== 12) {
+        for (let n = 0; n < 4; n++) {
+          const dir = CARDINAL[n];
+          const ni = zOff + wrapY(cy + dir[1], ch) * cw + wrapX(cx + dir[0], cw);
+          const ns = species[ni];
+          if (ns === 12 || ns === 1) {
+            breedChance *= 1.5;
             break;
           }
         }
-        if (nearRock) breedChance *= 3;
       }
 
       // Nitrogen Fix: breed 2x faster near dead matter
@@ -2016,6 +2064,7 @@ export function step(ctx: StepContext): StepResult {
       if (ctx.onEvolve) ctx.onEvolve();
       if (ctx.onSpeciate) ctx.onSpeciate();
       if (ctx.onNicheShift) ctx.onNicheShift();
+      if (ctx.onSizeDiversify) ctx.onSizeDiversify();
       if (ctx.onClearCreatureCache) ctx.onClearCreatureCache();
       lastEvoGen = generation;
       evoCooldown = EVO_COOLDOWN_MIN + ((Math.random() * (EVO_COOLDOWN_MAX - EVO_COOLDOWN_MIN)) | 0);

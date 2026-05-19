@@ -158,6 +158,12 @@ export const TIER_DEFAULT_GENES: Record<LivingTier, Record<GeneKey, number>> = {
   decomposer: { bodySize: 0.25, bodyArmour: 0.15, bodyShape: 0.30, pigment: 0.30, metabolicRate: 0.55, fertility: 0.50, hungerEfficiency: 0.45, growthRate: 0.55, aggression: 0.10, sociality: 0.35, curiosity: 0.30, flightResponse: 0.20, visionRange: 0.15, chemosensory: 0.50, thermalAdapt: 0.40, pressureAdapt: 0.35 },
 };
 
+// Size diversification
+export const SIZE_DIVERSIFY_MIN_POP = 30;
+export const SIZE_DIVERSIFY_CHANCE = 0.12;
+export const SIZE_DIVERSIFY_CONVERT = 0.30;
+export const SIZE_BODYSIZE_SHIFT = 0.20;
+
 // Niche shifting
 export const NICHE_SHIFT_MIN_DEPTH = 1;
 export const NICHE_SHIFT_MIN_DRIFT = 0.35;

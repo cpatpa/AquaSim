@@ -40,6 +40,11 @@ import {
   EMPTY_NICHE_SHIFT_BOOST,
   EMPTY_NICHE_MIN_DRIFT,
   GENE_VARIANCE_FLOOR,
+  SIZE_DIVERSIFY_MIN_POP,
+  SIZE_DIVERSIFY_CHANCE,
+  SIZE_DIVERSIFY_CONVERT,
+  SIZE_BODYSIZE_SHIFT,
+  LAYER_COUNT,
 } from '../constants';
 
 import {
@@ -65,6 +70,8 @@ import {
   geneDivergence,
   gaussRandom,
   deriveStats,
+  geneVal,
+  geneHeterozygosity,
 } from './genetics';
 
 import {
@@ -113,6 +120,10 @@ export interface SpeciateResult {
 
 export interface NicheShiftResult {
   /** IDs of newly created species via niche shift */
+  newSpeciesIds: number[];
+}
+
+export interface SizeDiversifyResult {
   newSpeciesIds: number[];
 }
 
@@ -189,6 +200,13 @@ const TIER_LAYER_MAP: Partial<Record<LivingTier, Layer>> = {
   apex:      5,
   megafauna: 4,
   decomposer: 1,
+};
+
+const NICHE_LAYER_REACH: Partial<Record<LivingTier, number>> = {
+  herbivore: 1,
+  consumer:  2,
+  apex:      3,
+  megafauna: 4,
 };
 
 /**
@@ -691,7 +709,6 @@ export function speciate(ctx: EvoContext): SpeciateResult {
     popHistory,
     species,
     gridW,
-    gridH,
     generation,
     radiationBoost,
     speciationRateMult,
@@ -703,7 +720,7 @@ export function speciate(ctx: EvoContext): SpeciateResult {
   if (popHistory.length < 3) return { newSpeciesIds };
 
   const now = popHistory[popHistory.length - 1];
-  const total = gridW * gridH;
+  const total = species.length;
   const livingIds = getLivingIds();
 
   const _spTierPop: Record<string, number> = {};
@@ -910,6 +927,7 @@ export function speciate(ctx: EvoContext): SpeciateResult {
       moveRate: sp.moveRate || undefined,
       hungerMax: sp.hungerMax || undefined,
       eats: newEats.length ? newEats : undefined,
+      layerReach: sp.layerReach,
       desc: 'Evolved from ' + sp.name + ' at gen ' + generation,
       parentId: id,
       rootAncestor: rootId,
@@ -984,7 +1002,7 @@ export function speciate(ctx: EvoContext): SpeciateResult {
  * Also supports convergent evolution: unrelated species fill empty niches.
  */
 export function nicheShift(ctx: EvoContext): NicheShiftResult {
-  const { evoStats, popHistory, species, gridW, gridH, generation, history } = ctx;
+  const { evoStats, popHistory, species, generation, history } = ctx;
   const newSpeciesIds: number[] = [];
 
   if (getDynamicSpeciesIds().length >= MAX_DYNAMIC_SPECIES) return { newSpeciesIds };
@@ -993,7 +1011,7 @@ export function nicheShift(ctx: EvoContext): NicheShiftResult {
   const now = popHistory[popHistory.length - 1];
   const prev = popHistory[popHistory.length - 3];
   const { predators, preyOf } = buildFoodWeb(evoStats);
-  const total = gridW * gridH;
+  const total = species.length;
   const livingIds = getLivingIds();
 
   // Calculate per-tier population for empty niche detection
@@ -1261,6 +1279,7 @@ export function nicheShift(ctx: EvoContext): NicheShiftResult {
       moveRate: sp.moveRate || 0.35,
       hungerMax: sp.hungerMax || 20,
       eats: newEats.length ? newEats : undefined,
+      layerReach: NICHE_LAYER_REACH[newTier] ?? (sp.layerReach || 1),
       desc:
         sp.name +
         ' shifted to ' +
@@ -1315,6 +1334,219 @@ export function nicheShift(ctx: EvoContext): NicheShiftResult {
         newName + ' shifted niche: ' + sp.tier + ' -> ' + newTier + '!',
       );
     }
+
+    newSpeciesIds.push(newId);
+  }
+
+  return { newSpeciesIds };
+}
+
+// ---------------------------------------------------------------------------
+// sizeDiversify()
+// ---------------------------------------------------------------------------
+
+/**
+ * Size diversification: species split into larger or smaller variants
+ * that occupy different sub-niches (layers, prey, movement profiles).
+ *
+ * A large Small Fish becomes a "Greater Small Fish" that is slower, eats
+ * bigger prey, and lives in an adjacent layer. A small variant becomes a
+ * "Lesser Small Fish" that is faster and breeds more.
+ */
+export function sizeDiversify(ctx: EvoContext): SizeDiversifyResult {
+  const { evoStats, popHistory, species, generation, history } = ctx;
+  const newSpeciesIds: number[] = [];
+
+  if (getDynamicSpeciesIds().length >= MAX_DYNAMIC_SPECIES) return { newSpeciesIds };
+  if (popHistory.length < 3) return { newSpeciesIds };
+
+  const now = popHistory[popHistory.length - 1];
+  const total = species.length;
+  const livingIds = getLivingIds();
+
+  for (const id of livingIds) {
+    if (getDynamicSpeciesIds().length >= MAX_DYNAMIC_SPECIES) break;
+
+    const sp = SPECIES[id] as SpeciesDefinition & {
+      lineageDepth?: number;
+      rootAncestor?: number;
+      parentId?: number;
+    };
+    if (!sp || !sp.breedRate || !sp.hungerMax) continue;
+    if (sp.tier === 'producer' || sp.tier === 'decomposer') continue;
+
+    const popNow = now[id] || 0;
+    if (popNow < SIZE_DIVERSIFY_MIN_POP) continue;
+
+    const es = evoStats[id];
+    if (!es || !es.genes) continue;
+
+    const sizeGene = es.genes.bodySize;
+    const sizeHetero = geneHeterozygosity(sizeGene);
+    const sizeVar = es.geneVar.bodySize || 0.06;
+    if (sizeHetero < 0.12 && sizeVar < 0.10) continue;
+
+    if (Math.random() > SIZE_DIVERSIFY_CHANCE) continue;
+
+    const newId = allocateSpeciesId();
+    if (newId === -1) break;
+
+    const currentSize = geneVal(sizeGene);
+    const goLarger = currentSize < 0.65 && Math.random() < 0.55;
+    const sizeDir = goLarger ? 1 : -1;
+    const shift = SIZE_BODYSIZE_SHIFT * sizeDir;
+
+    const rootId: number = (sp as any).rootAncestor || id;
+    const depth = sp.lineageDepth || 0;
+
+    const newGenes = cloneGenes(es.genes);
+    const newGeneVar: Record<GeneKey, number> = {} as Record<GeneKey, number>;
+    for (const g of GENE_KEYS) {
+      newGeneVar[g] = Math.max(0.06, (es.geneVar[g] || 0.14) * 0.80);
+    }
+
+    _nudgeAllele(newGenes, 'bodySize', shift);
+
+    if (goLarger) {
+      _nudgeAllele(newGenes, 'bodyShape', -0.08);
+      _nudgeAllele(newGenes, 'fertility', -0.12);
+      _nudgeAllele(newGenes, 'hungerEfficiency', 0.10);
+      _nudgeAllele(newGenes, 'aggression', 0.08);
+      _nudgeAllele(newGenes, 'bodyArmour', 0.06);
+    } else {
+      _nudgeAllele(newGenes, 'bodyShape', 0.10);
+      _nudgeAllele(newGenes, 'fertility', 0.10);
+      _nudgeAllele(newGenes, 'aggression', -0.06);
+      _nudgeAllele(newGenes, 'flightResponse', 0.08);
+    }
+
+    const rootSp = SPECIES[rootId];
+    const rootName = rootSp ? rootSp.name : sp.name;
+    const existingNames = collectExistingNames();
+    const sizeLabel = goLarger ? 'large' : 'small';
+    const newName = generateSpeciesName(
+      sp.name,
+      rootName,
+      newGenes,
+      es.genes,
+      existingNames,
+      'sizeshift',
+      sizeLabel,
+    );
+
+    const baseRGB = COLOR_RGB[id] || [128, 128, 128];
+    const { hex: newHex, rgb: [nr, ng, nb] } = shiftColour(baseRGB, 55);
+
+    const newExp = expressAllGenes(newGenes);
+    const vigour = 1.0 + Math.random() * 0.08;
+    const tmpBR = sp.breedRate * (
+      0.2 + newExp.fertility * 0.35 + newExp.metabolicRate * 0.25 +
+      newExp.growthRate * 0.15 + (1 - newExp.bodySize) * 0.05
+    ) * vigour;
+    const tmpMR = sp.moveRate ? clamp(
+      sp.moveRate * (
+        0.3 + newExp.bodyShape * 0.25 + newExp.curiosity * 0.2 +
+        (1 - newExp.bodySize) * 0.15 + (1 - newExp.bodyArmour) * 0.1
+      ) * vigour,
+      0.02, 0.98,
+    ) : 0;
+    const tmpHM = clamp(Math.round(
+      sp.hungerMax * (
+        0.2 + newExp.bodySize * 0.25 + newExp.hungerEfficiency * 0.25 +
+        (1 - newExp.metabolicRate) * 0.2 + 0.1
+      ) * vigour,
+    ), 6, 80);
+
+    let newLayer = sp.layer as number;
+    if (goLarger) {
+      newLayer = Math.min(LAYER_COUNT - 1, newLayer + 1);
+    } else {
+      newLayer = Math.max(0, newLayer - 1);
+    }
+
+    const parentReach = sp.layerReach ?? 1;
+    let newReach = parentReach;
+    if (goLarger) {
+      newReach = Math.min(parentReach + 1, LAYER_COUNT - 1);
+    } else {
+      newReach = Math.max(1, parentReach - 1);
+    }
+
+    const newEats = (es.eats || []).slice();
+    if (goLarger) {
+      if (newEats.indexOf(id) === -1 && Math.random() < 0.30) {
+        newEats.push(id);
+      }
+    } else {
+      if (newEats.length > 1 && Math.random() < 0.25) {
+        newEats.splice((Math.random() * newEats.length) | 0, 1);
+      }
+    }
+
+    const newSpeciesDef: SpeciesDefinition & {
+      parentId: number;
+      rootAncestor: number;
+      lineageDepth: number;
+    } = {
+      name: newName,
+      color: newHex,
+      tier: sp.tier,
+      layer: newLayer as Layer,
+      breedRate: sp.breedRate,
+      moveRate: sp.moveRate || undefined,
+      hungerMax: sp.hungerMax,
+      eats: newEats.length ? newEats : undefined,
+      layerReach: newReach,
+      desc: (goLarger ? 'Larger' : 'Smaller') + ' variant of ' + sp.name + ' (gen ' + generation + ')',
+      parentId: id,
+      rootAncestor: rootId,
+      lineageDepth: depth + 1,
+    };
+    registerSpecies(newId, newSpeciesDef as any);
+    COLOR_RGB[newId] = [nr, ng, nb];
+
+    evoStats[newId] = {
+      breedRate: tmpBR,
+      moveRate: tmpMR,
+      hungerMax: tmpHM,
+      eats: newEats.slice(),
+      traits: [],
+      traitAge: {},
+      traitStrengths: {},
+      _traitBitmask: 0,
+      genes: newGenes,
+      geneVar: newGeneVar,
+      baseGenes: cloneGenes(newGenes),
+      novelAdapts: (es.novelAdapts || []).slice(),
+    };
+
+    expressTraits(SPECIES[newId], evoStats[newId], ctx.maxTraitsPerSpecies, expressAllGenes, (msg) =>
+      addEvoEvent(history, generation, msg),
+    );
+
+    ctx.history.graphEventMarkers.push({
+      gen: generation,
+      type: 'speciation',
+      label: newName,
+    });
+
+    for (const oid of livingIds) {
+      if (oid === newId) continue;
+      const oe = evoStats[oid];
+      if (oe && oe.eats && oe.eats.indexOf(id) !== -1 && oe.eats.indexOf(newId) === -1) {
+        oe.eats.push(newId);
+      }
+    }
+
+    const convertTarget = (popNow * SIZE_DIVERSIFY_CONVERT) | 0;
+    convertCells(species, total, id, newId, convertTarget);
+
+    const sizeWord = goLarger ? 'larger' : 'smaller';
+    addEvoEvent(
+      history,
+      generation,
+      newName + ' emerged as a ' + sizeWord + ' variant of ' + sp.name + '!',
+    );
 
     newSpeciesIds.push(newId);
   }
