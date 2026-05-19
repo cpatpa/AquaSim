@@ -15,7 +15,6 @@ import type { SeasonState } from '../environment/seasons';
 import type { SimHistory } from './history';
 import { GENE_KEYS } from '../constants';
 import { noise2D } from '../environment/terrain';
-import { isLoggedIn, signSaveData, verifySaveData } from '../api/client';
 
 // ---------------------------------------------------------------------------
 // RLE encoding for typed arrays
@@ -121,32 +120,58 @@ export interface SaveData {
 
 const CURRENT_VERSION = 1;
 
-interface SignedSaveEnvelope {
-  aquasim: true;
-  data: SaveData;
-  signature: string;
-}
+const SAVE_MAGIC = new Uint8Array([0x41, 0x51, 0x53, 0x4D]); // "AQSM"
+const ENCRYPTION_PASSPHRASE = 'aq-s1m-2026-v2-enc-k3y';
+const IV_LENGTH = 12;
 
-const CLIENT_SIGNING_KEY = 'aq-s1m-2026-v2-k3y-f4llb4ck';
+let _cachedKey: CryptoKey | null = null;
 
-async function hmacSign(data: string): Promise<string> {
+async function getEncryptionKey(): Promise<CryptoKey> {
+  if (_cachedKey) return _cachedKey;
   const enc = new TextEncoder();
-  const key = await crypto.subtle.importKey(
-    'raw', enc.encode(CLIENT_SIGNING_KEY),
-    { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'],
+  const keyMaterial = await crypto.subtle.importKey(
+    'raw', enc.encode(ENCRYPTION_PASSPHRASE), 'PBKDF2', false, ['deriveKey'],
   );
-  const sig = await crypto.subtle.sign('HMAC', key, enc.encode(data));
-  return Array.from(new Uint8Array(sig)).map(b => b.toString(16).padStart(2, '0')).join('');
+  _cachedKey = await crypto.subtle.deriveKey(
+    { name: 'PBKDF2', salt: enc.encode('AquaSim-v2-salt'), iterations: 100_000, hash: 'SHA-256' },
+    keyMaterial,
+    { name: 'AES-GCM', length: 256 },
+    false,
+    ['encrypt', 'decrypt'],
+  );
+  return _cachedKey;
 }
 
-async function hmacVerify(data: string, signature: string): Promise<boolean> {
-  const expected = await hmacSign(data);
-  if (expected.length !== signature.length) return false;
-  let mismatch = 0;
-  for (let i = 0; i < expected.length; i++) {
-    mismatch |= expected.charCodeAt(i) ^ signature.charCodeAt(i);
+async function encryptSave(data: SaveData): Promise<ArrayBuffer> {
+  const key = await getEncryptionKey();
+  const iv = crypto.getRandomValues(new Uint8Array(IV_LENGTH));
+  const plaintext = new TextEncoder().encode(JSON.stringify(data));
+  const ciphertext = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, plaintext);
+  const output = new Uint8Array(SAVE_MAGIC.length + IV_LENGTH + ciphertext.byteLength);
+  output.set(SAVE_MAGIC, 0);
+  output.set(iv, SAVE_MAGIC.length);
+  output.set(new Uint8Array(ciphertext), SAVE_MAGIC.length + IV_LENGTH);
+  return output.buffer;
+}
+
+async function decryptSave(buffer: ArrayBuffer): Promise<SaveData> {
+  const bytes = new Uint8Array(buffer);
+  for (let i = 0; i < SAVE_MAGIC.length; i++) {
+    if (bytes[i] !== SAVE_MAGIC[i]) throw new Error('Not a valid AquaSim save file.');
   }
-  return mismatch === 0;
+  const iv = bytes.slice(SAVE_MAGIC.length, SAVE_MAGIC.length + IV_LENGTH);
+  const ciphertext = bytes.slice(SAVE_MAGIC.length + IV_LENGTH);
+  const key = await getEncryptionKey();
+  let plaintext: ArrayBuffer;
+  try {
+    plaintext = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, ciphertext);
+  } catch {
+    throw new Error('Save file is corrupted or has been tampered with.');
+  }
+  const json = new TextDecoder().decode(plaintext);
+  const data = JSON.parse(json) as SaveData;
+  if (typeof data.version !== 'number') throw new Error('Invalid save file: missing version field.');
+  return data;
 }
 
 // ---------------------------------------------------------------------------
@@ -333,30 +358,17 @@ export function deserialise(data: SaveData, sim: SimState): void {
 }
 
 // ---------------------------------------------------------------------------
-// downloadSave -- signs the save and triggers a browser file download
+// downloadSave -- encrypts the save and triggers a browser file download
 // ---------------------------------------------------------------------------
 
 export async function downloadSave(data: SaveData): Promise<void> {
-  const dataJson = JSON.stringify(data);
-
-  let signature: string;
-  try {
-    if (isLoggedIn()) {
-      signature = await signSaveData(data);
-    } else {
-      signature = await hmacSign(dataJson);
-    }
-  } catch {
-    signature = await hmacSign(dataJson);
-  }
-
-  const envelope: SignedSaveEnvelope = { aquasim: true, data, signature };
-  const blob = new Blob([JSON.stringify(envelope)], { type: 'application/json' });
+  const encrypted = await encryptSave(data);
+  const blob = new Blob([encrypted], { type: 'application/octet-stream' });
   const url = URL.createObjectURL(blob);
 
   const anchor = document.createElement('a');
   anchor.href = url;
-  anchor.download = `aquasim-save-${data.generation}.json`;
+  anchor.download = `aquasim-save-${data.generation}.aqsim`;
   document.body.appendChild(anchor);
   anchor.click();
   document.body.removeChild(anchor);
@@ -364,14 +376,14 @@ export async function downloadSave(data: SaveData): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
-// uploadSave -- opens a file picker, verifies signature, then returns data
+// uploadSave -- opens a file picker, decrypts, then returns data
 // ---------------------------------------------------------------------------
 
 export function uploadSave(): Promise<SaveData> {
   return new Promise<SaveData>((resolve, reject) => {
     const input = document.createElement('input');
     input.type = 'file';
-    input.accept = '.json,application/json';
+    input.accept = '.aqsim';
 
     input.addEventListener('change', () => {
       const file = input.files?.[0];
@@ -383,43 +395,15 @@ export function uploadSave(): Promise<SaveData> {
       const reader = new FileReader();
       reader.onload = async () => {
         try {
-          const raw = reader.result as string;
-          const parsed = JSON.parse(raw);
-
-          if (parsed.aquasim === true && parsed.data && parsed.signature) {
-            const envelope = parsed as SignedSaveEnvelope;
-            const dataJson = JSON.stringify(envelope.data);
-
-            let valid = false;
-            try {
-              if (isLoggedIn()) {
-                valid = await verifySaveData(envelope.data, envelope.signature);
-              }
-            } catch { /* server unavailable, fall through */ }
-
-            if (!valid) {
-              valid = await hmacVerify(dataJson, envelope.signature);
-            }
-
-            if (!valid) {
-              reject(new Error('Save file signature is invalid. The file may have been tampered with.'));
-              return;
-            }
-
-            if (typeof envelope.data.version !== 'number') {
-              reject(new Error('Invalid save file: missing version field'));
-              return;
-            }
-            resolve(envelope.data);
-          } else {
-            reject(new Error('Unrecognised save format. Only signed AquaSim save files are accepted.'));
-          }
+          const buffer = reader.result as ArrayBuffer;
+          const data = await decryptSave(buffer);
+          resolve(data);
         } catch (err) {
-          reject(new Error(`Failed to parse save file: ${err}`));
+          reject(err instanceof Error ? err : new Error(`Failed to load save file: ${err}`));
         }
       };
       reader.onerror = () => reject(new Error('Failed to read file'));
-      reader.readAsText(file);
+      reader.readAsArrayBuffer(file);
     });
 
     input.addEventListener('cancel', () => {

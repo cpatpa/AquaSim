@@ -265,26 +265,6 @@ export async function listPublicSimulations(page: number = 1): Promise<Simulatio
   return res.json();
 }
 
-export async function signSaveData(data: unknown): Promise<string> {
-  const res = await apiFetch('/api/simulations/sign', {
-    method: 'POST',
-    body: JSON.stringify({ data }),
-  });
-  if (!res.ok) throw new Error('Signing failed');
-  const json = await res.json();
-  return json.signature;
-}
-
-export async function verifySaveData(data: unknown, signature: string): Promise<boolean> {
-  const res = await apiFetch('/api/simulations/verify', {
-    method: 'POST',
-    body: JSON.stringify({ data, signature }),
-  });
-  if (!res.ok) return false;
-  const json = await res.json();
-  return json.valid === true;
-}
-
 export async function getPasskeyRegisterOptions(): Promise<unknown> {
   const res = await apiFetch('/api/auth/passkey/register-options', { method: 'POST' });
   if (!res.ok) throw new Error('Failed to get passkey options');
