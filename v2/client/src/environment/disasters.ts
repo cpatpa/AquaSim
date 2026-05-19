@@ -118,7 +118,10 @@ export function triggerBomb(
     // Place rock at abyssal floor
     const rockIdx = rockZ * plane + xy;
     grid.species[rockIdx] = 1;
-    grid.currents[xy] = 0;
+    // Clear currents at all layers
+    for (let z = 0; z < grid.layers; z++) {
+      grid.currents[z * plane + xy] = 0;
+    }
   });
 }
 

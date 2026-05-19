@@ -304,12 +304,19 @@ function deserialiseGrid(sg: SerialisedGrid, grid: GridState): void {
     rleDecode(sg.species, tmpSpecies);
     rleDecode(sg.hunger, tmpHunger);
     rleDecode(sg.age, tmpAge);
-    rleDecode(sg.currents, grid.currents);
+    // Old saves have 2D currents; spread them across upper layers
+    const tmpCurrents = new Uint8Array(plane);
+    rleDecode(sg.currents, tmpCurrents);
+    for (let xy = 0; xy < plane; xy++) {
+      if (tmpCurrents[xy] === 0) continue;
+      for (let z = 3; z < grid.layers; z++) {
+        grid.currents[z * plane + xy] = tmpCurrents[xy];
+      }
+    }
 
     for (let xy = 0; xy < plane; xy++) {
       const sid = tmpSpecies[xy];
       if (sid === 0) continue;
-      // Use species' home layer if defined, otherwise z=0
       const sp = SPECIES[sid];
       let z = sp?.layer ?? 0;
       if (z < 0) z = 0;

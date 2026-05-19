@@ -75,7 +75,9 @@ export function paintAt(
       const y = wrapY(grid, cellY + dy);
       const xyIdx = y * grid.width + x;
       if (sid === 2) {
-        grid.currents[xyIdx] = state.currentDir;
+        // Paint current at focused layer, or surface layer by default
+        const curZ = focusLayer >= 0 ? focusLayer : LAYER_COUNT - 1;
+        grid.currents[curZ * plane + xyIdx] = state.currentDir;
       } else if (sid === 0) {
         // Erase: focused layer only, or whole column
         if (focusLayer >= 0) {
@@ -83,14 +85,15 @@ export function paintAt(
           grid.species[idx] = 0;
           grid.hunger[idx] = 0;
           grid.age[idx] = 0;
+          grid.currents[idx] = 0;
         } else {
           for (let z = 0; z < LAYER_COUNT; z++) {
             const idx = z * plane + xyIdx;
             grid.species[idx] = 0;
             grid.hunger[idx] = 0;
             grid.age[idx] = 0;
+            grid.currents[idx] = 0;
           }
-          grid.currents[xyIdx] = 0;
         }
       } else {
         const idx = zOff + xyIdx;

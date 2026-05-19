@@ -142,7 +142,7 @@ export interface GridState {
   species: Uint8Array;
   hunger: Int16Array;
   age: Uint16Array;
-  /** Currents are 2D (per xy column); index: y * width + x */
+  /** Currents are 3D (per layer); index: z * width * height + y * width + x */
   currents: Uint8Array;
   /** Visual noise is 2D (per xy); index: y * width + x */
   cellNoise: Float32Array;

@@ -13,7 +13,7 @@ export function allocGrid(width: number, height: number): GridState {
     species: new Uint8Array(totalCells),
     hunger: new Int16Array(totalCells),
     age: new Uint16Array(totalCells),
-    currents: new Uint8Array(planeSize),
+    currents: new Uint8Array(totalCells),
     cellNoise: new Float32Array(planeSize),
     cellNoise2: new Float32Array(planeSize),
   };

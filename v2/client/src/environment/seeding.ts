@@ -198,8 +198,11 @@ export function seedBiome(grid: GridState): void {
   }
 
   // ==================================================================
-  // 2. OCEAN CURRENTS (2D, applies to whole xy column)
+  // 2. OCEAN CURRENTS (3D, varying by depth layer)
   // ==================================================================
+  // Surface/Canopy get strong currents; deeper layers get weaker,
+  // shifted-direction currents. Abyssal has almost no current.
+  const layerCurrentChance = [0.05, 0.15, 0.3, 0.5, 0.85, 1.0]; // z=0..5
   const numStreams = 4 + ((Math.random() * 4) | 0);
   for (let s = 0; s < numStreams; s++) {
     const horizontal = Math.random() < 0.6;
@@ -233,12 +236,18 @@ export function seedBiome(grid: GridState): void {
           px = wrapX(grid, Math.round(cx0 + step * cd[0] + perpNoise + w));
           py = wrapY(grid, cy0 + step * cd[1]);
         }
-        currents[py * cw + px] = mainDir;
+        const xyI = py * cw + px;
+        for (let z = 0; z < grid.layers; z++) {
+          const chance = z < layerCurrentChance.length ? layerCurrentChance[z] : 0.5;
+          if (Math.random() < chance) {
+            currents[z * plane + xyI] = mainDir;
+          }
+        }
       }
     }
   }
 
-  // Gyres
+  // Gyres (surface/pelagic layers only)
   const numGyres = 2 + ((Math.random() * 2) | 0);
   for (let g = 0; g < numGyres; g++) {
     const gx = (cw * (0.2 + Math.random() * 0.6)) | 0;
@@ -266,7 +275,11 @@ export function seedBiome(grid: GridState): void {
         let dir: number;
         if (Math.abs(tdx) > Math.abs(tdy)) dir = tdx > 0 ? 2 : 4;
         else dir = tdy > 0 ? 3 : 1;
-        currents[wy * cw + wx] = dir;
+        const xyI = wy * cw + wx;
+        // Gyres affect upper layers (Pelagic, Surface, Canopy)
+        for (let z = 3; z < grid.layers; z++) {
+          currents[z * plane + xyI] = dir;
+        }
       }
     }
   }
@@ -337,7 +350,7 @@ export function seedBiome(grid: GridState): void {
       const idx = plankZOff + y * cw + x;
       if (species[idx] !== 0) continue;
       let pn = (plankNoise(x, y) + 1) * 0.5;
-      if (currents[y * cw + x] > 0) pn += 0.12;
+      if (currents[plankZOff + y * cw + x] > 0) pn += 0.12;
       if (pn > 0.52) {
         const density = (pn - 0.52) / 0.48;
         if (Math.random() < density * 0.45) species[idx] = 10;

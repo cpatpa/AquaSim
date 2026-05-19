@@ -502,10 +502,20 @@ export function render(
   const arwG = 160;
   const arwB = 255;
 
+  // Show currents at the visible layer (focus or topmost occupied)
+  const curPlane = cw * ch;
   for (let cy = 0; cy < ch; cy++) {
     for (let cx = 0; cx < cw; cx++) {
-      const idx = cy * cw + cx;
-      const cdir = currents[idx];
+      const xyIdx4 = cy * cw + cx;
+      let cdir = 0;
+      if (focusLayer >= 0 && focusLayer < layers3D) {
+        cdir = currents[focusLayer * curPlane + xyIdx4];
+      } else {
+        for (let zc = layers3D - 1; zc >= 0; zc--) {
+          const c = currents[zc * curPlane + xyIdx4];
+          if (c) { cdir = c; break; }
+        }
+      }
       if (!cdir) continue;
 
       const px0 = cx * cs;
@@ -675,10 +685,12 @@ export function renderLayer(
     }
   }
 
-  // Render cells at this layer's z-slice of the 3D grid
+  // Render cells as pseudo-3D cubes at this layer's z-slice
   const cellAlpha = (255 * opacity) | 0;
   const planeSizeL = cw * ch;
   const zOffL = targetLayer * planeSizeL;
+  const hiBoost = 30;  // top face highlight
+  const shDrop = 35;   // side/bottom shadow
   for (let cy = 0; cy < ch; cy++) {
     for (let cx = 0; cx < cw; cx++) {
       const idx = zOffL + cy * cw + cx;
@@ -693,15 +705,51 @@ export function renderLayer(
 
       const px0 = cx * cs;
       const py0 = cy * cs;
-      for (let py = py0; py < py0 + innerSize; py++) {
+
+      // Top face (highlight): first row of cell
+      const topRowOff = py0 * pw * 4;
+      for (let px = px0; px < px0 + innerSize; px++) {
+        const off = topRowOff + px * 4;
+        data[off] = Math.min(255, baseR + hiBoost);
+        data[off + 1] = Math.min(255, baseG + hiBoost);
+        data[off + 2] = Math.min(255, baseB + hiBoost);
+        data[off + 3] = cellAlpha;
+      }
+      // Left edge highlight: first column of cell (rows 1+)
+      for (let py = py0 + 1; py < py0 + innerSize; py++) {
+        const off = (py * pw + px0) * 4;
+        data[off] = Math.min(255, baseR + hiBoost);
+        data[off + 1] = Math.min(255, baseG + hiBoost);
+        data[off + 2] = Math.min(255, baseB + hiBoost);
+        data[off + 3] = cellAlpha;
+      }
+      // Main face: interior
+      for (let py = py0 + 1; py < py0 + innerSize - 1; py++) {
         const rowOff = py * pw * 4;
-        for (let px = px0; px < px0 + innerSize; px++) {
+        for (let px = px0 + 1; px < px0 + innerSize - 1; px++) {
           const off = rowOff + px * 4;
           data[off] = baseR;
           data[off + 1] = baseG;
           data[off + 2] = baseB;
           data[off + 3] = cellAlpha;
         }
+      }
+      // Right edge shadow: last column
+      for (let py = py0 + 1; py < py0 + innerSize; py++) {
+        const off = (py * pw + px0 + innerSize - 1) * 4;
+        data[off] = Math.max(0, baseR - shDrop);
+        data[off + 1] = Math.max(0, baseG - shDrop);
+        data[off + 2] = Math.max(0, baseB - shDrop);
+        data[off + 3] = cellAlpha;
+      }
+      // Bottom edge shadow: last row
+      const botRowOff = (py0 + innerSize - 1) * pw * 4;
+      for (let px = px0; px < px0 + innerSize; px++) {
+        const off = botRowOff + px * 4;
+        data[off] = Math.max(0, baseR - shDrop);
+        data[off + 1] = Math.max(0, baseG - shDrop);
+        data[off + 2] = Math.max(0, baseB - shDrop);
+        data[off + 3] = cellAlpha;
       }
     }
   }

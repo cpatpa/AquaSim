@@ -201,7 +201,7 @@ export function setupCellTooltip(
         }
       }
     }
-    const curDir = grid.currents[xyIdx];
+    const curDir = grid.currents[idx];
 
     if (sid === 0 && curDir === 0) {
       hide();

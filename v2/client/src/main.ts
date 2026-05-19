@@ -451,9 +451,23 @@ function renderFrame(): void {
   if (depthView.tiltEnabled) {
     for (let layer = 0; layer < LAYER_COUNT; layer++) {
       const lrs = layerRenderers[layer];
-      const opacity = depthView.focusLayer === -1 ? 0.85
-        : layer === depthView.focusLayer ? 1.0 : 0.25;
-      renderLayer(lrs, sim.grid, sim.evoStats, sim.season.current, sim.generation, layer, opacity);
+      let opacity: number;
+      if (depthView.focusLayer === -1) {
+        opacity = 0.85;
+      } else if (layer === depthView.focusLayer) {
+        opacity = 1.0;
+      } else if (Math.abs(layer - depthView.focusLayer) === 1) {
+        opacity = 0.35;
+      } else {
+        opacity = 0;
+      }
+      if (opacity > 0) {
+        renderLayer(lrs, sim.grid, sim.evoStats, sim.season.current, sim.generation, layer, opacity);
+      } else {
+        // Clear hidden layer canvases
+        const ctx = lrs.ctx;
+        ctx.clearRect(0, 0, lrs.canvas.width, lrs.canvas.height);
+      }
     }
     applyTiltTransforms();
   } else {

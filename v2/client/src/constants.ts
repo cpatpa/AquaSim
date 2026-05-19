@@ -187,3 +187,8 @@ export const NEIGHBOURS_8: readonly [number, number][] = [
 export const LAYER_NAMES = ['Abyssal', 'Benthic', 'Reef', 'Pelagic', 'Surface', 'Canopy'] as const;
 export const LAYER_COLORS = ['#334466', '#886644', '#44AA88', '#4488CC', '#88CCFF', '#AAEEFF'] as const;
 export const LAYER_COUNT = 6;
+
+// Per-layer environmental modifiers (indexed z=0..5: Abyssal to Canopy)
+export const LAYER_LIGHT =       [0.05, 0.15, 0.40, 0.65, 0.90, 1.00] as const;
+export const LAYER_TEMPERATURE = [0.60, 0.70, 0.85, 0.90, 1.00, 1.00] as const;
+export const LAYER_PRESSURE =    [1.40, 1.20, 1.00, 0.90, 0.80, 0.70] as const;

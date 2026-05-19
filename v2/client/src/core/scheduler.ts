@@ -46,6 +46,9 @@ import {
   EVO_CHANCE_PER_GEN,
   EVO_COOLDOWN_MIN,
   EVO_COOLDOWN_MAX,
+  LAYER_LIGHT,
+  LAYER_TEMPERATURE,
+  LAYER_PRESSURE,
 } from '../constants';
 
 import {
@@ -641,6 +644,9 @@ export function step(ctx: StepContext): StepResult {
       const pes = evo(sid, evolveEnabled, ctxEvoStats) as any;
       const pTraits: string[] = pes.traits || [];
       let breedChance = pes.breedRate * sMod.producerBreedMult;
+      // Light affects producer growth: surface layers grow faster
+      const layerLight = cz < LAYER_LIGHT.length ? LAYER_LIGHT[cz] : 0.5;
+      breedChance *= (0.3 + 0.7 * layerLight);
 
       if (pTraits.indexOf('warmadapt') !== -1 && (season.current === 'Summer' || season.current === 'Spring')) {
         breedChance = pes.breedRate * 1.4;
@@ -814,9 +820,10 @@ export function step(ctx: StepContext): StepResult {
       }
     }
 
-    // --- 1. Increment hunger (metabolic scaling + seasonal modifier) ---
+    // --- 1. Increment hunger (metabolic scaling + seasonal + temperature) ---
     const metab = (METABOLISM as any)[sp.tier] || 1.0;
-    let hungerChance = metab * seasonHungerMult;
+    const layerTemp = cz < LAYER_TEMPERATURE.length ? LAYER_TEMPERATURE[cz] : 1.0;
+    let hungerChance = metab * seasonHungerMult * layerTemp;
     if (hasTrait('hypermetabolism')) hungerChance *= 1.8;
     if (Math.random() < hungerChance) hunger[idx]++;
 
@@ -1040,6 +1047,10 @@ export function step(ctx: StepContext): StepResult {
       const packActive = isPackHunter && packAllyCount >= 2;
       const huntSynMul = hasSynergy(synergies, 'hunt');
       const layerReachVal = sp.layerReach ?? 1;
+      // Low-light layers reduce hunt success (unless echolocation/chemosensory)
+      const huntLight = cz < LAYER_LIGHT.length ? LAYER_LIGHT[cz] : 0.5;
+      const hasLowLightSense = hasTrait('echoloc') || hasTrait('thermosensing');
+      const darkMissFrac = hasLowLightSense ? 0 : (1 - huntLight) * 0.35;
 
       zHunt: for (let dz = -layerReachVal; dz <= layerReachVal && !ate; dz++) {
         const nz = cz + dz;
@@ -1072,6 +1083,8 @@ export function step(ctx: StepContext): StepResult {
           const ni = nzOff + ny * cw + nx;
           const foodId = species[ni];
           if (eatsSet.indexOf(foodId) !== -1) {
+          // Darkness miss: low-light layers reduce hunt success
+          if (darkMissFrac > 0 && Math.random() < darkMissFrac) continue;
           // Density-dependent predation: scarce prey is harder to find
           const _preyPop = popCounts[foodId] || 0;
           if (totalLiving > 0 && _preyPop < totalLiving * 0.01 && _preyPop > 0) {
@@ -1475,7 +1488,7 @@ export function step(ctx: StepContext): StepResult {
     }
 
     // --- 4. Current sweep ---
-    const curDir = currents[xyIdx];
+    const curDir = currents[idx];
     if (curDir) {
       const cd = CARDINAL[curDir - 1];
       const sx = wrapX(cx + cd[0], cw);
@@ -1494,7 +1507,9 @@ export function step(ctx: StepContext): StepResult {
     }
 
     // --- 5. Movement (with seasonal modifier) ---
-    let effectiveMoveRate = Math.min(0.98, es.moveRate * seasonMoveMult);
+    // Pressure slows movement at deeper layers
+    const layerPressure = cz < LAYER_PRESSURE.length ? LAYER_PRESSURE[cz] : 1.0;
+    let effectiveMoveRate = Math.min(0.98, es.moveRate * seasonMoveMult / layerPressure);
     if (hasTrait('streamlined')) effectiveMoveRate = Math.min(0.98, effectiveMoveRate * (1 + 0.3 * tStr(sid, 'streamlined')));
     const speedSyn = hasSynergy(synergies, 'speed');
     if (speedSyn) effectiveMoveRate = Math.min(0.98, effectiveMoveRate * speedSyn);
